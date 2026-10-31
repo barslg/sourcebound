@@ -3,6 +3,7 @@ import { defineConfig } from '@playwright/test'
 const apiPort = process.env.E2E_BACKEND_PORT ?? '8010'
 const previewPort = process.env.E2E_PREVIEW_PORT ?? '4173'
 const base = process.env.E2E_BASE_URL ?? 'postgresql+asyncpg://muse:muse@localhost:5434/postgres'
+const oidcPort = process.env.E2E_OIDC_PORT ?? '9020'
 const e2eDb = base.replace(/\/[^/?]*(\?.*)?$/, '/muse_e2e')
 const backendEnv = {
   DATABASE_URL: e2eDb,
@@ -10,6 +11,10 @@ const backendEnv = {
   SUPERADMIN_EMAILS: 'admin@example.test',
   SESSION_SECURE_COOKIE: 'false',
   SSE_PING_S: '5',
+  OIDC_ISSUER: `http://127.0.0.1:${oidcPort}`,
+  GOOGLE_OAUTH_CLIENT_ID: 'stub-client',
+  GOOGLE_OAUTH_CLIENT_SECRET: 'stub-secret',
+  OIDC_REDIRECT_URL: `http://127.0.0.1:${previewPort}/api/v1/auth/callback`,
 }
 
 export default defineConfig({
@@ -23,6 +28,13 @@ export default defineConfig({
   use: { baseURL: `http://127.0.0.1:${previewPort}`, trace: 'off', locale: 'en-US' },
   projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
   webServer: [
+    {
+      command: `uv run python frontend/e2e/oidc_stub.py ${oidcPort}`,
+      cwd: '..',
+      url: `http://127.0.0.1:${oidcPort}/.well-known/openid-configuration`,
+      reuseExistingServer: false,
+      timeout: 60000,
+    },
     {
       command: `uv run python -c "import app.tasks.worker, uvicorn; uvicorn.run('app.main:app', port=${apiPort})"`,
       cwd: '..',

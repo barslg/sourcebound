@@ -59,9 +59,12 @@ async def callback(
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> RedirectResponse:
     """Finish a login, then redirect the browser to the frontend return path."""
-    payload, token = await controller.finish_login(
+    done = await controller.finish_login(
         ctx, provider_name=provider, state=state, code=code, request=request
     )
+    if done is None:
+        return RedirectResponse("/", status_code=303)
+    payload, token = done
     target = payload.next_url or "/"
     redirect = RedirectResponse(target, status_code=303)
     _set_session_cookie(redirect, ctx, token)
