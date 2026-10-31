@@ -39,6 +39,7 @@ class LLMResponse:
     input_tokens: int
     cached_tokens: int
     output_tokens: int
+    reasoning_tokens: int = 0
 
 
 def build_request_body(
@@ -48,12 +49,15 @@ def build_request_body(
     schema: dict[str, Any],
     background: bool = False,
     prompt_cache_key: str | None = None,
+    effort: str = "medium",
+    max_output_tokens: int = 4096,
 ) -> dict[str, Any]:
     """The exact kwargs sent to responses.create.
 
     The provider hashes this same dict for the reply store, so the hash
     can never drift from what the API receives: model, input, format,
-    background, and cache key are all part of the key.
+    background, cache key, reasoning effort, and the output limit are
+    all part of the key.
     """
     body: dict[str, Any] = {
         "model": model,
@@ -66,6 +70,8 @@ def build_request_body(
                 "strict": True,
             }
         },
+        "reasoning": {"effort": effort},
+        "max_output_tokens": max_output_tokens,
     }
     if background:
         body["background"] = True
@@ -95,6 +101,7 @@ class MetaClient:
             pool=resolved.llm_connect_timeout_s,
         )
         self._poll_timeout_s = resolved.llm_poll_timeout_s
+        self._settings = resolved
         self._client: AsyncOpenAI = AsyncOpenAI(
             base_url=resolved.model_api_base_url,
             api_key=secret.get_secret_value(),
@@ -112,6 +119,8 @@ class MetaClient:
         schema: dict[str, Any],
         background: bool = False,
         prompt_cache_key: str | None = None,
+        effort: str = "medium",
+        max_output_tokens: int = 4096,
     ) -> LLMResponse:
         """Generate one strict-JSON object; retries per policy, then LLMError."""
         from openai import APIConnectionError, APIStatusError
@@ -127,6 +136,8 @@ class MetaClient:
                 schema=schema,
                 background=use_bg,
                 prompt_cache_key=prompt_cache_key,
+                effort=effort,
+                max_output_tokens=max_output_tokens,
             )
             try:
                 response = await self._client.responses.create(**kwargs)
@@ -137,7 +148,7 @@ class MetaClient:
                     use_bg = True
                     continue
                 raise LLMError(
-                    f"model call failed after {attempt} attempt(s): {redact(str(exc))}"
+                    f"model call failed after {attempt} attempt(s): {self._redact(str(exc))}"
                 ) from exc
             except APIStatusError as exc:
                 status = exc.status_code
@@ -148,11 +159,59 @@ class MetaClient:
                     await asyncio.sleep(backoff_ms(attempt, retry_after_ms(exc)) / 1000)
                     continue
                 raise LLMError(
-                    f"model call failed after {attempt} attempt(s): {redact(str(exc))}"
+                    f"model call failed after {attempt} attempt(s): {self._redact(str(exc))}"
                 ) from exc
             if use_bg:
                 response = await self._await_background(response.id)
             return self._parse(response)
+
+    def _redact(self, text: str) -> str:
+        """Redact with key patterns plus every secret from settings."""
+        from app.redact import settings_secrets
+
+        try:
+            secrets = settings_secrets(self._settings)
+        except Exception:
+            secrets = []
+        return redact(text, secrets=secrets)
+
+    async def start_background(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        schema: dict[str, Any],
+        prompt_cache_key: str | None = None,
+        effort: str = "medium",
+        max_output_tokens: int = 4096,
+    ) -> str:
+        """POST one background call and return its response id for polling.
+
+        The caller persists the id (pending ledger row) before the first
+        poll, so a crash between create and retrieve resumes from the id
+        instead of re-posting a possibly paid request.
+        """
+        from openai import APIStatusError
+
+        validate_strict_subset(schema, name="response")
+        kwargs = build_request_body(
+            model=model,
+            prompt=prompt,
+            schema=schema,
+            background=True,
+            prompt_cache_key=prompt_cache_key,
+            effort=effort,
+            max_output_tokens=max_output_tokens,
+        )
+        try:
+            response = await self._client.responses.create(**kwargs)
+        except APIStatusError as exc:
+            raise LLMError(f"background call was not accepted: {self._redact(str(exc))}") from exc
+        return str(response.id)
+
+    async def retrieve_background(self, response_id: str) -> LLMResponse:
+        """Poll one previously created background response to completion."""
+        return self._parse(await self._await_background(response_id))
 
     async def _await_background(self, response_id: str) -> Any:
         """Poll a background response until it completes or polling times out.
@@ -178,7 +237,7 @@ class MetaClient:
                     wait = backoff_ms(attempt, retry_after_ms(exc)) / 1000
                     await asyncio.sleep(max(min(wait, deadline - time.monotonic()), 0))
                     continue
-                raise LLMError(f"background poll failed: {redact(str(exc))}") from exc
+                raise LLMError(f"background poll failed: {self._redact(str(exc))}") from exc
             if response.status == "completed":
                 return response
             if response.status in ("failed", "cancelled", "incomplete"):
@@ -198,16 +257,28 @@ class MetaClient:
         usage = response.usage
         if usage is None:
             raise LLMError("model response carried no usage")
-        cached = 0
-        details = getattr(usage, "input_tokens_details", None)
-        if isinstance(details, dict):
-            cached = int(details.get("cached_tokens") or 0)
-        elif isinstance(details, list):
-            for item in details:
-                cached += int(getattr(item, "cached_tokens", None) or 0)
         return LLMResponse(
             data=data,
             input_tokens=int(usage.input_tokens),
-            cached_tokens=cached,
+            cached_tokens=_tokens_details(usage, "input_tokens_details", "cached_tokens"),
             output_tokens=int(usage.output_tokens),
+            reasoning_tokens=_tokens_details(usage, "output_tokens_details", "reasoning_tokens"),
         )
+
+
+def _tokens_details(usage: Any, field: str, key: str) -> int:
+    """Sum one usage detail that may arrive as object, dict, or list of either."""
+    details = getattr(usage, field, None)
+    if details is None and isinstance(usage, dict):
+        details = usage.get(field)
+    if details is None:
+        return 0
+    if isinstance(details, list):
+        return sum(_cached_value(item, key) for item in details)
+    return _cached_value(details, key)
+
+
+def _cached_value(item: Any, key: str) -> int:
+    if isinstance(item, dict):
+        return int(item.get(key) or 0)
+    return int(getattr(item, key, None) or 0)

@@ -11,7 +11,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
+from app.errors import ConfigurationError
+
 DEFAULT_MODEL = "muse-spark-1.3"
+
+EFFORTS = ("low", "medium", "high")
+
+DEFAULT_EFFORT = "medium"
+DEFAULT_MAX_OUTPUT_TOKENS = 4096
 
 
 class UnknownModelError(LookupError):
@@ -98,6 +105,69 @@ MODELS: dict[str, ModelSpec] = {
 }
 
 
+@dataclass(frozen=True)
+class StepSpec:
+    """One pipeline step: model plus required reasoning effort and token limit.
+
+    Both fields are required (no defaults): a step without them fails
+    validate_step_registry() at startup instead of silently running
+    with an arbitrary limit.
+    """
+
+    model: str
+    effort: str
+    max_output_tokens: int
+
+
+STEPS: dict[str, StepSpec] = {
+    "intake": StepSpec(model="muse-spark-1.3", effort="medium", max_output_tokens=4000),
+    "researcher": StepSpec(model="muse-spark-1.3", effort="low", max_output_tokens=4000),
+    "architect": StepSpec(model="muse-wonder-1.0", effort="high", max_output_tokens=8000),
+    "block_teach": StepSpec(model="muse-spark-1.3", effort="medium", max_output_tokens=4000),
+    "block_example": StepSpec(model="muse-spark-1.3", effort="medium", max_output_tokens=4000),
+    "block_check": StepSpec(model="muse-spark-1.3", effort="high", max_output_tokens=4000),
+    "block_practice": StepSpec(model="muse-spark-1.3", effort="high", max_output_tokens=6000),
+    "block_test": StepSpec(model="muse-spark-1.3", effort="high", max_output_tokens=6000),
+    "reader": StepSpec(model="muse-wonder-1.0", effort="high", max_output_tokens=4000),
+    "saboteur": StepSpec(model="muse-wonder-1.0", effort="medium", max_output_tokens=4000),
+    "translator": StepSpec(model="muse-spark-1.3", effort="low", max_output_tokens=8000),
+    "tutor": StepSpec(model="muse-spark-1.3", effort="low", max_output_tokens=2000),
+}
+
+
+def validate_step_registry() -> None:
+    """Fail startup when a step entry is incomplete or names a bad model."""
+    for step, spec in STEPS.items():
+        if spec.effort not in EFFORTS:
+            raise ConfigurationError(f"step {step}: effort must be one of {EFFORTS}")
+        if spec.max_output_tokens <= 0:
+            raise ConfigurationError(f"step {step}: max_output_tokens must be positive")
+        get_model(spec.model)
+
+
+def resolve_step(
+    agent: str,
+    model: str | None,
+    effort: str | None,
+    max_output_tokens: int | None,
+) -> tuple[str, str, int]:
+    """Fill unset call options from the step registry; explicit values win."""
+    step = STEPS.get(agent)
+    resolved_model = model or (step.model if step else DEFAULT_MODEL)
+    resolved_effort = effort or (step.effort if step else DEFAULT_EFFORT)
+    resolved_tokens = (
+        max_output_tokens
+        if max_output_tokens is not None
+        else (step.max_output_tokens if step else DEFAULT_MAX_OUTPUT_TOKENS)
+    )
+    if resolved_effort not in EFFORTS:
+        raise ConfigurationError(f"step {agent}: effort must be one of {EFFORTS}")
+    if resolved_tokens <= 0:
+        raise ConfigurationError(f"step {agent}: max_output_tokens must be positive")
+    get_model(resolved_model)
+    return resolved_model, resolved_effort, resolved_tokens
+
+
 def get_model(model_id: str) -> ModelSpec:
     """Return the spec for a registered model id or fail closed."""
     try:
@@ -125,10 +195,15 @@ def is_priced(model_id: str) -> bool:
 
 
 def compute_cost_usd(
-    model_id: str, input_tokens: int, cached_tokens: int, output_tokens: int
+    model_id: str,
+    input_tokens: int,
+    cached_tokens: int,
+    output_tokens: int,
+    reasoning_tokens: int = 0,
 ) -> Decimal:
     """Cost in USD from the registry's dated prices; cached input is billed
-    once at the cached rate, never double-counted as fresh input."""
+    once at the cached rate, never double-counted as fresh input.
+    Reasoning tokens are billed at the output rate."""
     spec = get_model(model_id)
     prices = (spec.input_per_1m_usd, spec.cached_per_1m_usd, spec.output_per_1m_usd)
     if spec.unit != "token" or any(price is None for price in prices):
@@ -137,10 +212,11 @@ def compute_cost_usd(
     assert spec.cached_per_1m_usd is not None
     assert spec.output_per_1m_usd is not None
     fresh_input = max(input_tokens - cached_tokens, 0)
+    billed_output = max(output_tokens, 0) + max(reasoning_tokens, 0)
     cost = (
         Decimal(fresh_input) * spec.input_per_1m_usd
         + Decimal(cached_tokens) * spec.cached_per_1m_usd
-        + Decimal(output_tokens) * spec.output_per_1m_usd
+        + Decimal(billed_output) * spec.output_per_1m_usd
     ) / Decimal(1_000_000)
     return cost.quantize(Decimal("0.000001"))
 

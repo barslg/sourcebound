@@ -14,11 +14,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.config import Settings, get_settings
+from app.config import Settings, get_settings, validate_runtime_settings
 from app.db import get_session_factory
 from app.errors import register_exception_handlers
 from app.llm import prompts
+from app.llm.registry import validate_step_registry
 from app.logging import configure_logging
+from app.redact import settings_secrets
 from app.routes import auth as auth_routes
 from app.routes import ops as ops_routes
 from app.routes import t02 as t02_routes
@@ -30,8 +32,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from app.services.events import listen_forever
     from app.startup import startup_sync
 
-    prompts.validate_registered_schemas()
     settings: Settings = app.state.settings
+    validate_runtime_settings(settings)
+    validate_step_registry()
+    prompts.validate_registered_schemas()
+    prompts.validate_prompt_files()
     listener: asyncio.Task[None] | None = None
     if app.state.sync_on_startup:
         session_factory = get_session_factory()
@@ -49,7 +54,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app(settings: Settings | None = None, *, sync_on_startup: bool = True) -> FastAPI:
     """Build the FastAPI application; routes only parse and validate."""
     resolved = settings or get_settings()
-    configure_logging(resolved.log_level)
+    configure_logging(resolved.log_level, secrets=tuple(settings_secrets(resolved)))
     app = FastAPI(title="Grounded Course Studio", lifespan=lifespan)
     app.state.settings = resolved
     app.state.sync_on_startup = sync_on_startup

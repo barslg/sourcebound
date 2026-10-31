@@ -37,3 +37,26 @@ def redact(text: str, secrets: Iterable[str] = ()) -> str:
 def constant_time_equal(left: str, right: str) -> bool:
     """Compare secrets without leaking length/prefix timing."""
     return hmac.compare_digest(left.encode(), right.encode())
+
+
+def settings_secrets(settings: object) -> list[str]:
+    """Every SecretStr value from config, for redaction pipelines.
+
+    Reads the settings object generically so a newly added SecretStr
+    setting is masked without touching this module.
+    """
+    from pydantic import SecretStr
+
+    found: list[str] = []
+    fields = getattr(type(settings), "model_fields", None)
+    names = list(fields) if fields else [name for name in dir(settings) if not name.startswith("_")]
+    for name in names:
+        try:
+            value = getattr(settings, name)
+        except Exception:
+            continue
+        if isinstance(value, SecretStr):
+            secret = value.get_secret_value()
+            if secret:
+                found.append(secret)
+    return found

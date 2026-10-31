@@ -129,9 +129,37 @@ async def test_live_structured_grounded_and_cached() -> None:
             assert repeat == first
             assert transport.calls == calls_before
 
-            assert transport.calls == 2
-            assert await count(llm_calls) - rows_before == 3
-            assert await count(llm_replies) - stored_before == 2
+            # (d) A new question over the same cached prefix reuses cache.
+            followup_prompt = (
+                "Answer ONLY from the materials below. If the answer is "
+                "not in the materials, set found_in_materials to false "
+                "and say in answer that it is not in the materials.\n\n"
+                "Question: who keeps the blue ledger today "
+                f"(run {nonce})?\n\nMaterials:\n{SOURCE}"
+            )
+            followup = await provider.generate_json(
+                agent="smoke",
+                prompt=followup_prompt,
+                schema=verdict_schema,
+                cache_key="smoke-agent",
+            )
+            assert followup["found_in_materials"] is True
+            row = (
+                (
+                    await session.execute(
+                        sa.select(llm_calls).where(
+                            llm_calls.c.request["input"].astext == followup_prompt
+                        )
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            assert row["tokens_cached"] > 0
+
+            assert transport.calls == 3
+            assert await count(llm_calls) - rows_before == 4
+            assert await count(llm_replies) - stored_before == 3
             assert await calls.total_spend_usd(session) - spend_before > 0
     finally:
         await engine.dispose()

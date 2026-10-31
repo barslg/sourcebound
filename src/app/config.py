@@ -9,6 +9,8 @@ from functools import lru_cache
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+DEFAULT_DATABASE_URL = "postgresql+asyncpg://muse:muse@localhost:5434/muse"
+
 
 class Settings(BaseSettings):
     """Full tunable catalogue; names map 1:1 to .env.example entries."""
@@ -17,7 +19,7 @@ class Settings(BaseSettings):
 
     app_env: str = "local"
     log_level: str = "INFO"
-    database_url: str = "postgresql+asyncpg://muse:muse@localhost:5434/muse"
+    database_url: str = DEFAULT_DATABASE_URL
     test_database_url: str = ""
     model_api_key: SecretStr | None = None
     model_api_base_url: str = "https://api.meta.ai/v1"
@@ -59,3 +61,22 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Process-wide cached settings instance."""
     return Settings()
+
+
+def validate_runtime_settings(settings: Settings) -> None:
+    """Refuse unsafe production settings instead of booting with them.
+
+    Outside local/test the database URL must not be the dev default, the
+    session key must be set, and contributor dev mode must be off: each
+    would silently weaken a deployed environment.
+    """
+    from app.errors import ConfigurationError
+
+    if settings.app_env in ("local", "test"):
+        return
+    if settings.database_url == DEFAULT_DATABASE_URL:
+        raise ConfigurationError("DATABASE_URL must not be the default in this APP_ENV")
+    if settings.session_secret_key is None or not settings.session_secret_key.get_secret_value():
+        raise ConfigurationError("SESSION_SECRET_KEY must be set in this APP_ENV")
+    if settings.llm_dev_mode:
+        raise ConfigurationError("LLM_DEV_MODE=1 is only allowed when APP_ENV is local or test")

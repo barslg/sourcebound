@@ -12,10 +12,13 @@ from typing import Any
 from uuid import UUID
 
 import sqlalchemy as sa
+from sqlalchemy.engine.cursor import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.llm.registry import compute_cost_usd
 from app.models.llm import llm_calls
+
+WIPED_REQUEST: dict[str, Any] = {"wiped": True}
 
 
 async def log_call(
@@ -32,9 +35,14 @@ async def log_call(
     response: dict[str, Any] | None,
     run_id: UUID | None = None,
     step_id: UUID | None = None,
+    reasoning_tokens: int = 0,
+    response_id: str | None = None,
+    status: str = "completed",
+    variant: int = 0,
+    subject_user_id: UUID | None = None,
 ) -> UUID:
     """Insert one llm_calls row with cost from the registry; return its id."""
-    cost = compute_cost_usd(model, input_tokens, cached_tokens, output_tokens)
+    cost = compute_cost_usd(model, input_tokens, cached_tokens, output_tokens, reasoning_tokens)
     result = await session.execute(
         llm_calls.insert()
         .values(
@@ -45,10 +53,15 @@ async def log_call(
             tokens_input=input_tokens,
             tokens_cached=cached_tokens,
             tokens_output=output_tokens,
+            tokens_reasoning=reasoning_tokens,
             cost_usd=cost,
             duration_ms=duration_ms,
             request=request,
             response=response,
+            response_id=response_id,
+            status=status,
+            variant=variant,
+            subject_user_id=subject_user_id,
             run_id=run_id,
             step_id=step_id,
         )
@@ -57,6 +70,51 @@ async def log_call(
     call_id = result.scalar()
     assert isinstance(call_id, uuid.UUID)
     return call_id
+
+
+async def complete_background_call(
+    session: AsyncSession,
+    *,
+    call_id: UUID,
+    input_tokens: int,
+    cached_tokens: int,
+    output_tokens: int,
+    reasoning_tokens: int,
+    model: str,
+    duration_ms: int,
+    response: dict[str, Any] | None,
+) -> None:
+    """Flip a pending background row to completed with usage and registry cost."""
+    cost = compute_cost_usd(model, input_tokens, cached_tokens, output_tokens, reasoning_tokens)
+    await session.execute(
+        llm_calls.update()
+        .where(llm_calls.c.id == call_id)
+        .values(
+            status="completed",
+            tokens_input=input_tokens,
+            tokens_cached=cached_tokens,
+            tokens_output=output_tokens,
+            tokens_reasoning=reasoning_tokens,
+            cost_usd=cost,
+            duration_ms=duration_ms,
+            response=response,
+        )
+    )
+
+
+async def wipe_subject_calls(session: AsyncSession, subject_user_id: UUID) -> int:
+    """Erase learner text for one subject, keeping tokens and cost for spend.
+
+    Returns the number of rows wiped. The subject link is cleared so the
+    rows no longer identify anyone; cost and token counts stay intact.
+    """
+    result = await session.execute(
+        llm_calls.update()
+        .where(llm_calls.c.subject_user_id == subject_user_id)
+        .values(request=WIPED_REQUEST, response=None, subject_user_id=None)
+    )
+    assert isinstance(result, CursorResult)
+    return int(result.rowcount or 0)
 
 
 async def total_spend_usd(session: AsyncSession) -> Decimal:

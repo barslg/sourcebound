@@ -99,10 +99,19 @@ def _provider(
     return MetaProvider(session, settings or _settings(), http, ledger), seen
 
 
-def _digest(agent: str, prompt: str, model: str = "muse-spark-1.3") -> tuple[str, str]:
+def _digest(agent: str, prompt: str, model: str | None = None) -> tuple[str, str]:
+    from app.llm.registry import resolve_step
+
+    resolved_model, effort, max_tokens = resolve_step(agent, model, None, None)
     version = MetaProvider.prompt_version(agent, prompt)
-    body = build_request_body(model=model, prompt=prompt, schema=SCHEMA)
-    return replies.request_hash(model, version, body), version
+    body = build_request_body(
+        model=resolved_model,
+        prompt=prompt,
+        schema=SCHEMA,
+        effort=effort,
+        max_output_tokens=max_tokens,
+    )
+    return replies.request_hash(resolved_model, version, body), version
 
 
 async def test_provider_serves_a_seeded_reply_without_http() -> None:
