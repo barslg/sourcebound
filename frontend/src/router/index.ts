@@ -23,6 +23,7 @@ export const routes: RouteRecordRaw[] = [
   { path: '/courses/:id/sources', component: () => import('@/views/course/SourcesView.vue'), meta: { perm: 'section.courses' } },
   { path: '/courses/:id/plan', component: () => import('@/views/course/PlanView.vue'), meta: { perm: 'section.courses' } },
   { path: '/courses/:id/fix', component: () => import('@/views/course/FixView.vue'), meta: { perm: 'section.courses' } },
+  { path: '/courses/:id/preview', component: () => import('@/views/course/PreviewView.vue'), meta: { perm: 'section.courses' } },
   { path: '/courses/:id/publish', component: () => import('@/views/course/PublishView.vue'), meta: { perm: 'section.courses' } },
   { path: '/runs/:runId', component: () => import('@/views/RunView.vue'), meta: { perm: 'section.runs' } },
   { path: '/users', component: () => import('@/views/UsersView.vue'), meta: { perm: 'user.list', navKey: 'nav.users', icon: Users } },

@@ -1,6 +1,6 @@
 import type { Component } from 'vue'
 import {
-  ArchiveX, ArrowDown, ArrowUp, Ban, Bell, CircleCheck, CircleX, CloudDownload, CloudUpload, Copy, Ellipsis, EyeOff, Globe, Keyboard,
+  ArchiveX, ArrowDown, ArrowUp, Ban, Bell, CircleCheck, CircleX, CloudDownload, CloudUpload, Copy, Ellipsis, Eye, EyeOff, FileUp, FileX, Globe, Keyboard, Languages,
   Link2Off, ListTree, LogIn, LogOut, Pencil, PencilLine, Play, Plus, RefreshCcwDot, RefreshCw, RotateCw, Save, Search, Send, ShieldCheck,
   Sparkles, Square, SunMoon, TextCursorInput, Trash2, Upload, UserCheck, UserPlus, X,
 } from 'lucide-vue-next'
@@ -45,4 +45,8 @@ export const ACTION_ICONS: Record<ActionId, Component> = {
   retry: RotateCw,
   'check-again': RefreshCcwDot,
   search: Search,
+  'choose-file': FileUp,
+  'remove-file': FileX,
+  translate: Languages,
+  preview: Eye,
 }

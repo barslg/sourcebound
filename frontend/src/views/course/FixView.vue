@@ -7,6 +7,7 @@ import { blockAccept, blockItem, blockRewrite, courseHeld, coursePlan, courseRew
 import type { HeldBlock, HeldDoc } from '@/api/types'
 import CourseHeader from '@/components/CourseHeader.vue'
 import ActionButton from '@/components/ActionButton.vue'
+import Queued from '@/components/Queued.vue'
 import FormField from '@/components/FormField.vue'
 import ResourceState from '@/components/ResourceState.vue'
 import Section from '@/components/Section.vue'
@@ -73,7 +74,7 @@ function startEdit(block: HeldBlock): void {
         <div v-if="held.data.value?.batch_quote_usd" class="row">
           <ActionButton action="rewrite" :label="t('fix.batch', { count: held.data.value.blocks.length, price: usd(held.data.value.batch_quote_usd) })" :loading="working === 'batch'" :reason="lacking('course.generate')" data-testid="fix-batch" @click="rewriteAll" />
         </div>
-        <p v-if="queue.queued.value" class="chip" data-testid="queued-line">{{ t('op.queuedToast') }}</p>
+        <Queued v-if="queue.queued.value" />
         <ul class="plain-list">
           <li v-for="b in held.data.value?.blocks ?? []" :id="`held-${b.id}`" :key="b.id" class="held-row" data-testid="held-row">
             <div class="stack">

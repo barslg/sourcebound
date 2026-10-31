@@ -1,19 +1,27 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { request } from '@/api/client'
 import { courseHeld, courseItem, coursePlan, coursePlanValidate, courseSources } from '@/api/endpoints'
 import type { CourseDoc, HeldDoc, SourceRow, Validation } from '@/api/types'
+import ActionButton from '@/components/ActionButton.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import StatusChip from '@/components/StatusChip.vue'
 import ResourceState from '@/components/ResourceState.vue'
 import { nextAction, stages } from '@/composables/needsNow'
 import type { PlanTree } from '@/composables/planTree'
 import { useResource } from '@/composables/useResource'
+import { lacking } from '@/composables/reasons'
+import { translationLabel, translationState, translationTone } from '@/composables/translationView'
 import { useCourseContext } from '@/stores/courseContext'
 
 const props = defineProps<{ courseId: string; page: 'sources' | 'plan' | 'fix' | 'publish' }>()
-const { t } = useI18n()
+const { t, te } = useI18n()
+const router = useRouter()
+const previewDenied = lacking('learner.view')
 const id = props.courseId
+const languageName = (code: string): string => (te(`language.${code}`) ? t(`language.${code}`) : code)
 const course = useResource<CourseDoc>(`course:${id}`, (signal) => request<CourseDoc>(courseItem(id), { signal }))
 const validation = useResource<Validation>(`validate:${id}`, (signal) => request<Validation>(coursePlanValidate(id), { signal }))
 const sources = useResource<SourceRow[]>(`sources:${id}`, (signal) => request<SourceRow[]>(courseSources(id), { signal }))
@@ -68,6 +76,17 @@ defineExpose({ reload })
   <ResourceState :loading="course.loading.value" :error="course.error.value" :empty="false" @retry="course.reload()">
     <div class="stack course-head" data-testid="course-head">
       <PageHeader :title="course.data.value?.title ?? ''" :help="t(`course.help.${props.page}`)" :crumbs="crumbs" :doc-title="`${t(`course.stage.${props.page}`)} · ${course.data.value?.title ?? ''} · Sourcebound`" />
+      <p v-if="course.data.value" class="course-facts muted" data-testid="course-facts">
+        <span>{{ t('course.factLanguage', { name: languageName(course.data.value.language) }) }}</span>
+        <span v-if="course.data.value.profile">{{ t('course.factAudience', { audience: course.data.value.profile.audience }) }}</span>
+        <span>{{ t('course.factCounts', { topics: t('count.topic', course.data.value.topic_count), blocks: t('count.block', course.data.value.block_count) }) }}</span>
+      </p>
+      <div v-if="course.data.value" class="course-translations" data-testid="translations">
+        <strong>{{ t('course.translationsLabel') }}</strong>
+        <span v-if="course.data.value.translations.length === 0" class="muted">{{ t('course.translationNone') }}</span>
+        <StatusChip v-for="tr in course.data.value.translations" :key="tr.language" :tone="translationTone(tr)" :label="translationLabel(tr)" :data-testid="`translation-${tr.language}`" :data-state="translationState(tr)" />
+        <ActionButton action="preview" size="small" :reason="previewDenied" data-testid="preview-link" @click="router.push(`/courses/${id}/preview`)" />
+      </div>
       <ol class="stage-strip" :aria-label="t('course.stages')">
         <li v-for="s in strip" :key="s.id">
           <router-link class="stage" :class="[`stage-${s.state}`, { 'stage-current': s.id === props.page }]" :to="s.to" :data-testid="`tab-${s.id}`">

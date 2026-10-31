@@ -53,6 +53,8 @@ export const runCancel = (id: string): string => `${runItem(id)}/cancel`
 export const blockItem = (id: string): string => `${API}/blocks/${enc(id)}`
 export const blockRewrite = (id: string): string => `${blockItem(id)}/rewrite`
 export const blockAccept = (id: string): string => `${blockItem(id)}/accept`
+export const courseTranslate = (id: string): string => `${courseItem(id)}/translate`
+export const courseLearner = (id: string): string => `${courseItem(id)}/learner`
 export const courseRewriteHeld = (id: string): string => `${courseItem(id)}/held/rewrite`
 
 export function loginUrl(next?: string): string {

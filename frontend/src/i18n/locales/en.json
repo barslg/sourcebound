@@ -115,7 +115,8 @@
       "failed": "Failed",
       "error": "Failed",
       "cancelled": "Cancelled"
-    }
+    },
+    "inBell": "You will find it in the bell."
   },
   "users": {
     "title": "Users",
@@ -294,7 +295,12 @@
       "plan": "no plan yet",
       "questions": "open questions",
       "held": "held blocks"
-    }
+    },
+    "factLanguage": "Language: {name}",
+    "factAudience": "For: {audience}",
+    "factCounts": "{topics}, {blocks}",
+    "translationsLabel": "Translations",
+    "translationNone": "Not translated yet"
   },
   "sources": {
     "add": "Add source",
@@ -363,7 +369,9 @@
       "parsing": "Being read",
       "ready": "Read",
       "failed": "Could not be read"
-    }
+    },
+    "fileChoose": "Choose file",
+    "fileRemove": "Remove file"
   },
   "plan": {
     "unsaved": "Unsaved changes",
@@ -642,7 +650,11 @@
     "shortcuts": "Keyboard shortcuts",
     "retry": "Try again",
     "check-again": "Check again",
-    "search": "Search"
+    "search": "Search",
+    "choose-file": "Choose file",
+    "remove-file": "Remove file",
+    "translate": "Translate",
+    "preview": "Preview as learner"
   },
   "form": {
     "required": "required",
@@ -667,5 +679,37 @@
     "empty": "No courses or labels exist yet.",
     "courseCount": "{n} courses",
     "loadError": "The list of courses could not be loaded: {message}"
+  },
+  "translate": {
+    "state": {
+      "ready": "Ready",
+      "partial": "Partly",
+      "held": "Held",
+      "failed": "Failed"
+    },
+    "heldCount": "{count} held",
+    "failedCount": "{count} failed",
+    "title": "Translate",
+    "help": "Write the course in other languages. Blocks that fail the checks stay held and learners see the source text with a notice.",
+    "pick": "Languages to translate into",
+    "pickHint": "Pick one or more.",
+    "pickFirst": "Pick at least one language.",
+    "noVersion": "Publish the course first, then translate it.",
+    "alreadyQueued": "A translation is already queued; wait for it to finish.",
+    "button": "Translate"
+  },
+  "preview": {
+    "title": "Preview as learner",
+    "help": "How a learner sees the course. Held blocks show the source text with a notice.",
+    "language": "Language",
+    "languageHint": "The language the learner picks.",
+    "empty": "This course has no written blocks yet.",
+    "block": "Block {n}",
+    "noText": "This block has no text to show."
+  },
+  "language": {
+    "en": "English",
+    "nb": "Norsk bokmål",
+    "uk": "Українська"
   }
 }

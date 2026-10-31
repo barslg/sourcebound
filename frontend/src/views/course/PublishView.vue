@@ -3,14 +3,20 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { ApiError, request } from '@/api/client'
-import { coursePlan, coursePublish } from '@/api/endpoints'
+import { coursePlan, coursePublish, courseTranslate } from '@/api/endpoints'
+import type { CourseDoc } from '@/api/types'
 import CourseHeader from '@/components/CourseHeader.vue'
 import ActionButton from '@/components/ActionButton.vue'
+import Checkbox from 'primevue/checkbox'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import FormField from '@/components/FormField.vue'
+import Queued from '@/components/Queued.vue'
 import Section from '@/components/Section.vue'
+import { COURSE_LANGUAGES } from '@/composables/languages'
 import { firstReason, lacking } from '@/composables/reasons'
-import { notify } from '@/composables/notify'
+import { notify, notifyError } from '@/composables/notify'
 import type { PlanTree } from '@/composables/planTree'
+import { useQueued } from '@/composables/useQueued'
 import { dropCached, useResource } from '@/composables/useResource'
 
 const { t } = useI18n()
@@ -22,6 +28,23 @@ const topics = computed(() => (plan.data.value?.modules ?? []).reduce((n, m) => 
 const review = ref(false)
 const busy = ref(false)
 const error = ref<string | null>(null)
+
+const languages = ref<string[]>([])
+const translating = ref(false)
+const translation = useQueued(async () => { dropCached(`course:${courseId.value}`); await header.value?.reload() })
+const targets = (course: CourseDoc | null): readonly string[] => COURSE_LANGUAGES.filter((code) => code !== (course?.language ?? 'en'))
+
+async function translate(): Promise<void> {
+  translating.value = true
+  try {
+    const made = await request<{ operation_id: string }>(courseTranslate(courseId.value), { method: 'POST', body: { languages: languages.value } })
+    translation.track(made.operation_id)
+  } catch (cause) {
+    notifyError(cause, () => void translate())
+  } finally {
+    translating.value = false
+  }
+}
 
 async function publish(): Promise<void> {
   busy.value = true
@@ -56,6 +79,19 @@ async function publish(): Promise<void> {
         <div class="row">
           <ActionButton action="publish" :label="t('publish.button')" :reason="firstReason(lacking('course.publish'), heldCount > 0 && t('publish.heldFirst', { count: t('count.block', heldCount) }))" data-testid="publish-open" @click="review = true" />
           <span id="publish-open" />
+        </div>
+        <Section id="translate" :title="t('translate.title')" :help="t('translate.help')" />
+        <FormField id="t-langs" :label="t('translate.pick')" :help="t('translate.pickHint')" group>
+          <div class="row">
+            <span v-for="code in targets(course)" :key="code" class="row">
+              <Checkbox v-model="languages" :input-id="`t-${code}`" :value="code" />
+              <label :for="`t-${code}`">{{ t(`language.${code}`) }}</label>
+            </span>
+          </div>
+        </FormField>
+        <div class="row">
+          <ActionButton action="translate" :label="t('translate.button')" :loading="translating" :reason="firstReason(lacking('course.generate'), !course?.current_version_id && t('translate.noVersion'), translation.queued.value && t('translate.alreadyQueued'), languages.length === 0 && t('translate.pickFirst'))" data-testid="translate-open" @click="translate" />
+          <Queued v-if="translation.queued.value" />
         </div>
         <Section :title="t('publish.share')" :help="t('publish.shareHelp')" />
         <router-link :to="`/invites?course=${courseId}`" data-testid="share-link">{{ t('publish.shareLink') }}</router-link>

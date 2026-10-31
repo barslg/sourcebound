@@ -2,6 +2,7 @@
 import { onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ActionButton from '@/components/ActionButton.vue'
+import Queued from '@/components/Queued.vue'
 import StatusChip from '@/components/StatusChip.vue'
 import Popover from 'primevue/popover'
 import ProgressBar from 'primevue/progressbar'
@@ -42,7 +43,8 @@ const runOf = (result: Record<string, unknown> | null): string | null => (result
         <li v-for="op in ops.list" :key="op.operation_id" class="bell-item" data-testid="bell-item">
           <div class="row">
             <span>{{ kindLabel(op.kind) }}</span>
-            <StatusChip class="row-end" :tone="op.status === 'failed' ? 'danger' : op.status === 'done' ? 'ok' : 'info'" :label="statusLabel(op.status)" />
+            <Queued v-if="op.status === 'queued'" class="row-end" compact />
+            <StatusChip v-else class="row-end" :tone="op.status === 'failed' ? 'danger' : op.status === 'done' ? 'ok' : 'info'" :label="statusLabel(op.status)" />
           </div>
           <ProgressBar :value="Math.round(op.progress * 100)" :show-value="false" :aria-label="t('bell.progress', { percent: Math.round(op.progress * 100) })" />
           <p v-if="op.error" class="mono danger-text">{{ t('bell.error', { message: op.error }) }}</p>

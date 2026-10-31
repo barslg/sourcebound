@@ -51,6 +51,9 @@ export interface Constraint {
   question: string | null
   answer: Record<string, unknown> | null
 }
+export interface TranslationRow { language: string; status: 'ready' | 'partial' | 'failed'; ok: number; held: number; failed: number }
+export interface LearnerBlock { plan_node_id: string; block_type: string; content: Record<string, unknown>; language: string; fallback_notice: string | null }
+export interface LearnerDoc { course_id: string; language: string; source_language: string; available_languages: Array<{ language: string; status: string }>; blocks: LearnerBlock[] }
 export interface CourseDoc {
   id: string
   owner_id: string
@@ -60,6 +63,10 @@ export interface CourseDoc {
   scope_tags: string[]
   row_version: number
   published_version_id: string | null
+  current_version_id: string | null
+  topic_count: number
+  block_count: number
+  translations: TranslationRow[]
   profile: { methodology_codes: string[]; bloom_level: string; audience: string; dreyfus_start: string } | null
   constraints: Constraint[]
 }

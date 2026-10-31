@@ -15,6 +15,7 @@ import AppDialog from '@/components/AppDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import FormField from '@/components/FormField.vue'
 import Section from '@/components/Section.vue'
+import Queued from '@/components/Queued.vue'
 import StatusChip from '@/components/StatusChip.vue'
 import { BLOOM_LEVELS, METHODOLOGY_CODES } from '@/composables/methodologies'
 import { firstReason, lacking } from '@/composables/reasons'
@@ -288,7 +289,7 @@ onBeforeUnmount(() => {
           <Section id="generate" :title="t('plan.generateTitle')" :help="t('plan.generateHelp')" />
           <ActionButton action="generate" :label="t('plan.generate')" :loading="generating" :reason="firstReason(lacking('run.start'), dirty && t('plan.saveFirst'), validation && !validation.can_generate && t('plan.questionsOpen'), noSources && t('plan.addSourceFirst'), genQueue.queued.value && t('plan.alreadyQueued'))" data-testid="generate" @click="generate" />
           <router-link v-if="noSources" :to="`/courses/${courseId}/sources`" data-testid="go-sources-generate">{{ t('plan.goSources') }}</router-link>
-          <StatusChip v-if="genQueue.queued.value" tone="info" :label="t('op.queuedToast')" data-testid="queued-line" />
+          <Queued v-if="genQueue.queued.value" />
           <router-link v-if="runId" :to="`/runs/${runId}`" data-testid="open-run">{{ t('plan.openRun') }}</router-link>
           <template v-if="!course?.profile || nodes.length === 0">
             <Section id="build-plan" :title="t('plan.build')" :help="t('plan.buildHelp')" />
@@ -305,7 +306,7 @@ onBeforeUnmount(() => {
               <router-link v-if="noSources" :to="`/courses/${courseId}/sources`" data-testid="go-sources">{{ t('plan.goSources') }}</router-link>
               <p v-if="buildError" class="mono danger-text" role="alert" data-testid="build-error">{{ buildError }}</p>
               <ActionButton type="submit" action="build-plan" :label="t('plan.buildButton')" :loading="building" :reason="firstReason(lacking('course.plan'), noSources && t('plan.addSourceFirst'), methodologies.length === 0 && t('plan.pickMethodology'), queriesText.trim().length === 0 && t('plan.typeQueries'), planQueue.queued.value && t('plan.alreadyQueued'))" data-testid="plan-build" />
-              <StatusChip v-if="planQueue.queued.value" tone="info" :label="t('op.queuedToast')" data-testid="queued-line" />
+              <Queued v-if="planQueue.queued.value" />
             </form>
           </template>
         </aside>

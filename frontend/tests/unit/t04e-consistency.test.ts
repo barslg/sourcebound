@@ -42,6 +42,15 @@ describe('one component per job', () => {
   it('draws status chips with StatusChip, never a raw warn chip', () => {
     expect(offenders(/chip chip-warn|class="chip"[^>]*data-testid="(source|run)-state/, [])).toEqual([])
   })
+  it('draws every queued state with the one Queued component, never a chip or a line of its own', () => {
+    expect(offenders(/data-testid="queued-line"/, ['components/Queued.vue'])).toEqual([])
+    expect(offenders(/<StatusChip[^>]*op\.queuedToast|<p[^>]*class="chip"[^>]*>\{\{ t\('op\.queuedToast/, [])).toEqual([])
+    const users = all.filter((f) => /<Queued\b/.test(f.text)).map((f) => f.rel).sort()
+    expect(users).toEqual(['components/BellMenu.vue', 'views/course/FixView.vue', 'views/course/PlanView.vue', 'views/course/PublishView.vue'])
+  })
+  it('lists the Queued component in the grammar file', () => {
+    expect(readFileSync(join(__dirname, '../../../docs/ui/GRAMMAR.md'), 'utf8')).toMatch(/`components\/Queued\.vue`/)
+  })
   it('lets only ScopePicker choose scope: no free-text tags input', () => {
     expect(offenders(/parseTags\(|scopeText|queriesText.*tag/, [])).toEqual([])
   })

@@ -115,7 +115,8 @@
       "failed": "Feilet",
       "error": "Feilet",
       "cancelled": "Avbrutt"
-    }
+    },
+    "inBell": "Du finner den i bjella."
   },
   "users": {
     "title": "Brukere",
@@ -294,7 +295,12 @@
       "plan": "ingen plan ennå",
       "questions": "åpne spørsmål",
       "held": "blokker holdt tilbake"
-    }
+    },
+    "factLanguage": "Språk: {name}",
+    "factAudience": "For: {audience}",
+    "factCounts": "{topics}, {blocks}",
+    "translationsLabel": "Oversettelser",
+    "translationNone": "Ikke oversatt ennå"
   },
   "sources": {
     "add": "Legg til kilde",
@@ -363,7 +369,9 @@
       "parsing": "Blir lest",
       "ready": "Lest",
       "failed": "Kunne ikke leses"
-    }
+    },
+    "fileChoose": "Velg fil",
+    "fileRemove": "Fjern filen"
   },
   "plan": {
     "unsaved": "Ulagrede endringer",
@@ -642,7 +650,11 @@
     "shortcuts": "Hurtigtaster",
     "retry": "Prøv igjen",
     "check-again": "Sjekk igjen",
-    "search": "Søk"
+    "search": "Søk",
+    "choose-file": "Velg fil",
+    "remove-file": "Fjern filen",
+    "translate": "Oversett",
+    "preview": "Forhåndsvis som elev"
   },
   "form": {
     "required": "påkrevd",
@@ -667,5 +679,37 @@
     "empty": "Ingen kurs eller merker finnes ennå.",
     "courseCount": "{n} kurs",
     "loadError": "Kurslisten kunne ikke lastes: {message}"
+  },
+  "translate": {
+    "state": {
+      "ready": "Klar",
+      "partial": "Delvis",
+      "held": "Holdt tilbake",
+      "failed": "Mislyktes"
+    },
+    "heldCount": "{count} holdt tilbake",
+    "failedCount": "{count} mislyktes",
+    "title": "Oversett",
+    "help": "Skriv kurset på andre språk. Blokker som ikke består kontrollene holdes tilbake, og elevene ser kildeteksten med et varsel.",
+    "pick": "Språk å oversette til",
+    "pickHint": "Velg ett eller flere.",
+    "pickFirst": "Velg minst ett språk.",
+    "noVersion": "Publiser kurset først, og oversett det deretter.",
+    "alreadyQueued": "En oversettelse står allerede i kø. Vent til den er ferdig.",
+    "button": "Oversett"
+  },
+  "preview": {
+    "title": "Forhåndsvis som elev",
+    "help": "Slik ser en elev kurset. Blokker som holdes tilbake viser kildeteksten med et varsel.",
+    "language": "Språk",
+    "languageHint": "Språket eleven velger.",
+    "empty": "Dette kurset har ingen skrevne blokker ennå.",
+    "block": "Blokk {n}",
+    "noText": "Denne blokken har ingen tekst å vise."
+  },
+  "language": {
+    "en": "English",
+    "nb": "Norsk bokmål",
+    "uk": "Українська"
   }
 }

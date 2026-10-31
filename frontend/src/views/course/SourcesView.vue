@@ -10,6 +10,7 @@ import type { QueueItem, SourceRow } from '@/api/types'
 import CourseHeader from '@/components/CourseHeader.vue'
 import ActionButton from '@/components/ActionButton.vue'
 import AppDrawer from '@/components/AppDrawer.vue'
+import FilePicker from '@/components/FilePicker.vue'
 import FormField from '@/components/FormField.vue'
 import StatusChip from '@/components/StatusChip.vue'
 import ResourceState from '@/components/ResourceState.vue'
@@ -46,8 +47,8 @@ const mediaLabel = (code: string): string => (te(`sources.media.${code}`) ? t(`s
 const ingestLabel = (s: SourceRow): string => (s.ingest_status && te(`sources.ingest.${s.ingest_status}`) ? t(`sources.ingest.${s.ingest_status}`) : '')
 
 const KINDS: Array<[RegExp, string]> = [[/\.(md|markdown)$/i, 'markdown'], [/\.pdf$/i, 'pdf'], [/\.(png|jpe?g|webp|gif)$/i, 'image'], [/\.(mp3|wav|m4a|ogg|flac)$/i, 'audio']]
-function onFile(event: Event): void {
-  file.value = (event.target as HTMLInputElement).files?.[0] ?? null
+function onPick(picked: File | null): void {
+  file.value = picked
   if (file.value) media.value = KINDS.find(([re]) => re.test(file.value?.name ?? ''))?.[1] ?? 'text'
 }
 async function refreshAll(): Promise<void> {
@@ -183,7 +184,7 @@ async function resolve(item: QueueItem, action: 'approve' | 'dismiss'): Promise<
         <form class="stack" @submit.prevent="upload">
           <Section :title="t('sources.fromFile')" :help="t('sources.fromFileHelp')" />
           <FormField id="s-file" :label="t('sources.file')" :help="t('sources.fileHint')" required :error="file ? null : t('sources.chooseFile')">
-            <input id="s-file" type="file" data-testid="source-file" @change="onFile" />
+            <FilePicker id="s-file" :file="file" @pick="onPick" />
           </FormField>
           <FormField id="s-media" :label="t('sources.mediaLabel')" :help="t('sources.mediaHint')">
             <Select v-model="media" input-id="s-media" :options="mediaOptions" option-label="label" option-value="code" />
