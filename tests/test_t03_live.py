@@ -34,7 +34,6 @@ async def _maybe_key() -> str | None:
 
 async def test_live_plan_on_synthetic_source(t03_session) -> None:  # type: ignore[no-untyped-def]
     from conftest import test_database_url
-    from t02_helpers import make_session_factory
 
     from app.config import Settings
     from app.db import create_session_factory
@@ -94,7 +93,7 @@ async def test_live_plan_on_synthetic_source(t03_session) -> None:  # type: igno
         user_id=user_id,
         email="live@example.com",
         roles=("author",),
-        permissions=frozenset({"run.start", "operation.run", "course.edit"}),
+        permissions=frozenset({"run.start", "operation.run", "course.edit", "course.plan"}),
         scope_tags=(),
         is_superadmin=False,
     )
@@ -115,7 +114,7 @@ async def test_live_plan_on_synthetic_source(t03_session) -> None:  # type: igno
         return MetaProvider(session, settings, None, ledger)
 
     final = await executor.drive_run(
-        make_session_factory(url),
+        create_session_factory(url),
         run_id=run_id,
         provider_factory=make,
         handlers={

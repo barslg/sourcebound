@@ -401,14 +401,14 @@ def test_config_guards_reject_unsafe_prod() -> None:
         validate_runtime_settings(prod_db)
     prod_key = _settings(
         app_env="prod",
-        database_url="postgresql+asyncpg://prod:secret@db.internal:5432/prod",
+        database_url="postgresql+asyncpg://prod:secret@db.example.com:5432/prod",
         session_secret_key="",
     )
     with pytest.raises(ConfigurationError, match="SESSION_SECRET_KEY"):
         validate_runtime_settings(prod_key)
     prod_dev = _settings(
         app_env="prod",
-        database_url="postgresql+asyncpg://prod:secret@db.internal:5432/prod",
+        database_url="postgresql+asyncpg://prod:secret@db.example.com:5432/prod",
         session_secret_key="k" * 32,
         llm_dev_mode=True,
     )
@@ -418,7 +418,7 @@ def test_config_guards_reject_unsafe_prod() -> None:
     validate_runtime_settings(
         _settings(
             app_env="test",
-            database_url="postgresql+asyncpg://prod:secret@db.internal:5432/prod",
+            database_url="postgresql+asyncpg://prod:secret@db.example.com:5432/prod",
             session_secret_key="k" * 32,
         )
     )

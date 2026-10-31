@@ -102,6 +102,7 @@ async def submit_plan(
     from app.tasks.jobs import enqueue_operation
 
     actor = require_auth(ctx)
+    require(actor, "course.plan")
     course = await get_use_case(ctx.db, course_id=UUID(course_id))
     _owner_or_404(course, actor.user_id, actor.is_superadmin)
     operation_id = await submit_use_case(
@@ -123,6 +124,7 @@ async def submit_generate(
     from app.tasks.jobs import enqueue_operation
 
     actor = require_auth(ctx)
+    require(actor, "course.generate")
     course = await get_use_case(ctx.db, course_id=UUID(course_id))
     _owner_or_404(course, actor.user_id, actor.is_superadmin)
     operation_id = await submit_use_case(
@@ -168,7 +170,7 @@ async def upload_source(
     )
 
     actor = require_auth(ctx)
-    require(actor, "source.create")
+    require(actor, "source.upload")
     source_id = await store_upload(
         ctx.db,
         settings=ctx.settings,
@@ -191,7 +193,7 @@ async def fetch_source(ctx: RequestContext, *, url: str, course_id: str | None) 
     from app.services.library import intake_url
 
     actor = require_auth(ctx)
-    require(actor, "source.create")
+    require(actor, "source.upload")
     result = await intake_url(
         ctx.db,
         settings=ctx.settings,

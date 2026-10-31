@@ -42,6 +42,20 @@ def test_gocspx_key_fails(tmp_path: Path) -> None:
     assert "key.txt" in proc.stdout
 
 
+def test_rule_files_are_allowlisted(tmp_path: Path) -> None:
+    """Rule files naming secret shapes pass via the explicit allow-list."""
+    gitleaks = tmp_path / ".gitleaks.toml"
+    gitleaks.write_text("regex = '''GOCSPX-[A-Za-z0-9_-]{8,}'''\n", encoding="utf-8")
+    checker = tmp_path / "scripts" / "check_public_tree.py"
+    checker.parent.mkdir(parents=True, exist_ok=True)
+    checker.write_text('MARKERS = ("/Users/", "GOCSPX-", "LMS2")\n', encoding="utf-8")
+    fixture = tmp_path / "tests" / "gates" / "test_gate.py"
+    fixture.parent.mkdir(parents=True, exist_ok=True)
+    fixture.write_text('leaked.write_text("secret=GOCSPX-abcdef0123456789\\n")\n', encoding="utf-8")
+    proc = run_check(tmp_path)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
 def test_real_tree_passes() -> None:
     """The real tracked tree carries no forbidden markers (exit 0)."""
     proc = subprocess.run(

@@ -100,7 +100,7 @@ async def submit_plan(
         params={"queries": queries},
         idempotency_key=idempotency_key,
         defer=defer,
-        required_code="run.start",
+        required_code="course.plan",
     )
 
 
@@ -129,7 +129,7 @@ async def submit_generate(
         params={},
         idempotency_key=idempotency_key,
         defer=defer,
-        required_code="run.start",
+        required_code="course.generate",
     )
 
 

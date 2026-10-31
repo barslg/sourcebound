@@ -16,12 +16,9 @@ import asyncio
 import hashlib
 import json
 import re
-import urllib.robotparser
-from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 from uuid import UUID
 
 import sqlalchemy as sa
@@ -29,7 +26,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.course.tree import TS_CONFIGS
-from app.errors import ConfigurationError, NotFoundError, ValidationError
+from app.errors import NotFoundError, ValidationError
+from app.providers.web import FetchedPage as FetchedPage
 
 UPLOAD_MEDIA = ("pdf", "text", "markdown", "image", "audio")
 ADDRESS_KIND_BY_MEDIA = {
@@ -229,66 +227,22 @@ async def approve_source(
         raise NotFoundError(f"source {source_id} is not pending approval")
 
 
-@dataclass(frozen=True)
-class FetchedPage:
-    url: str
-    status: int
-    content_type: str
-    text: str
-
-
 async def fetch_url(url: str, *, settings: Settings, client: Any | None = None) -> FetchedPage:
-    """Fetch one URL: no redirects, settings timeouts, size cap.
+    """Fetch one URL via the web provider (guarded, no redirects).
 
-    The caller injects the HTTP client (tests use a mock transport);
-    only http(s) URLs are fetched.
+    The caller may inject the HTTP client (tests use a mock transport);
+    only http(s) URLs on public addresses are fetched.
     """
-    import httpx
+    from app.providers import web as web_provider
 
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https") or not parsed.hostname:
-        raise ValidationError(f"only http(s) URLs are fetched: {url!r}")
-    owned = client is not None
-    active = client or httpx.AsyncClient(follow_redirects=False)
-    try:
-        response = await active.get(
-            url, timeout=settings.source_fetch_timeout_s, follow_redirects=False
-        )
-    finally:
-        if not owned:
-            await active.aclose()
-    if response.status_code in (301, 302, 303, 307, 308):
-        raise ValidationError(f"redirects are never followed: {url!r}")
-    body = response.content[: settings.source_fetch_max_bytes]
-    return FetchedPage(
-        url=url,
-        status=response.status_code,
-        content_type=response.headers.get("content-type", ""),
-        text=body.decode("utf-8", errors="replace"),
-    )
+    return await web_provider.fetch_url(url, settings=settings, client=client)
 
 
 async def robots_allowed(url: str, *, settings: Settings, client: Any | None = None) -> bool:
     """True unless the site's robots.txt disallows this path."""
-    import httpx
+    from app.providers import web as web_provider
 
-    parsed = urlparse(url)
-    robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
-    owned = client is not None
-    active = client or httpx.AsyncClient(follow_redirects=False)
-    try:
-        try:
-            response = await active.get(robots_url, timeout=settings.source_fetch_timeout_s)
-        except Exception:
-            return True
-        if response.status_code != 200:
-            return True
-        parser = urllib.robotparser.RobotFileParser()
-        parser.parse(response.text.splitlines())
-        return parser.can_fetch("*", url)
-    finally:
-        if not owned:
-            await active.aclose()
+    return await web_provider.robots_allowed(url, settings=settings, client=client)
 
 
 async def intake_url(
@@ -429,27 +383,9 @@ async def transcribe_audio(
     Needs MODEL_API_KEY; raises ConfigurationError without one so the
     live test skips instead of failing.
     """
-    secret = settings.model_api_key
-    if secret is None or not secret.get_secret_value():
-        raise ConfigurationError("MODEL_API_KEY is not set")
-    import httpx
+    from app.providers import web as web_provider
 
-    owned = client is not None
-    active = client or httpx.AsyncClient(follow_redirects=False)
-    try:
-        response = await active.post(
-            f"{settings.model_api_base_url}/audio/transcriptions",
-            headers={"Authorization": f"Bearer {secret.get_secret_value()}"},
-            files={"file": ("audio.bin", audio)},
-            data={"model": "muse-voice-transcribe-1.0", "response_format": "verbose_json"},
-            timeout=settings.source_fetch_timeout_s,
-        )
-    finally:
-        if not owned:
-            await active.aclose()
-    if response.status_code != 200:
-        raise ValidationError(f"transcription failed with status {response.status_code}")
-    payload = response.json()
+    payload = await web_provider.request_transcription(audio, settings=settings, client=client)
     segments = payload.get("segments", [])
     if not isinstance(segments, list):
         raise ValidationError("transcription returned no segments")

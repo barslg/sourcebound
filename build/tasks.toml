@@ -61,4 +61,13 @@ prompt = "build/tasks/T02b.md"
 model = "muse-spark-1.3"
 effort = "high"
 max_steps = 500
+depends = ["T03", "T03a"]
+
+[[task]]
+id = "T03a"
+title = "green the merged tree: httpx into clients, public-tree allow-list, route codes for T03 routes, live test fixes"
+prompt = "build/tasks/T03a.md"
+model = "muse-spark-1.3"
+effort = "high"
+max_steps = 250
 depends = ["T03"]
