@@ -30,7 +30,8 @@ def test_every_error_maps_to_its_status() -> None:
 
 
 def test_handler_renders_json_without_leaking() -> None:
-    app = create_app()
+    # Startup RBAC sync targets the process database; this test owns none.
+    app = create_app(sync_on_startup=False)
 
     @app.get("/boom")
     def boom() -> None:

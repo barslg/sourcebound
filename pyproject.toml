@@ -23,6 +23,7 @@ dependencies = [
   "httpx2>=2.0",
   "structlog>=24.0",
   "python-multipart>=0.0.18",
+  "pyjwt[crypto]>=2.8",
 ]
 
 [dependency-groups]

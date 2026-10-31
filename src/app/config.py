@@ -32,6 +32,27 @@ class Settings(BaseSettings):
     google_oauth_client_id: str = ""
     google_oauth_client_secret: SecretStr | None = None
     session_secret_key: SecretStr | None = None
+    superadmin_emails: str = ""
+    session_cookie_name: str = "muse_session"
+    session_ttl_s: int = 604800
+    session_secure_cookie: bool = False
+    oidc_issuer: str = "https://accounts.google.com"
+    oidc_redirect_url: str = "http://localhost:8000/api/v1/auth/callback"
+    oidc_allowed_domains: str = ""
+    oidc_http_timeout_s: float = 10.0
+    sse_ping_s: float = 20.0
+
+    @property
+    def superadmin_email_set(self) -> set[str]:
+        """Lower-cased superadmin addresses from SUPERADMIN_EMAILS."""
+        return {item.strip().lower() for item in self.superadmin_emails.split(",") if item.strip()}
+
+    @property
+    def oidc_allowed_domain_set(self) -> tuple[str, ...]:
+        """Lower-cased `hd` allow-list from config; empty means no restriction."""
+        return tuple(
+            item.strip().lower() for item in self.oidc_allowed_domains.split(",") if item.strip()
+        )
 
 
 @lru_cache

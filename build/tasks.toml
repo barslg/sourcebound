@@ -25,4 +25,13 @@ prompt = "build/tasks/T03.md"
 model = "muse-spark-1.3"
 effort = "high"
 max_steps = 600
+depends = ["T02", "T01b"]
+
+[[task]]
+id = "T01b"
+title = "LLM-layer additions: effort and max_output_tokens per step, pending ledger row for background, variant, subject_user_id, config guards"
+prompt = "build/tasks/T01b.md"
+model = "muse-spark-1.3"
+effort = "high"
+max_steps = 300
 depends = ["T02"]

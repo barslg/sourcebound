@@ -86,7 +86,7 @@ def test_0001_upgrade_then_downgrade_then_upgrade() -> None:
     command.downgrade(cfg, "base")
     assert _harness_tables(url) == {}
 
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "0001")
     tables = _harness_tables(url)
     assert set(tables) == set(EXPECTED_COLUMNS)
     for table, columns in EXPECTED_COLUMNS.items():
@@ -96,4 +96,6 @@ def test_0001_upgrade_then_downgrade_then_upgrade() -> None:
     assert _harness_tables(url) == {}
 
     command.upgrade(cfg, "head")
-    assert set(_harness_tables(url)) == set(EXPECTED_COLUMNS)
+    tables = _harness_tables(url)
+    for table, columns in EXPECTED_COLUMNS.items():
+        assert columns <= tables[table], f"{table} missing {columns - tables[table]}"
