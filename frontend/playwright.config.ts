@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test'
 
 const apiPort = process.env.E2E_BACKEND_PORT ?? '8010'
+const previewPort = process.env.E2E_PREVIEW_PORT ?? '4173'
 const base = process.env.E2E_BASE_URL ?? 'postgresql+asyncpg://muse:muse@localhost:5434/postgres'
 const e2eDb = base.replace(/\/[^/?]*(\?.*)?$/, '/muse_e2e')
 const backendEnv = {
@@ -19,7 +20,7 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   reporter: [['list']],
-  use: { baseURL: 'http://127.0.0.1:4173', trace: 'off', locale: 'en-US' },
+  use: { baseURL: `http://127.0.0.1:${previewPort}`, trace: 'off', locale: 'en-US' },
   projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
   webServer: [
     {
@@ -39,9 +40,9 @@ export default defineConfig({
       timeout: 60000,
     },
     {
-      command: 'npx vite preview --port 4173 --strictPort --host 127.0.0.1',
+      command: `npx vite preview --port ${previewPort} --strictPort --host 127.0.0.1`,
       env: { BACKEND_URL: `http://127.0.0.1:${apiPort}` },
-      url: 'http://127.0.0.1:4173/',
+      url: `http://127.0.0.1:${previewPort}/`,
       reuseExistingServer: false,
       timeout: 60000,
     },

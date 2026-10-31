@@ -17,7 +17,7 @@ export function sessions(): Record<Who, Seeded> {
 }
 
 export async function signInAs(context: BrowserContext, who: Who): Promise<void> {
-  await context.addCookies([{ name: 'muse_session', value: sessions()[who].token, url: 'http://127.0.0.1:4173' }])
+  await context.addCookies([{ name: 'muse_session', value: sessions()[who].token, url: `http://127.0.0.1:${process.env.E2E_PREVIEW_PORT ?? '4173'}` }])
 }
 
 export interface ApiCall { method: string; path: string; csrf: string | undefined; status?: number }

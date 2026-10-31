@@ -10,6 +10,8 @@ type Call = `${'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'} /api/v1/${string}` |
 /** The fixture map: every enabled button of the author surface and the endpoint (or "ui") that backs it. */
 const CONTROLS: Array<[RegExp, Call]> = [
   [/^Switch to (dark|light) theme$/, 'ui'],
+  [/^Keyboard shortcuts$/, 'ui'],
+  [/^More actions for /, 'ui'],
   [/^Sign out$/, 'POST /api/v1/auth/logout'],
   [/^Open notifications/, 'POST /api/v1/notifications/{}/read'],
   [/^Send a test task$/, 'POST /api/v1/operations/echo'],
@@ -206,7 +208,11 @@ test('walk: dialogs follow the grammar too', async ({ page, context }) => {
   await open(page, '/users')
   const row = page.getByRole('row').filter({ hasText: sessions().student.email })
   for (const name of ['Assign role', 'Ban user', 'Delete user']) {
-    await row.getByRole('button', { name }).click()
+    if (name === 'Assign role') await row.getByRole('button', { name }).click()
+    else {
+      await row.getByRole('button', { name: /^More actions for/ }).click()
+      await page.getByRole('menuitem', { name }).click()
+    }
     await expect(page.getByRole('dialog')).toBeVisible()
     await check(`${name} dialog`)
     await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click()
@@ -223,8 +229,10 @@ test('walk: the administrator role cannot be edited or deleted, so those control
   await open(page, '/roles')
   const row = page.getByRole('row').filter({ hasText: 'administrator' })
   await expect(row.getByRole('button', { name: 'Edit role' })).toBeDisabled()
-  await expect(row.getByRole('button', { name: 'Delete role' })).toBeDisabled()
   await expect(row.getByTestId('reason').first()).toContainText('fixed')
+  await row.getByRole('button', { name: /^More actions for/ }).click()
+  await expect(page.getByRole('menuitem', { name: /Delete role/ })).toHaveAttribute('aria-disabled', 'true')
+  await expect(page.getByRole('menuitem', { name: /Delete role/ }).getByTestId('reason')).toContainText('fixed')
 })
 
 test('walk: every "Needs now" line links to a control that exists on the target page', async ({ page, context }) => {
@@ -269,7 +277,7 @@ test('walk: tab counts equal the API counts', async ({ page, context }) => {
 
 test('licence: the bundle holds no licence-manager code and the page no licence host', async ({ page, context, request }) => {
   await signInAs(context, 'admin')
-  const html = await (await request.get('http://127.0.0.1:4173/')).text()
+  const html = await (await request.get(`http://127.0.0.1:${process.env.E2E_PREVIEW_PORT ?? '4173'}/`)).text()
   const scripts = [...html.matchAll(/src="([^"]+\.js)"/g)].map((m) => m[1] as string)
   expect(scripts.length).toBeGreaterThan(0)
   const bundle: string[] = []
@@ -279,7 +287,7 @@ test('licence: the bundle holds no licence-manager code and the page no licence 
     const url = queue.pop() as string
     if (seen.has(url)) continue
     seen.add(url)
-    const body = await (await request.get(new URL(url, 'http://127.0.0.1:4173/').toString())).text()
+    const body = await (await request.get(new URL(url, `http://127.0.0.1:${process.env.E2E_PREVIEW_PORT ?? '4173'}/`).toString())).text()
     bundle.push(body)
     for (const m of body.matchAll(/["'`]\.\/([\w.-]+\.js)["'`]/g)) queue.push(`/assets/${m[1]}`)
   }

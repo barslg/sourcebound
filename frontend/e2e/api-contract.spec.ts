@@ -50,6 +50,10 @@ test('a real queued operation goes queued, toast, bell, then reaches a final sta
   await signInAs(page.context(), 'admin')
   const made = await page.request.post('/api/v1/courses', { headers: { 'X-CSRF-Token': sessions().admin.csrf }, data: { title: 'Queue lab', language: 'en', scope_tags: ['queue-lab'] } })
   const { course_id: courseId } = (await made.json()) as { course_id: string }
+  const headers = { 'X-CSRF-Token': sessions().admin.csrf }
+  const up = await page.request.post(`/api/v1/sources/upload?media=text&course_id=${courseId}`, { headers, multipart: { file: { name: 'hygiene.txt', mimeType: 'text/plain', buffer: Buffer.from('Wash hands for twenty seconds.\n\nUse soap and water.') } } })
+  const { source_id: sourceId } = (await up.json()) as { source_id: string }
+  await page.request.post(`/api/v1/sources/${sourceId}/approve`, { headers })
   await page.goto(`/courses/${courseId}/plan`)
   await page.getByLabel('Direct instruction').check()
   await page.getByLabel('What to look for in the sources').fill('hand hygiene steps')

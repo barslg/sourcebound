@@ -85,6 +85,7 @@ test('states: building a plan is queued, announced, and the plan is fetched agai
   await signInAs(context, 'admin')
   await page.route(`**/api/v1/courses/${ids().empty}/profile`, (route) => json(route, 200, { ok: true }))
   await page.route(`**/api/v1/courses/${ids().empty}/plan/submit`, (route) => json(route, 202, { operation_id: 'op-t04d' }))
+  await page.route(`**/api/v1/courses/${ids().empty}/sources`, (route) => json(route, 200, [{ id: 's-1', title: 'Guide', media: 'text', licence: 'CC-BY', as_of: null, approval: 'approved', progress: 3 }]))
   await page.goto(`/courses/${ids().empty}/plan`)
   await queuedFlow(page, {
     go: async () => {

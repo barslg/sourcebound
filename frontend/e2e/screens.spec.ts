@@ -50,6 +50,7 @@ test('as a learner every author course URL shows the denied state or redirects',
 test('plan editor: question blocks Generate, answering and saving whole brings the tree, edits stay unsaved until saved', async ({ page, context }) => {
   await signInAs(context, 'admin')
   const calls = recordApi(page)
+  await page.route(`**/api/v1/courses/${ids().course}/sources`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ id: 's-ok', title: 'Guide', media: 'text', licence: 'CC-BY', as_of: null, approval: 'approved', progress: 3 }]) }))
   await page.goto(`/courses/${ids().course}/plan`)
   await expect(page.getByTestId('course-head')).toContainText('Hand hygiene')
   await expect(page.getByTestId('needs-now')).toContainText('answer the open questions')
@@ -186,7 +187,7 @@ test('run view: a running run shows ledger cost against the forecast, held and c
   await expect(page.getByTestId('run-resume')).toBeDisabled()
   const cancel = page.getByTestId('run-cancel')
   await cancel.click()
-  await expect(cancel).toHaveAttribute('aria-busy', 'true')
+  await page.getByRole('dialog').getByTestId('dialog-submit').click()
   await expect(page.getByText('Run cancelled.')).toBeVisible()
   const post = calls.find((c) => c.method === 'POST' && c.path.endsWith('/cancel'))
   expect(post?.csrf).toBeTruthy()
