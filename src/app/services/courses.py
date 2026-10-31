@@ -77,6 +77,55 @@ async def owns_any_course(session: AsyncSession, *, owner_id: UUID, course_ids: 
     return int(row) > 0
 
 
+async def course_facts(session: AsyncSession, course_ids: list[UUID]) -> dict[str, dict[str, int]]:
+    """Counters every reader of a course shares (list rows and the course header).
+
+    held_count: blocks held by a check; draft_count: blocks written but not yet
+    read or accepted (status draft); pending_sources and source_count: course sources.
+    """
+    if not course_ids:
+        return {}
+    ids = [str(item) for item in course_ids]
+    blocks = (
+        await session.execute(
+            sa.text(
+                "SELECT m.course_id, count(*) FILTER (WHERE b.status = 'held'),"
+                " count(*) FILTER (WHERE b.status = 'draft'), count(*) FROM blocks b"
+                " JOIN topics tp ON tp.id = b.topic_id JOIN modules m ON m.id = tp.module_id"
+                " WHERE m.course_id = ANY(CAST(:ids AS uuid[])) GROUP BY m.course_id"
+            ),
+            {"ids": ids},
+        )
+    ).all()
+    sources = (
+        await session.execute(
+            sa.text(
+                "SELECT course_id, count(*) FILTER (WHERE approval = 'pending'), count(*)"
+                " FROM course_sources WHERE course_id = ANY(CAST(:ids AS uuid[]))"
+                " GROUP BY course_id"
+            ),
+            {"ids": ids},
+        )
+    ).all()
+    out = {
+        item: {
+            "held_count": 0,
+            "draft_count": 0,
+            "pending_sources": 0,
+            "source_count": 0,
+            "written_count": 0,
+        }
+        for item in ids
+    }
+    for course, held, draft, total in blocks:
+        out[str(course)].update(
+            held_count=int(held), draft_count=int(draft), written_count=int(total) - int(draft)
+        )
+    for course, pending, total in sources:
+        out[str(course)].update(pending_sources=int(pending), source_count=int(total))
+    return out
+
+
 async def get_course(session: AsyncSession, *, course_id: UUID) -> dict[str, Any]:
     """One course row with its profile; 404 when missing."""
     row = (
@@ -149,7 +198,9 @@ async def get_course(session: AsyncSession, *, course_id: UUID) -> dict[str, Any
         if current_version is not None
         else []
     )
+    facts = (await course_facts(session, [course_id]))[str(course_id)]
     return {
+        **facts,
         "id": str(row[0]),
         "owner_id": str(row[1]),
         "title": row[2],
@@ -1010,8 +1061,10 @@ async def list_courses(
             {} if is_superadmin else {"owner": str(owner_id)},
         )
     ).all()
+    facts = await course_facts(session, [UUID(str(row[0])) for row in rows])
     return [
         {
+            **facts[str(row[0])],
             "id": str(row[0]),
             "title": row[1],
             "language": row[2],
