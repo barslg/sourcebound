@@ -12,12 +12,15 @@ from __future__ import annotations
 import re
 import warnings
 from collections.abc import Iterator
+from pathlib import Path
 from urllib.parse import urlparse
 
 import pytest
 import sqlalchemy.ext.asyncio as _sa_asyncio
 from sqlalchemy.pool import NullPool
 
+from app.agents import base as agents_base
+from app.agents.base import PROMPT_ROOT
 from app.config import get_settings
 
 _REAL_CREATE_ASYNC_ENGINE = _sa_asyncio.create_async_engine
@@ -73,6 +76,29 @@ def require_postgres(url: str) -> None:
     """Skip the calling test when Postgres is unreachable."""
     if not postgres_reachable(url):
         pytest.skip(f"no Postgres reachable for {url!r}; run `docker compose up -d db`")
+
+
+FIXTURE_PROMPTS = Path(__file__).resolve().parent / "fixtures" / "agent_prompts"
+PRIVATE_PROMPTS_PRESENT = (_PROMPT_PROBE := PROMPT_ROOT / "architect" / "system.md").exists()
+
+requires_private_prompts = pytest.mark.skipif(
+    not PRIVATE_PROMPTS_PRESENT,
+    reason="asserts the wording of the private prompt (gitignored until publication)",
+)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _prompt_root() -> Iterator[None]:
+    """Fresh clones have no prompts/: fall back to the tracked stubs of the same shape."""
+    if PRIVATE_PROMPTS_PRESENT:
+        yield
+        return
+    original = agents_base.PROMPT_ROOT
+    agents_base.PROMPT_ROOT = FIXTURE_PROMPTS
+    try:
+        yield
+    finally:
+        agents_base.PROMPT_ROOT = original
 
 
 @pytest.fixture(scope="session", autouse=True)

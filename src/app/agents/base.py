@@ -47,15 +47,15 @@ AGENT_SCHEMAS: dict[str, dict[str, object]] = {
 }
 
 
-def system_prompt(agent: str, root: Path | str = PROMPT_ROOT) -> str:
-    """Read the versioned system prompt file for one agent."""
-    path = Path(root) / agent / "system.md"
+def system_prompt(agent: str, root: Path | str | None = None) -> str:
+    """Read the versioned system prompt file for one agent (default: PROMPT_ROOT now)."""
+    path = Path(PROMPT_ROOT if root is None else root) / agent / "system.md"
     if not path.exists():
         raise ConfigurationError(f"missing system prompt: {path}")
     return path.read_text(encoding="utf-8")
 
 
-def prompt_version(agent: str, root: Path | str = PROMPT_ROOT) -> str:
+def prompt_version(agent: str, root: Path | str | None = None) -> str:
     """Content hash of the agent's system prompt file."""
     return prompt_registry.version_of(f"{agent}:{system_prompt(agent, root)}")
 
@@ -126,7 +126,7 @@ def _check_enums() -> None:
         _check_nested_required(schema, agent=f"generator:{block_type}")
 
 
-def validate_agents(root: Path | str = PROMPT_ROOT) -> None:
+def validate_agents(root: Path | str | None = None) -> None:
     """Startup check: prompts, strict schemas, code-required keys subset."""
     for agent, required in CODE_REQUIRED.items():
         schema = AGENT_SCHEMAS.get(agent, {})

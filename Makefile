@@ -1,4 +1,4 @@
-.PHONY: check check-live check-public check-frontend
+.PHONY: check check-live check-public check-frontend ci-local
 check:
 	uv run ruff check src tests migrations scripts
 	uv run ruff format --check src tests migrations scripts
@@ -17,3 +17,5 @@ check-frontend:
 	else \
 		echo "no frontend/package.json; skipped"; \
 	fi
+ci-local:
+	scripts/ci_local.sh
