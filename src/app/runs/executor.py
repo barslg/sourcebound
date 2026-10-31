@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.errors import ValidationError
 from app.llm.registry import resolve_step
+from app.runs.stop_text import EMPTY_PLAN, MODEL_DOWN, plain_marker, plain_step_error, plain_stop
 
 RUN_LOCK_PREFIX = "run:"
 # Whole approved source the architect may see (BRIEF §3: ≤200k tokens).
@@ -252,7 +253,8 @@ async def get_run(session: AsyncSession, *, run_id: UUID) -> dict[str, Any]:
         "compiled_dag": row[2],
         "dag_digest": row[3],
         "estimate": row[4],
-        "stop_marker": row[5],
+        "stop_marker": plain_marker(row[5])[0],
+        "stop_code": plain_marker(row[5])[1] or _code_of_plain(row[5]),
         "cost_so_far": str(spent),
         "topics": await _run_topics(session, course_id=row[1]),
         "steps": [
@@ -261,7 +263,7 @@ async def get_run(session: AsyncSession, *, run_id: UUID) -> dict[str, Any]:
                 "status": step[1],
                 "input_digest": step[2],
                 "attempt": step[3],
-                "error": step[4],
+                "error": plain_step_error(str(step[0]), step[4]),
             }
             for step in steps
         ],
@@ -494,7 +496,7 @@ async def _drive_locked(
                     await stop_run(
                         failed,
                         run_id=run_id,
-                        marker=f"stopped at {step_key}: {type(exc).__name__}: {exc}"[:2000],
+                        marker=plain_stop(step_key, type(exc).__name__, str(exc))[0],
                     )
                 async with factory() as fresh:
                     return await get_run(fresh, run_id=run_id)
@@ -992,3 +994,8 @@ GENERATION_HANDLERS: dict[str, str] = {
     "read_continuity": "read_continuity_step",
     "rework_blocks": "rework_blocks_step",
 }
+
+
+def _code_of_plain(marker: str | None) -> str | None:
+    """Machine code for a marker already written as a plain sentence."""
+    return {EMPTY_PLAN: "empty_plan", MODEL_DOWN: "model_down"}.get(marker or "")

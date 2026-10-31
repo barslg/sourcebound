@@ -18,7 +18,7 @@ from uuid import UUID
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.errors import NotFoundError, ValidationError
+from app.errors import NotFoundError, UnprocessableError, ValidationError
 from app.rbac.principal import Principal
 from app.rbac.require import require
 from app.services.audit import write_audit
@@ -81,6 +81,21 @@ async def _submit(
     return operation_id
 
 
+async def _approved_passage_count(session: AsyncSession, *, course_id: UUID) -> int:
+    return int(
+        (
+            await session.execute(
+                sa.text(
+                    "SELECT count(*) FROM passages p JOIN course_sources cs"
+                    " ON cs.source_id = p.source_id"
+                    " WHERE cs.course_id = :course AND cs.approval = 'approved'"
+                ),
+                {"course": str(course_id)},
+            )
+        ).scalar_one()
+    )
+
+
 def researcher_node_id(query: str) -> str:
     """Stable plan node id for one researcher query (`<agent>:<plan_node_id>`).
 
@@ -103,6 +118,8 @@ async def submit_plan(
     require(actor, "course.plan")
     if not queries or not all(query.strip() for query in queries):
         raise ValidationError("queries must be a non-empty list of non-empty strings")
+    if await _approved_passage_count(session, course_id=course_id) == 0:
+        raise UnprocessableError("Approve at least one source before building the plan")
     return await _submit(
         session,
         actor=actor,
@@ -134,6 +151,16 @@ async def submit_generate(
             "generation refused: answer required questions first: "
             + ", ".join(question["key"] for question in open_questions)
         )
+    if await _approved_passage_count(session, course_id=course_id) == 0:
+        raise UnprocessableError("Approve at least one source before generating the course")
+    modules = (
+        await session.execute(
+            sa.text("SELECT count(*) FROM modules WHERE course_id = :course"),
+            {"course": str(course_id)},
+        )
+    ).scalar_one()
+    if int(modules) == 0:
+        raise UnprocessableError("The plan is empty. Build the plan first")
     raise ConflictError("block generation is not available until the generation pipeline lands")
 
 

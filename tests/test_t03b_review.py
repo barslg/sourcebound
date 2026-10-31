@@ -1226,6 +1226,23 @@ async def test_step_keys_are_agent_plan_node(t03_session: AsyncSession) -> None:
 
     user = await _user(t03_session, "keys")
     course = await _course(t03_session, user, title="Keys")
+    source = await library.store_upload(
+        t03_session,
+        settings=_settings(),
+        created_by=user,
+        filename="keys.txt",
+        media="text",
+        content=b"One passage about keys.",
+        course_id=course,
+    )
+    await library.ingest_passages(
+        t03_session,
+        source_id=source,
+        passages=library.chunk_text("One passage about keys."),
+        ts_config="english",
+    )
+    await library.approve_source(t03_session, source_id=source, approved_by=user)
+    await t03_session.commit()
     actor = _actor(user, frozenset({"run.start", "operation.run", "course.edit", "course.plan"}))
     operation_id = await planruns.submit_plan(
         t03_session, actor=actor, course_id=course, queries=["first", "second"], defer=None

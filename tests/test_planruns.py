@@ -254,7 +254,11 @@ async def test_planted_500_stops_run_and_resume_pays_nothing_twice(
     settings = _settings()
     stopped = await _drive(t03_session, run_id, _mock_handler(fail_architect=True), settings)
     assert stopped["status"] == "stopped"
-    assert stopped["stop_marker"] and "architect:plan" in stopped["stop_marker"]
+    assert stopped["stop_marker"] == "The model service did not answer. Try again in a minute."
+    assert any(
+        step["step_key"] == "architect:plan" and step["status"] == "failed"
+        for step in stopped["steps"]
+    )
 
     async def paid_cost(agent: str) -> Any:
         from decimal import Decimal
@@ -354,8 +358,15 @@ async def test_generate_refuses_while_questions_open(t03_session: AsyncSession) 
         operations=[{"op": "set_constraint", "key": "scope_act", "answer": {"act": "AI Act"}}],
     )
     await t03_session.commit()
-    from app.errors import ConflictError, http_status_for
+    from app.errors import ConflictError, UnprocessableError, http_status_for
 
+    with pytest.raises(UnprocessableError, match="plan is empty"):
+        await planruns.submit_generate(t03_session, actor=actor, course_id=course_id, defer=None)
+    await t03_session.execute(
+        sa.text("INSERT INTO modules (course_id, ordinal, title) VALUES (:c, 0, 'Module')"),
+        {"c": str(course_id)},
+    )
+    await t03_session.commit()
     with pytest.raises(ConflictError, match="generation pipeline"):
         await planruns.submit_generate(t03_session, actor=actor, course_id=course_id, defer=None)
     try:
