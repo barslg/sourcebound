@@ -1,0 +1,109 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv run ruff check src tests migrations scripts
+      - run: uv run ruff format --check src tests migrations scripts
+
+  types:
+    name: mypy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv run mypy src
+
+  tests:
+    name: pytest
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: muse
+          POSTGRES_PASSWORD: muse
+          POSTGRES_DB: muse
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U muse -d muse"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://muse:muse@localhost:5434/muse_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv run pytest -m "not live"
+
+  gates:
+    name: mechanical gates
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: muse
+          POSTGRES_PASSWORD: muse
+          POSTGRES_DB: muse
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U muse -d muse"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://muse:muse@localhost:5434/muse_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+      - run: uv run pytest -m "not live" tests/gates/
+      - run: uv run python scripts/check_layers.py
+      - run: uv run python scripts/check_public_tree.py
+      - run: uv run python scripts/check_routes.py
+
+  secrets:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  public-tree:
+    name: check_public_tree
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+      - run: uv run python scripts/check_public_tree.py
+
+  frontend:
+    name: check-frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          if [ -f frontend/package.json ]; then
+            make check-frontend
+          else
+            echo "no frontend/package.json; skipped"
+          fi

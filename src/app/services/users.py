@@ -155,5 +155,13 @@ async def delete_user(
         entity_id=str(user_id),
         meta={"heir_id": str(heir_id) if heir_id else None},
     )
+    # Learner subject rows keep their cost but lose request/response text.
+    await session.execute(
+        sa.text(
+            "UPDATE llm_calls SET request = '{\"wiped\": true}', response = NULL,"
+            " subject_user_id = NULL WHERE subject_user_id = :user"
+        ),
+        {"user": str(user_id)},
+    )
     await session.execute(sa.text("DELETE FROM users WHERE id = :user"), {"user": str(user_id)})
     bump_version()

@@ -9,8 +9,12 @@ course pipeline.
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import Any
+
+from app.errors import ConfigurationError
 
 
 @dataclass(frozen=True)
@@ -43,6 +47,39 @@ def register(entry: PromptEntry) -> PromptEntry:
 def registered() -> dict[tuple[str, str], PromptEntry]:
     """Snapshot of every registered prompt version."""
     return dict(_REGISTRY)
+
+
+def cache_key(agent: str, block_type: str, course_id: str) -> str:
+    """Prefix-cache scope for one agent, block type, and course.
+
+    The stable prompt prefix (system prompt, sources, plan, dossier) is
+    shared across blocks of the same type in a course, so one cache entry
+    serves them all; a new course or block type starts a new entry.
+    """
+    return f"{agent}:{block_type}:{course_id}"
+
+
+# A prompt file must never pin a cache entry to one run: dates, uuids,
+# and run ids belong in the dynamic part of the prompt, never in files.
+_FORBIDDEN_PROMPT_PATTERNS = (
+    re.compile(r"\b20\d{2}-\d{2}-\d{2}\b"),
+    re.compile(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"),
+    re.compile(r"\brun_[A-Za-z0-9_-]+\b"),
+)
+
+
+def validate_prompt_files(root: str | Path = "prompts") -> None:
+    """Refuse startup when a prompt file contains a date, uuid, or run id."""
+    base = Path(root)
+    if not base.exists():
+        return
+    for path in sorted(base.rglob("*.md")):
+        text = path.read_text(encoding="utf-8")
+        for pattern in _FORBIDDEN_PROMPT_PATTERNS:
+            if pattern.search(text):
+                raise ConfigurationError(
+                    f"prompt file {path} must not contain dates, uuids, or run ids"
+                )
 
 
 def validate_registered_schemas() -> None:

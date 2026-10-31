@@ -13,5 +13,8 @@ async def startup_sync(session: AsyncSession) -> None:
     Runs at startup in lifespan; a new permission is granted to no
     existing non-admin role by construction of sync_catalogue().
     """
+    from app.course.methodologies import sync_methodologies
+
     await sync_catalogue(session)
     await ensure_admin_role(session)
+    await sync_methodologies(session)

@@ -9,10 +9,12 @@ from structlog.types import EventDict, WrappedLogger
 
 from app.redact import redact
 
+_EXTRA_SECRETS: tuple[str, ...] = ()
+
 
 def _redact_value(value: object) -> object:
     if isinstance(value, str):
-        return redact(value)
+        return redact(value, secrets=_EXTRA_SECRETS)
     if isinstance(value, dict):
         return {key: _redact_value(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
@@ -27,10 +29,12 @@ def _redact_processor(logger: WrappedLogger, method: str, event_dict: EventDict)
     return event_dict
 
 
-def configure_logging(level: str = "INFO") -> None:
+def configure_logging(level: str = "INFO", secrets: tuple[str, ...] = ()) -> None:
     """Configure structlog once at startup; safe to call twice."""
     import logging
 
+    global _EXTRA_SECRETS
+    _EXTRA_SECRETS = tuple(secrets)
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,

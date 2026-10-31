@@ -17,10 +17,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.llm import llm_replies
 
 
-def request_hash(model: str, prompt_version: str, request: dict[str, Any]) -> str:
-    """Stable hex digest identifying one answered request."""
+def request_hash(model: str, prompt_version: str, request: dict[str, Any], variant: int = 0) -> str:
+    """Stable hex digest identifying one answered request.
+
+    Variant scopes explicit "new draft" requests: variant 0 is the live
+    answer, a raised variant re-pays for a fresh draft of the same body.
+    """
     canonical = json.dumps(
-        {"model": model, "prompt_version": prompt_version, "request": request},
+        {"model": model, "prompt_version": prompt_version, "request": request, "variant": variant},
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=True,

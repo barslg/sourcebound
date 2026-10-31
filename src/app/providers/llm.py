@@ -9,6 +9,10 @@ Ledger autonomy: the call log row and the reply are written through a
 short-lived session that commits immediately after the API returns, so
 a later rollback of the caller's flow can never erase a paid call or
 under-report total spend.
+
+Background calls: start_background() POSTs once and stores a pending
+row holding the response id; resume_pending() polls that id, so a crash
+between create and retrieve never re-posts a possibly paid request.
 """
 
 from __future__ import annotations
@@ -17,15 +21,17 @@ import time
 from typing import Any, Protocol
 from uuid import UUID
 
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.clients.meta import MetaClient, build_request_body
 from app.config import Settings, get_settings
 from app.db import create_session_factory
-from app.errors import ForbiddenError
+from app.errors import ForbiddenError, LLMError
 from app.llm import calls, prompts, replies
-from app.llm.registry import is_allowed
+from app.llm.registry import is_allowed, resolve_step
 from app.llm.schema import validate_strict_subset
+from app.models.llm import llm_calls
 
 
 class LLMProvider(Protocol):
@@ -82,9 +88,31 @@ class MetaProvider:
         cache_key: str | None = None,
         run_id: UUID | None = None,
         step_id: UUID | None = None,
+        effort: str | None = None,
+        max_output_tokens: int | None = None,
+        variant: int = 0,
+        subject_user_id: UUID | None = None,
+        background: bool = False,
     ) -> dict[str, Any]:
         validate_strict_subset(schema, name=agent)
-        resolved_model = model or self._settings.llm_default_model
+        if background:
+            call_id = await self.start_background(
+                agent=agent,
+                prompt=prompt,
+                schema=schema,
+                model=model,
+                cache_key=cache_key,
+                run_id=run_id,
+                step_id=step_id,
+                effort=effort,
+                max_output_tokens=max_output_tokens,
+                variant=variant,
+                subject_user_id=subject_user_id,
+            )
+            return await self.resume_pending(call_id)
+        resolved_model, resolved_effort, resolved_tokens = resolve_step(
+            agent, model, effort, max_output_tokens
+        )
         if not is_allowed(resolved_model, self._settings.llm_dev_mode):
             raise ForbiddenError(f"model {resolved_model} needs LLM_DEV_MODE=1")
         version = self.prompt_version(agent, prompt)
@@ -93,8 +121,10 @@ class MetaProvider:
             prompt=prompt,
             schema=schema,
             prompt_cache_key=cache_key,
+            effort=resolved_effort,
+            max_output_tokens=resolved_tokens,
         )
-        digest = replies.request_hash(resolved_model, version, body)
+        digest = replies.request_hash(resolved_model, version, body, variant)
 
         cached = await replies.get_reply(self._session, digest)
         if cached is not None:
@@ -105,11 +135,14 @@ class MetaProvider:
                 input_tokens=0,
                 cached_tokens=0,
                 output_tokens=0,
+                reasoning_tokens=0,
                 duration_ms=0,
                 body=body,
                 data=cached,
                 run_id=run_id,
                 step_id=step_id,
+                variant=variant,
+                subject_user_id=subject_user_id,
                 store_reply=False,
             )
             return cached
@@ -120,6 +153,8 @@ class MetaProvider:
             prompt=prompt,
             schema=schema,
             prompt_cache_key=cache_key,
+            effort=resolved_effort,
+            max_output_tokens=resolved_tokens,
         )
         duration_ms = int((time.monotonic() - started) * 1000)
         await self._record_call(
@@ -129,15 +164,122 @@ class MetaProvider:
             input_tokens=answered.input_tokens,
             cached_tokens=answered.cached_tokens,
             output_tokens=answered.output_tokens,
+            reasoning_tokens=answered.reasoning_tokens,
             duration_ms=duration_ms,
             body=body,
             data=answered.data,
             run_id=run_id,
             step_id=step_id,
-            store_reply=True,
+            variant=variant,
+            subject_user_id=subject_user_id,
+            store_reply=subject_user_id is None,
             digest=digest,
         )
         return answered.data
+
+    async def start_background(
+        self,
+        *,
+        agent: str,
+        prompt: str,
+        schema: dict[str, Any],
+        model: str | None = None,
+        cache_key: str | None = None,
+        run_id: UUID | None = None,
+        step_id: UUID | None = None,
+        effort: str | None = None,
+        max_output_tokens: int | None = None,
+        variant: int = 0,
+        subject_user_id: UUID | None = None,
+    ) -> UUID:
+        """POST one background call and store a pending row with its id."""
+        validate_strict_subset(schema, name=agent)
+        resolved_model, resolved_effort, resolved_tokens = resolve_step(
+            agent, model, effort, max_output_tokens
+        )
+        if not is_allowed(resolved_model, self._settings.llm_dev_mode):
+            raise ForbiddenError(f"model {resolved_model} needs LLM_DEV_MODE=1")
+        version = self.prompt_version(agent, prompt)
+        body = build_request_body(
+            model=resolved_model,
+            prompt=prompt,
+            schema=schema,
+            background=True,
+            prompt_cache_key=cache_key,
+            effort=resolved_effort,
+            max_output_tokens=resolved_tokens,
+        )
+        response_id = await self._get_client().start_background(
+            model=resolved_model,
+            prompt=prompt,
+            schema=schema,
+            prompt_cache_key=cache_key,
+            effort=resolved_effort,
+            max_output_tokens=resolved_tokens,
+        )
+        digest = replies.request_hash(resolved_model, version, body, variant)
+        async with self._ledger_factory() as ledger:
+            call_id = await calls.log_call(
+                ledger,
+                agent=agent,
+                model=resolved_model,
+                prompt_version=version,
+                input_tokens=0,
+                cached_tokens=0,
+                output_tokens=0,
+                duration_ms=0,
+                request={**body, "request_hash": digest},
+                response=None,
+                run_id=run_id,
+                step_id=step_id,
+                response_id=response_id,
+                status="pending",
+                variant=variant,
+                subject_user_id=subject_user_id,
+            )
+            await ledger.commit()
+        return call_id
+
+    async def resume_pending(self, call_id: UUID) -> dict[str, Any]:
+        """Poll a pending row's stored response id; never re-posts the call."""
+        async with self._ledger_factory() as ledger:
+            row = (
+                (await ledger.execute(sa.select(llm_calls).where(llm_calls.c.id == call_id)))
+                .mappings()
+                .one()
+            )
+            if row["status"] == "completed":
+                assert isinstance(row["response"], dict)
+                return row["response"]
+            if row["status"] != "pending" or not row["response_id"]:
+                raise LLMError(f"call {call_id} is not resumable")
+            started = time.monotonic()
+            answered = await self._get_client().retrieve_background(str(row["response_id"]))
+            duration_ms = int((time.monotonic() - started) * 1000)
+            await calls.complete_background_call(
+                ledger,
+                call_id=call_id,
+                input_tokens=answered.input_tokens,
+                cached_tokens=answered.cached_tokens,
+                output_tokens=answered.output_tokens,
+                reasoning_tokens=answered.reasoning_tokens,
+                model=str(row["model"]),
+                duration_ms=duration_ms,
+                response=answered.data,
+            )
+            if row["subject_user_id"] is None:
+                request = dict(row["request"])
+                digest = str(request.pop("request_hash", ""))
+                if digest:
+                    await replies.put_reply(
+                        ledger,
+                        digest,
+                        str(row["model"]),
+                        str(row["prompt_version"]),
+                        answered.data,
+                    )
+            await ledger.commit()
+            return answered.data
 
     async def _record_call(
         self,
@@ -148,11 +290,14 @@ class MetaProvider:
         input_tokens: int,
         cached_tokens: int,
         output_tokens: int,
+        reasoning_tokens: int,
         duration_ms: int,
         body: dict[str, Any],
         data: dict[str, Any],
         run_id: UUID | None,
         step_id: UUID | None,
+        variant: int,
+        subject_user_id: UUID | None,
         store_reply: bool,
         digest: str = "",
     ) -> None:
@@ -160,6 +305,7 @@ class MetaProvider:
 
         Commits immediately, independent of the caller's transaction, so a
         paid call survives a later rollback of the step that made it.
+        Learner-subject calls are never written to the shared reply store.
         """
         async with self._ledger_factory() as ledger:
             await calls.log_call(
@@ -170,11 +316,14 @@ class MetaProvider:
                 input_tokens=input_tokens,
                 cached_tokens=cached_tokens,
                 output_tokens=output_tokens,
+                reasoning_tokens=reasoning_tokens,
                 duration_ms=duration_ms,
                 request=body,
                 response=data,
                 run_id=run_id,
                 step_id=step_id,
+                variant=variant,
+                subject_user_id=subject_user_id,
             )
             if store_reply:
                 await replies.put_reply(ledger, digest, model, version, data)
