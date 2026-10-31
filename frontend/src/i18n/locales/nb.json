@@ -42,7 +42,8 @@
     "failed": "Mislyktes",
     "running": "Pågår",
     "breadcrumb": "Du er her",
-    "deniedHome": "Gå til første side du har tilgang til"
+    "deniedHome": "Gå til første side du har tilgang til",
+    "dismissToast": "Lukk melding"
   },
   "shell": {
     "theme": "Tema",
@@ -158,7 +159,11 @@
     "pickRole": "Velg en rolle først.",
     "roleHint": "Rollen bestemmer hvilke sider og handlinger personen får.",
     "roles": "Roller",
-    "typeReason": "Skriv en årsak først."
+    "typeReason": "Skriv en årsak først.",
+    "moreFor": "Flere handlinger for {name}",
+    "unbanTitle": "Oppheve utestengelsen av {name}?",
+    "unbanBody": "{name} kan logge inn igjen. Tidligere økter og invitasjoner forblir trukket tilbake.",
+    "unbanned": "Utestengelsen er opphevet"
   },
   "roles": {
     "title": "Roller",
@@ -186,7 +191,8 @@
     "noHolders": "Ingen ennå",
     "saveButton": "Lagre rolle",
     "scopeHint": "Valgfritt. Begrenser rollen til kurs med disse merkelappene; tomt betyr alle kurs. Eksempel: pleie",
-    "typeName": "Skriv et navn først."
+    "typeName": "Skriv et navn først.",
+    "moreFor": "Flere handlinger for rollen {name}"
   },
   "courses": {
     "title": "Mine kurs",
@@ -236,7 +242,9 @@
     "noneNew": "Ingen ny lenke i dette besøket. Opprett en invitasjon over.",
     "pickCourse": "Velg et kurs først.",
     "reloadToRevoke": "Last siden på nytt for å trekke denne tilbake.",
-    "unknownCourse": "Et kurs du ikke kan se"
+    "unknownCourse": "Et kurs du ikke kan se",
+    "revokeTitle": "Trekke tilbake invitasjonen for {name}?",
+    "revokeBody": "Lenken slutter å virke med en gang. De som allerede har akseptert, beholder tilgangen."
   },
   "needs": {
     "profile": "sette kursprofilen",
@@ -438,7 +446,11 @@
       "cloze": "Fyll inn hull",
       "scenario_practice": "Scenariotrening",
       "spot_the_error": "Finn feilen"
-    }
+    },
+    "tabPlan": "Plan",
+    "tabs": "Planseksjoner",
+    "addSourceFirst": "Legg til og godkjenn en kilde først",
+    "goSources": "Gå til Kilder"
   },
   "run": {
     "title": "Genereringskjøring",
@@ -480,7 +492,10 @@
     "stepN": "Steg {n}",
     "steps": "Steg",
     "stepsHelp": "Hvert steg skriver eller sjekker én blokk.",
-    "topicsHelp": "Hvor hvert tema står."
+    "topicsHelp": "Hvor hvert tema står.",
+    "cancelTitle": "Avbryte denne kjøringen?",
+    "cancelBody": "Blokker som allerede er skrevet, beholdes. Du kan gjenoppta kjøringen senere.",
+    "backToSources": "Tilbake til kilder"
   },
   "fix": {
     "title": "Hva som må rettes",
@@ -503,7 +518,8 @@
     "help": "Hver rad er en blokk kontrollen holdt tilbake. Skriv den om, rediger oppgaven, eller godta den etter at du har sjekket den.",
     "notGenerated": "Ingenting å rette ennå: lag kurset først.",
     "openSources": "Åpne kildene",
-    "saveBrief": "Lagre oppgave"
+    "saveBrief": "Lagre oppgave",
+    "typeBrief": "Skriv oppdraget for å lagre."
   },
   "publish": {
     "title": "Publiser",
@@ -587,5 +603,69 @@
     "role_assign": "Rollen din gir ikke tillatelse til å gi roller.",
     "user_ban": "Rollen din gir ikke tillatelse til å utestenge brukere.",
     "user_delete": "Rollen din gir ikke tillatelse til å slette brukere."
+  },
+  "action": {
+    "create": "Opprett",
+    "save": "Lagre",
+    "cancel": "Avbryt",
+    "edit": "Rediger",
+    "delete": "Slett",
+    "rename": "Bruk ny tittel",
+    "move-up": "Flytt opp",
+    "move-down": "Flytt ned",
+    "approve": "Godkjenn",
+    "reject": "Avvis",
+    "dismiss": "Forkast",
+    "upload": "Last opp fil",
+    "add-address": "Legg til nettadresse",
+    "generate": "Generer",
+    "build-plan": "Bygg plan",
+    "rewrite": "Skriv om",
+    "accept": "Godta",
+    "publish": "Publiser",
+    "resume": "Gjenoppta",
+    "stop-run": "Stopp kjøringen",
+    "assign": "Tildel rolle",
+    "ban": "Utesteng bruker",
+    "unban": "Opphev utestengelse",
+    "revoke": "Trekk tilbake invitasjon",
+    "copy-link": "Kopier lenke",
+    "reload-theirs": "Last inn deres versjon",
+    "keep-mine": "Behold min versjon",
+    "keep-editing": "Fortsett å redigere",
+    "discard": "Forkast endringer",
+    "signout": "Logg ut",
+    "signin": "Logg inn",
+    "theme": "Bytt tema",
+    "notifications": "Varsler",
+    "more": "Mer",
+    "shortcuts": "Hurtigtaster",
+    "retry": "Prøv igjen",
+    "check-again": "Sjekk igjen",
+    "search": "Søk"
+  },
+  "form": {
+    "required": "påkrevd",
+    "isRequired": "Dette feltet er påkrevd."
+  },
+  "confirm": {
+    "typeLabel": "Skriv {name} for å bekrefte",
+    "typeHint": "Navnet må stemme nøyaktig. Dette kan ikke angres.",
+    "typeFirst": "Skriv {name} for å aktivere knappen."
+  },
+  "shortcuts": {
+    "title": "Hurtigtaster",
+    "help": "Hurtigtaster virker når du ikke skriver i et felt.",
+    "footer": "Trykk ? for hurtigtaster"
+  },
+  "scope": {
+    "coursesLabel": "Begrens til kurs",
+    "coursesHelp": "Velg eksisterende kurs. La stå tomt for hele skolen.",
+    "labelsLabel": "Begrens til kurs med disse merkene",
+    "labelsHelp": "Velg eksisterende merker. Tomt betyr alle kurs.",
+    "placeholder": "Velg blant eksisterende",
+    "empty": "Ingen kurs eller merker finnes ennå.",
+    "courseCount": "{n} kurs",
+    "loadError": "Kurslisten kunne ikke lastes: {message}"
   }
 }

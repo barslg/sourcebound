@@ -42,7 +42,8 @@
     "failed": "Failed",
     "running": "Running",
     "breadcrumb": "You are here",
-    "deniedHome": "Go to the first page you can use"
+    "deniedHome": "Go to the first page you can use",
+    "dismissToast": "Close message"
   },
   "shell": {
     "theme": "Theme",
@@ -158,7 +159,11 @@
     "pickRole": "Choose a role first.",
     "roleHint": "The role decides which pages and actions the person gets.",
     "roles": "Roles",
-    "typeReason": "Type a reason first."
+    "typeReason": "Type a reason first.",
+    "moreFor": "More actions for {name}",
+    "unbanTitle": "Unban {name}?",
+    "unbanBody": "{name} can sign in again. Their earlier sessions and invites stay revoked.",
+    "unbanned": "User unbanned"
   },
   "roles": {
     "title": "Roles",
@@ -186,7 +191,8 @@
     "noHolders": "Nobody yet",
     "saveButton": "Save role",
     "scopeHint": "Optional. Limits the role to courses with these labels; empty means all courses. Example: nursing",
-    "typeName": "Type a name first."
+    "typeName": "Type a name first.",
+    "moreFor": "More actions for role {name}"
   },
   "courses": {
     "title": "My courses",
@@ -236,7 +242,9 @@
     "noneNew": "No new link in this visit. Create an invite above.",
     "pickCourse": "Choose a course first.",
     "reloadToRevoke": "Reload the page to revoke this one.",
-    "unknownCourse": "A course you cannot see"
+    "unknownCourse": "A course you cannot see",
+    "revokeTitle": "Revoke the invite for {name}?",
+    "revokeBody": "The link stops working at once. People who already accepted keep their access."
   },
   "needs": {
     "profile": "set the course profile",
@@ -438,7 +446,11 @@
       "cloze": "Fill the gap",
       "scenario_practice": "Scenario practice",
       "spot_the_error": "Spot the error"
-    }
+    },
+    "tabPlan": "Plan",
+    "tabs": "Plan sections",
+    "addSourceFirst": "Add and approve a source first",
+    "goSources": "Go to Sources"
   },
   "run": {
     "title": "Generation run",
@@ -480,7 +492,10 @@
     "stepN": "Step {n}",
     "steps": "Steps",
     "stepsHelp": "Each step writes or checks one block.",
-    "topicsHelp": "Where each topic stands."
+    "topicsHelp": "Where each topic stands.",
+    "cancelTitle": "Cancel this run?",
+    "cancelBody": "Blocks already written are kept. You can resume the run later.",
+    "backToSources": "Back to sources"
   },
   "fix": {
     "title": "What to fix",
@@ -503,7 +518,8 @@
     "help": "Each row is a block the checker held back. Rewrite it, edit its brief, or accept it after you checked it.",
     "notGenerated": "Nothing to fix yet: generate the course first.",
     "openSources": "Open the sources",
-    "saveBrief": "Save brief"
+    "saveBrief": "Save brief",
+    "typeBrief": "Write the brief to save it."
   },
   "publish": {
     "title": "Publish",
@@ -587,5 +603,69 @@
     "role_assign": "Your role does not allow assigning roles.",
     "user_ban": "Your role does not allow banning users.",
     "user_delete": "Your role does not allow deleting users."
+  },
+  "action": {
+    "create": "Create",
+    "save": "Save",
+    "cancel": "Cancel",
+    "edit": "Edit",
+    "delete": "Delete",
+    "rename": "Apply new title",
+    "move-up": "Move up",
+    "move-down": "Move down",
+    "approve": "Approve",
+    "reject": "Reject",
+    "dismiss": "Dismiss",
+    "upload": "Upload file",
+    "add-address": "Add web address",
+    "generate": "Generate",
+    "build-plan": "Build plan",
+    "rewrite": "Rewrite",
+    "accept": "Accept",
+    "publish": "Publish",
+    "resume": "Resume",
+    "stop-run": "Stop run",
+    "assign": "Assign role",
+    "ban": "Ban user",
+    "unban": "Unban user",
+    "revoke": "Revoke invite",
+    "copy-link": "Copy link",
+    "reload-theirs": "Reload theirs",
+    "keep-mine": "Keep mine",
+    "keep-editing": "Keep editing",
+    "discard": "Discard",
+    "signout": "Sign out",
+    "signin": "Sign in",
+    "theme": "Switch theme",
+    "notifications": "Notifications",
+    "more": "More",
+    "shortcuts": "Keyboard shortcuts",
+    "retry": "Try again",
+    "check-again": "Check again",
+    "search": "Search"
+  },
+  "form": {
+    "required": "required",
+    "isRequired": "This field is required."
+  },
+  "confirm": {
+    "typeLabel": "Type {name} to confirm",
+    "typeHint": "The name must match exactly. This cannot be undone.",
+    "typeFirst": "Type {name} to enable this button."
+  },
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "help": "Shortcuts work when you are not typing in a field.",
+    "footer": "Press ? for keyboard shortcuts"
+  },
+  "scope": {
+    "coursesLabel": "Limit to courses",
+    "coursesHelp": "Choose existing courses. Leave empty for the whole school.",
+    "labelsLabel": "Limit to courses with these labels",
+    "labelsHelp": "Choose existing labels. Empty means all courses.",
+    "placeholder": "Choose from existing",
+    "empty": "No courses or labels exist yet.",
+    "courseCount": "{n} courses",
+    "loadError": "The list of courses could not be loaded: {message}"
   }
 }
