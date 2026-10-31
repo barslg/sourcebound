@@ -1,7 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useSessionStore } from '@/stores/session'
 import { decide } from './guard'
-import { routes, sectionEntries } from './routes'
+import { sectionEntries } from './registry'
+import { routes } from './routes'
 
 export const router = createRouter({
   history: createWebHistory(),

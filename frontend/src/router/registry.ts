@@ -1,4 +1,5 @@
 import type { ActionId } from '../ui/actionMeta'
+import type { SectionEntry } from './guard'
 
 export type PageState = 'loading' | 'empty' | 'error' | 'denied' | 'queued'
 export type ObjectKind = 'course' | 'user' | 'role' | 'invite' | 'run' | 'none'
@@ -21,7 +22,7 @@ export interface RouteRow {
   states: readonly PageState[]
   primaryAction: ActionId | null
   bare: boolean
-  entry: 'ui' | 'external'
+  entry: 'ui' | 'external' | 'operation'
 }
 
 const LIST: readonly PageState[] = ['loading', 'empty', 'error', 'denied']
@@ -68,9 +69,9 @@ export const REGISTRY = [
   stage('sources', LIST, 'create', courses),
   stage('plan', [...LIST, 'queued'], 'save', courses),
   stage('fix', [...LIST, 'queued'], 'rewrite', courses),
-  row({ name: 'course-preview', path: '/courses/:id/preview', titleKey: 'preview.title', purposeKey: 'preview.help', parent: 'course-publish', access: courses, object: 'course', states: ['loading', 'empty', 'error', 'denied'] }),
+  row({ name: 'course-preview', path: '/courses/:id/preview', titleKey: 'preview.title', purposeKey: 'preview.help', parent: 'course-publish', access: { kind: 'perm', code: 'learner.view' }, object: 'course', states: ONE }),
   stage('publish', [...ONE, 'queued'], 'publish', courses),
-  row({ name: 'run', path: '/runs/:runId', titleKey: 'run.title', purposeKey: 'run.help', parent: 'course-plan', access: { kind: 'perm', code: 'section.runs' }, object: 'run', states: ONE, primaryAction: 'resume' }),
+  row({ name: 'run', path: '/runs/:runId', titleKey: 'run.title', purposeKey: 'run.help', parent: 'course-plan', access: { kind: 'perm', code: 'section.runs' }, object: 'run', states: ONE, primaryAction: 'resume', entry: 'operation' }),
   row({ name: 'users', path: '/users', titleKey: 'users.title', purposeKey: 'users.help', access: { kind: 'perm', code: 'user.list' }, nav: { section: 'main', icon: 'users', labelKey: 'nav.users' }, states: LIST }),
   row({ name: 'invites', path: '/invites', titleKey: 'invites.title', purposeKey: 'invites.intro', access: { kind: 'perm', code: 'invite.create' }, nav: { section: 'main', icon: 'invites', labelKey: 'nav.invites' }, states: LIST, primaryAction: 'create' }),
   row({ name: 'roles', path: '/roles', titleKey: 'roles.title', purposeKey: 'roles.help', access: { kind: 'perm', code: 'role.edit' }, nav: { section: 'main', icon: 'roles', labelKey: 'nav.roles' }, states: LIST, primaryAction: 'create' }),
@@ -155,4 +156,8 @@ export function docTitle(name: string, ctx: TrailContext): string {
 
 export function navEntries(section: 'main' | 'course'): RouteRow[] {
   return ROWS.filter((r) => r.nav?.section === section)
+}
+
+export function sectionEntries(): SectionEntry[] {
+  return navEntries('main').flatMap((r) => (r.access.kind === 'perm' ? [{ path: r.path, perm: r.access.code }] : []))
 }

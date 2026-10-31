@@ -1,7 +1,6 @@
 import type { RouteRecordRaw } from 'vue-router'
 import { ROWS, type RouteRow } from './registry'
 import { VIEWS } from './views'
-import type { SectionEntry } from './guard'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -24,7 +23,3 @@ export const routes: RouteRecordRaw[] = ROWS.map((r): RouteRecordRaw =>
     ? { path: r.path, name: r.name, redirect: r.redirect, meta: {} }
     : { path: r.path, name: r.name, component: VIEWS[r.name as keyof typeof VIEWS], meta: meta(r) },
 )
-
-export function sectionEntries(): SectionEntry[] {
-  return ROWS.filter((r) => r.nav?.section === 'main' && r.access.kind === 'perm').map((r) => ({ path: r.path, perm: r.access.kind === 'perm' ? r.access.code : '' }))
-}

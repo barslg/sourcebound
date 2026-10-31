@@ -2,7 +2,7 @@ import { sessions } from './fixtures'
 
 const API = `http://127.0.0.1:${process.env.E2E_BACKEND_PORT ?? '8010'}/api/v1`
 
-async function call(who: 'admin', method: string, path: string, body?: unknown): Promise<Response> {
+async function call(who: 'admin' | 'author', method: string, path: string, body?: unknown): Promise<Response> {
   const s = sessions()[who]
   return fetch(API + path, {
     method,
@@ -16,14 +16,18 @@ export default async function globalSetup(): Promise<void> {
   const roles: [string, string[]][] = [
     ['student', ['section.courses']],
     ['operator', ['section.courses', 'operation.run']],
+    ['author', ['section.courses', 'course.edit', 'course.create', 'source.upload']],
+    ['editor-only', ['course.edit']],
   ]
   for (const [name, codes] of roles) {
     const res = await call('admin', 'POST', '/roles', { name, permission_codes: codes })
     if (!res.ok && res.status !== 409) throw new Error(`role ${name}: ${res.status} ${await res.text()}`)
   }
-  const assign: [string, string][] = [['student', s.student.id], ['operator', s.other.id]]
+  const assign: [string, string][] = [['student', s.student.id], ['operator', s.other.id], ['author', s.author.id], ['editor-only', s.editonly.id]]
   for (const [role, id] of assign) {
     const res = await call('admin', 'POST', `/roles/${role}/assign`, { user_id: id, scope_tags: [] })
     if (!res.ok) throw new Error(`assign ${role}: ${res.status} ${await res.text()}`)
   }
+  const made = await call('author', 'POST', '/courses', { title: 'Author course', language: 'en', scope_tags: ['author-course'] })
+  if (!made.ok) throw new Error(`author course: ${made.status} ${await made.text()}`)
 }
