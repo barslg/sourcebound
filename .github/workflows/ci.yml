@@ -107,3 +107,30 @@ jobs:
           else
             echo "no frontend/package.json; skipped"
           fi
+
+  frontend-e2e:
+    name: frontend e2e gates
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: muse
+          POSTGRES_PASSWORD: muse
+          POSTGRES_DB: postgres
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U muse -d postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: uv sync
+      - run: cd frontend && npm ci && npx playwright install --with-deps chromium
+      - run: cd frontend && npm run e2e

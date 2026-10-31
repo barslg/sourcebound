@@ -4,7 +4,7 @@ import { enter, TOKEN, text, type Role } from './t04h-support'
 import { matchRow, ROWS, rowOf, type RouteRow } from '../src/router/registry'
 import { ACTION_IDS } from '../src/ui/actionMeta'
 
-interface Instance { who: Role; path: () => string }
+interface Instance { who: Role; path: () => string; before?: (page: Page) => Promise<void> }
 const I = (): ReturnType<typeof ids> => ids()
 /** One real screen per registered route, on which its primary action is on show. A new route without an entry here fails the first test. */
 const INSTANCES: Record<string, Instance> = {
@@ -14,7 +14,11 @@ const INSTANCES: Record<string, Instance> = {
   courses: { who: 'admin', path: () => '/courses' },
   'course-sources': { who: 'admin', path: () => `/courses/${I().course}/sources` },
   'course-plan': { who: 'admin', path: () => `/courses/${I().course}/plan` },
-  'course-fix': { who: 'admin', path: () => `/courses/${I().fix}/fix` },
+  'course-fix': {
+    who: 'admin',
+    path: () => `/courses/${I().fix}/fix`,
+    before: async (page) => { await page.route(`**/api/v1/courses/${I().fix}/held`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ blocks: [{ id: 'b-1', topic_title: 'Basics', brief: 'Why?', hold_reason: 'Not in the passage.', passage: 'Alcohol rub takes twenty seconds.', address: 'para1' }], batch_quote_usd: '0.020000' }) })) },
+  },
   'course-preview': { who: 'admin', path: () => `/courses/${I().translated}/preview` },
   'course-publish': { who: 'admin', path: () => `/courses/${I().publish}/publish` },
   run: { who: 'admin', path: () => `/runs/${I().run}` },
@@ -54,6 +58,8 @@ test('grammar: purpose line, title, heading, breadcrumb and primary action of ev
     await context.clearCookies()
     await enter(context, page, inst.who)
     const path = inst.path()
+    await page.unrouteAll()
+    await inst.before?.(page)
     await page.goto(path)
     await page.waitForLoadState('networkidle')
     await expect(page.locator('[data-view="loading"]')).toHaveCount(0)
