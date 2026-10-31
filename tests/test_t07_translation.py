@@ -127,8 +127,11 @@ def test_spot_error_postcheck_holds_fixed_or_reshaped_blocks() -> None:
         "planted_index": int(planted["planted_index"]),
         "kind": kind,
     }
-    key = {"true_sentence": str(planted["true_sentence"])}
     translated_true = "Anvendere må lære opp ansatte."
+    key = {
+        "true_sentence": str(planted["true_sentence"]),
+        "translated_true_sentence": translated_true,
+    }
     translated_planted = "Anvendere må lære opp ansatte under GDPR, ikke AI-forordningen."
     translated = {
         "sentences": [

@@ -8,9 +8,10 @@ the check asserts:
 - the handler resolves, through its controller into services/rbac, to at
   least one require("code") literal with a code from the RBAC catalogue.
 
-Exempt (never carry a code): /health, /auth/login, /auth/callback,
-/auth/csrf, and POST /invites/{token}/accept. Self-scoped (the caller's own
-session, principal, stream, or owner-scoped read): /auth/logout, /auth/me,
+Exempt (never carry a code): /health, /config/public (signed-out privacy line),
+/auth/login, /auth/callback, /auth/csrf, and POST /invites/{token}/accept.
+Self-scoped (the caller's own session, principal, stream, or owner-scoped
+read): /auth/logout, /auth/me,
 /events, and GET /operations/{operation_id}.
 
 Usage: python scripts/check_routes.py
@@ -32,6 +33,7 @@ from app.rbac.catalogue import codes as catalogue_codes  # noqa: E402
 
 EXEMPT = {
     ("GET", "/api/v1/health"),
+    ("GET", "/api/v1/config/public"),
     ("GET", "/api/v1/auth/login"),
     ("GET", "/api/v1/auth/callback"),
     ("GET", "/api/v1/auth/csrf"),

@@ -342,6 +342,8 @@ async def run_translate_operation(
         finally:
             await _close_factory(provider_factory)
 
+    from app.translation.glossary import seed_glossary
+
     run_id = await translate_course(
         session,
         None,
@@ -350,7 +352,9 @@ async def run_translate_operation(
         source_language=str(course.get("language", "en")),
         target_languages=languages,
         blocks=blocks,
-        glossary={str(k): str(v) for k, v in dict(params.get("glossary", {})).items()},
+        glossary=seed_glossary(
+            blocks, {str(k): str(v) for k, v in dict(params.get("glossary", {})).items()}
+        ),
         driver=_driver,
     )
     return {"run_id": str(run_id)}
@@ -361,52 +365,28 @@ async def learner_course_view(
 ) -> dict[str, Any]:
     """Learner view of one course in the chosen language.
 
-    Every block goes through resolve_learner_block: translated ok
-    blocks serve their translation, everything else serves the source
-    with a localised notice (none when the chosen language is the
-    source). Citation chips carry the address formatted for the locale.
+    Every block goes through learner_block: translated ok blocks serve
+    their translation, everything else serves the source with a
+    localised notice (none when the chosen language is the source).
+    The answer key learner_block returns for the grader is dropped
+    here: the preview never carries a key. Citation chips carry the
+    address formatted for the locale.
     """
     from app.i18n.citations import format_citation_address
-    from app.translation.variants import available_languages, resolve_learner_block
+    from app.translation.variants import available_languages, learner_block
 
     course = await _course_for_learner(session, course_id=course_id)
     source_language = str(course.get("language", "en"))
     blocks = await _course_blocks(session, course_id=course_id)
-    version_row = (
-        await session.execute(
-            sa.text(
-                "SELECT id FROM course_versions WHERE course_id = :course"
-                " ORDER BY created_at DESC LIMIT 1"
-            ),
-            {"course": str(course_id)},
-        )
-    ).first()
-    version_id = UUID(str(version_row[0])) if version_row is not None else None
-    if course.get("published_version_id"):
-        version_id = UUID(str(course["published_version_id"]))
     out_blocks: list[dict[str, Any]] = []
     for block in blocks:
-        if version_id is not None:
-            resolved = await resolve_learner_block(
-                session,
-                course_id=course_id,
-                version_id=version_id,
-                language=language,
-                plan_node_id=str(block["plan_node_id"]),
-                source_content=dict(block["content"]),
-                source_language=source_language,
-            )
-        else:
-            from app.i18n.messages import fallback_notice
-
-            resolved = {
-                "content": dict(block["content"]),
-                "language": source_language,
-                "fallback_notice": fallback_notice(
-                    target_language=language, source_language=source_language
-                ),
-                "translated_answer_key": None,
-            }
+        resolved = await learner_block(
+            session,
+            course_id=course_id,
+            language=language,
+            block=block,
+            source_language=source_language,
+        )
         content = dict(resolved["content"])
         citations = await _citation_chips(
             session, content=content, locale=language, fmt=format_citation_address
@@ -421,14 +401,11 @@ async def learner_course_view(
                 "fallback_notice": resolved["fallback_notice"],
             }
         )
-    languages = (
-        await available_languages(session, version_id=version_id) if version_id is not None else []
-    )
     return {
         "course_id": str(course_id),
         "language": language,
         "source_language": source_language,
-        "available_languages": languages,
+        "available_languages": await available_languages(session, course_id=course_id),
         "blocks": out_blocks,
     }
 

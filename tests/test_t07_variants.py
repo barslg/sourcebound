@@ -192,7 +192,7 @@ async def test_variants_statuses_memory_fallback_and_free_rerun(
     from app.runs import executor
     from app.services import courses
     from app.translation.pipeline import translate_course
-    from app.translation.variants import resolve_learner_block
+    from app.translation.variants import learner_block
 
     settings = _settings()
     demo = await demo_t05.setup_demo(
@@ -278,25 +278,21 @@ async def test_variants_statuses_memory_fallback_and_free_rerun(
     ).scalar()
     assert tm_companion and "[nb]" in str(tm_companion)
 
-    resolved = await resolve_learner_block(
+    resolved = await learner_block(
         t03_session,
         course_id=course_id,
-        version_id=version_id,
         language="uk",
-        plan_node_id="b1",
-        source_content=blocks[0]["content"],
+        block=blocks[0],
     )
     assert resolved["language"] == "en"
     assert resolved["content"] == blocks[0]["content"]
     assert resolved["fallback_notice"]
 
-    resolved_nb = await resolve_learner_block(
+    resolved_nb = await learner_block(
         t03_session,
         course_id=course_id,
-        version_id=version_id,
         language="nb",
-        plan_node_id="b1",
-        source_content=blocks[0]["content"],
+        block=blocks[0],
     )
     assert resolved_nb["language"] == "nb"
     assert resolved_nb["fallback_notice"] is None

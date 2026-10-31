@@ -27,6 +27,13 @@ def upgrade() -> None:
         ),
     )
     op.add_column("runs", sa.Column("kind", sa.Text(), nullable=True))
+    # A run_id that points at no run would make the constraint fail to
+    # build: clear the orphans first (the column is nullable by design).
+    op.execute(
+        "UPDATE course_translations SET run_id = NULL"
+        " WHERE run_id IS NOT NULL AND NOT EXISTS"
+        " (SELECT 1 FROM runs WHERE runs.id = course_translations.run_id)"
+    )
     op.create_foreign_key(
         "fk_course_translations_run_id",
         "course_translations",

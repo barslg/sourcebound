@@ -205,7 +205,7 @@ def test_planted_uncheckable_is_held_never_ok() -> None:
 def test_segments_cover_reading_text_and_cloze_key_blanks() -> None:
     from app.translation.segments import extract_segments, key_segments
 
-    content = {"body": "Body text.", "text": "Body text.", "citations": []}
+    content = {"body": "Body text.", "text": "Other text.", "citations": []}
     ids = {s["id"] for s in extract_segments("reading", content)}
     assert {"body", "text"} <= ids
     ks = key_segments("cloze", {"blanks": ["Deployers", "training"]})
@@ -400,7 +400,8 @@ def test_error_render_uses_request_language() -> None:
     import json as _json
 
     body = _json.loads(bytes(resp.body))  # type: ignore[attr-defined]
-    assert body["message"] == "Her ble det ikke funnet noe."
+    assert body["message"] == "x"
+    assert body["localized_message"] == "Her ble det ikke funnet noe."
 
 
 def test_translator_prompt_has_no_course_facts() -> None:

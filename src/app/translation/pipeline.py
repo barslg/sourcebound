@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.translation import checks, memory, segments
 from app.translation.keys import build_translated_answer_key
+from app.translation.variants import block_digest
 
 STATUSES = ("ok", "held", "failed")
 
@@ -207,8 +208,8 @@ def _term_table(output: dict[str, Any] | None, glossary: dict[str, str]) -> dict
     if isinstance(output, dict) and isinstance(output.get("terms"), dict):
         table = {str(k): str(v) for k, v in output["terms"].items()}
         if set(table) == set(glossary):
-            return table
-    return dict(glossary)
+            return {k: v for k, v in table.items() if v.strip()}
+    return {k: v for k, v in glossary.items() if v.strip()}
 
 
 async def _judge_block(
@@ -254,6 +255,9 @@ async def _judge_block(
                 seg["text"], str(translations.get(seg["id"], ""))
             )
         ]
+    kept = {k.casefold() for k, v in term_table.items() if k.casefold() == v.casefold()}
+    key_segments = segments.key_segments(block_type, answer_key)
+    problems += checks.untranslated_segments(source_segments + key_segments, translations, kept)
     problems += checks.check_glossary_use(source_segments, translations, term_table)
     # Language of the reply itself: echoed source text is not a translation.
     if target_language != source_language:
@@ -286,8 +290,9 @@ async def _judge_block(
     translated_key = build_translated_answer_key(
         block_type, content, answer_key, translations, rebuilt
     )
+    variant = int(output.get("variant", 0) or 0)
     if problems:
-        return _verdict(block, "held", "; ".join(problems), rebuilt, translated_key)
+        return _verdict(block, "held", "; ".join(problems), rebuilt, translated_key, variant)
     # Only ok blocks enter translation memory — never before the checks,
     # never the planted sentence, never key segments.
     if session is not None:
@@ -303,7 +308,7 @@ async def _judge_block(
                 target_language=target_language,
                 course_id=course_id,
             )
-    return _verdict(block, "ok", "", rebuilt, translated_key)
+    return _verdict(block, "ok", "", rebuilt, translated_key, variant)
 
 
 def _validate_against_schema(block_type: str, content: dict[str, Any]) -> list[str]:
@@ -322,6 +327,7 @@ def _verdict(
     reason: str,
     content: dict[str, Any] | None = None,
     translated_answer_key: dict[str, Any] | None = None,
+    variant: int = 0,
 ) -> dict[str, Any]:
     return {
         "plan_node_id": str(block["plan_node_id"]),
@@ -330,6 +336,8 @@ def _verdict(
         "reason": reason,
         "content": content if content is not None else dict(block["content"]),
         "translated_answer_key": translated_answer_key or {},
+        "source_digest": block_digest(dict(block["content"]), dict(block.get("answer_key", {}))),
+        "variant": variant,
     }
 
 
@@ -374,13 +382,14 @@ async def _store_translation(
             sa.text(
                 "INSERT INTO translation_blocks"
                 " (id, translation_id, plan_node_id, block_type, status, reason, content,"
-                " translated_answer_key)"
+                " translated_answer_key, source_digest, variant)"
                 " VALUES (gen_random_uuid(), :translation, :node, :type, :status,"
-                " :reason, CAST(:content AS jsonb), CAST(:tkey AS jsonb))"
+                " :reason, CAST(:content AS jsonb), CAST(:tkey AS jsonb), :digest, :variant)"
                 " ON CONFLICT (translation_id, plan_node_id) DO UPDATE SET"
                 " block_type = EXCLUDED.block_type, status = EXCLUDED.status,"
                 " reason = EXCLUDED.reason, content = EXCLUDED.content,"
-                " translated_answer_key = EXCLUDED.translated_answer_key"
+                " translated_answer_key = EXCLUDED.translated_answer_key,"
+                " source_digest = EXCLUDED.source_digest, variant = EXCLUDED.variant"
             ),
             {
                 "translation": translation_id,
@@ -390,5 +399,7 @@ async def _store_translation(
                 "reason": item["reason"] or None,
                 "content": json.dumps(item["content"], ensure_ascii=False),
                 "tkey": json.dumps(item.get("translated_answer_key", {}), ensure_ascii=False),
+                "digest": item["source_digest"],
+                "variant": item["variant"],
             },
         )

@@ -223,7 +223,7 @@ async def test_new_run_stores_kind(t03_session: AsyncSession) -> None:
 
 async def test_echo_held_no_tm_and_localised_fallback(t03_session: AsyncSession) -> None:
     from app.translation.pipeline import translate_course
-    from app.translation.variants import resolve_learner_block
+    from app.translation.variants import learner_block
 
     settings = _settings()
     demo, version_id = await _setup(t03_session, settings, "t07echo")
@@ -245,24 +245,22 @@ async def test_echo_held_no_tm_and_localised_fallback(t03_session: AsyncSession)
     assert "reply not in target language" in statuses["b1"][1]
     tm = (await t03_session.execute(sa.text("SELECT count(*) FROM translation_memory"))).scalar()
     assert int(tm or 0) == 0
-    resolved = await resolve_learner_block(
+    resolved = await learner_block(
         t03_session,
         course_id=demo["course_id"],
-        version_id=version_id,
         language="nb",
-        plan_node_id="b1",
-        source_content=blocks[0]["content"],
+        block=blocks[0],
+        source_language="en",
     )
     assert resolved["language"] == "en"
     assert resolved["content"] == blocks[0]["content"]
     assert resolved["fallback_notice"] and "oversatt" in resolved["fallback_notice"]
-    same = await resolve_learner_block(
+    same = await learner_block(
         t03_session,
         course_id=demo["course_id"],
-        version_id=version_id,
         language="en",
-        plan_node_id="b1",
-        source_content=blocks[0]["content"],
+        block=blocks[0],
+        source_language="en",
     )
     assert same["fallback_notice"] is None
 

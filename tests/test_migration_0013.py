@@ -71,3 +71,45 @@ def test_0014_downgrade_restores_0013_shape() -> None:
     command.upgrade(_cfg(url), "head")
     tables = _harness_tables(url)
     assert "translated_answer_key" in tables["translation_blocks"]
+
+
+def test_0014_clears_orphan_run_ids_before_the_foreign_key() -> None:
+    """A translation row whose run vanished must not stop the upgrade."""
+    import psycopg
+
+    url = test_database_url()
+    require_postgres(url)
+    command.upgrade(_cfg(url), "head")
+    command.downgrade(_cfg(url), "0013")
+    sync = url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    with psycopg.connect(sync, autocommit=True) as conn:
+        user = conn.execute(
+            "INSERT INTO users (email, display_name) VALUES"
+            " ('orphan-0014@example.com', 'O') ON CONFLICT (email) DO UPDATE"
+            " SET display_name = 'O' RETURNING id"
+        ).fetchone()
+        assert user is not None
+        course = conn.execute(
+            "INSERT INTO courses (owner_id, title) VALUES (%s, 'orphan') RETURNING id",
+            (user[0],),
+        ).fetchone()
+        assert course is not None
+        version = conn.execute(
+            "INSERT INTO course_versions (course_id, snapshot) VALUES (%s, '{}') RETURNING id",
+            (course[0],),
+        ).fetchone()
+        assert version is not None
+        conn.execute(
+            "INSERT INTO course_translations (id, course_version_id, language, run_id)"
+            " VALUES (gen_random_uuid(), %s, 'nb', gen_random_uuid())",
+            (version[0],),
+        )
+    command.upgrade(_cfg(url), "head")
+    with psycopg.connect(sync, autocommit=True) as conn:
+        row = conn.execute(
+            "SELECT run_id FROM course_translations ct JOIN course_versions cv"
+            " ON cv.id = ct.course_version_id WHERE cv.course_id = %s",
+            (course[0],),
+        ).fetchone()
+        conn.execute("DELETE FROM courses WHERE id = %s", (course[0],))
+    assert row is not None and row[0] is None

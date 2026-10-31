@@ -1427,6 +1427,45 @@ async def generate_block_step(
     await session.commit()
 
 
+def _undecided_nodes(output: dict[str, Any]) -> set[str]:
+    """Nodes the reader answered `unknown` for, with no item holding."""
+    undecided: set[str] = set()
+    for verdict in output.get("verdicts", []):
+        items = verdict.get("items", {}) if isinstance(verdict.get("items"), dict) else {}
+        held_item = any(isinstance(v, dict) and v.get("verdict") == "hold" for v in items.values())
+        if verdict.get("verdict") not in ("pass", "hold") and not held_item:
+            undecided.add(str(verdict.get("plan_node_id", "")))
+    return undecided
+
+
+def _merge_undecided(
+    first: dict[str, Any], second: dict[str, Any], nodes: set[str]
+) -> dict[str, Any]:
+    """Second reply decides the undecided nodes; still-unknown ones become holds."""
+    again = {str(v.get("plan_node_id", "")): v for v in second.get("verdicts", [])}
+    merged: list[dict[str, Any]] = []
+    for verdict in first.get("verdicts", []):
+        node = str(verdict.get("plan_node_id", ""))
+        if node not in nodes:
+            merged.append(verdict)
+            continue
+        replacement = again.get(node, verdict)
+        if node in _undecided_nodes({"verdicts": [replacement]}):
+            items = (
+                replacement.get("items", {}) if isinstance(replacement.get("items"), dict) else {}
+            )
+            evidence = next(
+                (str(v.get("evidence", "")) for v in items.values() if isinstance(v, dict)), ""
+            )
+            replacement = {
+                **replacement,
+                "verdict": "hold",
+                "hold_reason": f"reader could not decide (unknown twice): {evidence}"[:500],
+            }
+        merged.append(replacement)
+    return {**first, "verdicts": merged}
+
+
 async def read_topic_step(
     session: AsyncSession,
     *,
@@ -1508,6 +1547,20 @@ async def read_topic_step(
             variant=int(claim["attempt"]) - 1,
             check=lambda reply: reader.check_reader_output(reply, node_ids=node_ids),
         )
+        undecided = _undecided_nodes(output)
+        if undecided:
+            # `unknown` is not a verdict: ask once more with variant+1, then hold.
+            second = await provider.generate_json(
+                agent="reader",
+                prompt=prompt,
+                schema=reader.schema(),
+                cache_key=cache_key("reader", topic_id, str(entry.get("course_id", ""))),
+                run_id=run_id,
+                step_id=claim["step_id"],
+                variant=int(claim["attempt"]),
+                check=lambda reply: reader.check_reader_output(reply, node_ids=node_ids),
+            )
+            output = _merge_undecided(output, second, undecided)
         for verdict in output.get("verdicts", []):
             node = str(verdict.get("plan_node_id", ""))
             items = verdict.get("items", {}) if isinstance(verdict.get("items"), dict) else {}
@@ -1517,7 +1570,7 @@ async def read_topic_step(
                 if isinstance(v, dict) and v.get("verdict") == "hold"
             ]
             if verdict.get("verdict") == "hold" or reasons:
-                reason = "; ".join(reasons) or "reader hold"
+                reason = "; ".join(reasons) or str(verdict.get("hold_reason") or "reader hold")
                 await session.execute(
                     sa.text(
                         "UPDATE blocks SET status = 'held', hold_reason = :r"
@@ -1881,6 +1934,7 @@ async def translate_block_step(
     from app.agents import translator
     from app.llm.prompts import cache_key
     from app.translation import memory, segments
+    from app.translation.variants import block_digest, latest_block_row
 
     step_key = str(entry["step_key"])
     block_type = str(entry.get("block_type", "reading"))
@@ -1914,27 +1968,24 @@ async def translate_block_step(
         batches.append([seg for seg in wanted if seg["id"] == planted_id])
     if key_segs:
         batches.append(key_segs)
-    # A block held by an earlier translation run re-asks the model with
-    # variant+1: the reply store would otherwise re-serve the held reply.
+    # The variant that produced the block's ok translation is reused (the
+    # reply store serves it at $0); a held or failed row re-asks with
+    # variant+1 so a bad reply is never served again.
     variant_offset = 0
-    if entry.get("version_id"):
-        held_row = (
-            await session.execute(
-                sa.text(
-                    "SELECT tb.status FROM translation_blocks tb"
-                    " JOIN course_translations ct ON ct.id = tb.translation_id"
-                    " WHERE ct.course_version_id = :version AND ct.language = :lang"
-                    " AND tb.plan_node_id = :node"
-                ),
-                {
-                    "version": str(entry["version_id"]),
-                    "lang": target_language,
-                    "node": node_id,
-                },
-            )
-        ).first()
-        if held_row is not None and str(held_row[0]) in ("held", "failed"):
-            variant_offset = 1
+    previous = (
+        await latest_block_row(
+            session,
+            course_id=UUID(course_id),
+            language=target_language,
+            plan_node_id=node_id,
+        )
+        if course_id
+        else None
+    )
+    if previous is not None and previous["source_digest"] == block_digest(
+        content, dict(entry.get("answer_key", {}))
+    ):
+        variant_offset = previous["variant"] + (0 if previous["status"] == "ok" else 1)
     if not batches:
         claim = await claim_step(
             session,
@@ -1951,6 +2002,7 @@ async def translate_block_step(
                 output={
                     "translations": cached,
                     "planted_ids": [planted_id] if planted_id else [],
+                    "variant": variant_offset,
                 },
             )
         await session.commit()
@@ -2002,6 +2054,7 @@ async def translate_block_step(
                 output={
                     "translations": {**cached, **fresh},
                     "planted_ids": [planted_id] if planted_id else [],
+                    "variant": variant_offset,
                     "error": f"{type(exc).__name__}: {exc}"[:500],
                 },
             )
@@ -2010,6 +2063,7 @@ async def translate_block_step(
         output = {
             "translations": {**cached, **fresh},
             "planted_ids": [planted_id] if planted_id else [],
+            "variant": variant_offset,
         }
         await finish_step(session, step_id=claim["step_id"], output=output)
     await session.commit()

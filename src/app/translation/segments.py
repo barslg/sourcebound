@@ -15,10 +15,11 @@ def extract_segments(block_type: str, content: dict[str, Any]) -> list[dict[str,
     """
     if block_type == "reading":
         segments = [{"id": "body", "text": str(content["body"])}]
-        # Generation persists the same text under `text`; every
-        # text-bearing key the type declares is translated.
-        if isinstance(content.get("text"), str) and content["text"].strip():
-            segments.append({"id": "text", "text": str(content["text"])})
+        # Generation persists the same text under `text`: a copy of the
+        # body is translated once and copied; a different text is its own segment.
+        text = content.get("text")
+        if isinstance(text, str) and text.strip() and text.strip() != str(content["body"]).strip():
+            segments.append({"id": "text", "text": text})
         return segments
     if block_type == "figure":
         return [{"id": "caption", "text": str(content["caption"])}]
@@ -119,8 +120,10 @@ def reassemble(
 
     if block_type == "reading":
         rebuilt["body"] = take("body")
-        if "text" in rebuilt and isinstance(rebuilt["text"], str) and rebuilt["text"].strip():
-            rebuilt["text"] = take("text")
+        text = rebuilt.get("text")
+        if isinstance(text, str) and text.strip():
+            same = text.strip() == str(content["body"]).strip()
+            rebuilt["text"] = rebuilt["body"] if same else take("text")
     elif block_type == "figure":
         rebuilt["caption"] = take("caption")
     elif block_type == "choice":

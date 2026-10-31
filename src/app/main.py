@@ -69,6 +69,7 @@ def create_app(settings: Settings | None = None, *, sync_on_startup: bool = True
         return {"status": "ok"}
 
     app.include_router(auth_routes.router, prefix="/api/v1")
+    app.include_router(auth_routes.public_router, prefix="/api/v1")
     app.include_router(t02_routes.users_router, prefix="/api/v1")
     app.include_router(t02_routes.roles_router, prefix="/api/v1")
     app.include_router(t02_routes.invites_router, prefix="/api/v1")
