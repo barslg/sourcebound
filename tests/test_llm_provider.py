@@ -180,7 +180,13 @@ async def test_repeat_call_is_free_but_logged() -> None:
     assert hits["n"] == 1
     async with ledger() as reader:
         stored = (
-            (await reader.execute(sa.select(llm_calls).where(llm_calls.c.agent == agent)))
+            (
+                await reader.execute(
+                    sa.select(llm_calls)
+                    .where(llm_calls.c.agent == agent)
+                    .order_by(llm_calls.c.created_at)
+                )
+            )
             .mappings()
             .all()
         )

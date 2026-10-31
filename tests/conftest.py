@@ -15,8 +15,21 @@ from collections.abc import Iterator
 from urllib.parse import urlparse
 
 import pytest
+import sqlalchemy.ext.asyncio as _sa_asyncio
+from sqlalchemy.pool import NullPool
 
 from app.config import get_settings
+
+_REAL_CREATE_ASYNC_ENGINE = _sa_asyncio.create_async_engine
+
+
+def _unpooled_engine(url: object, **kwargs: object) -> object:
+    """Test engines hold no idle connections: hundreds of engines share one server."""
+    kwargs.setdefault("poolclass", NullPool)
+    return _REAL_CREATE_ASYNC_ENGINE(url, **kwargs)  # type: ignore[arg-type]
+
+
+_sa_asyncio.create_async_engine = _unpooled_engine  # type: ignore[assignment]
 
 
 def derive_test_url(url: str) -> str:
@@ -156,6 +169,9 @@ async def t03_session() -> Iterator[object]:
         await session_.commit()
         yield session_
         await session_.rollback()
+    bind = factory.kw.get("bind")
+    if bind is not None:
+        await bind.dispose()  # a pooled engine per test would exhaust max_connections
 
 
 @pytest.fixture(scope="session", autouse=True)
