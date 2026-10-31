@@ -7,6 +7,7 @@ while clients/web.py owns the bytes on the wire.
 
 from __future__ import annotations
 
+import asyncio
 import urllib.robotparser
 from typing import Any
 from urllib.parse import urlparse
@@ -18,10 +19,24 @@ from app.clients.web import (
     fetch_robots_text,
     post_transcription,
 )
+from app.clients.web import (
+    ensure_public_url as _ensure_public_url,
+)
 from app.config import Settings
 from app.errors import ConfigurationError
 
-__all__ = ["FetchedPage", "fetch_url", "robots_allowed", "request_transcription"]
+__all__ = [
+    "FetchedPage",
+    "ensure_public_url",
+    "fetch_url",
+    "robots_allowed",
+    "request_transcription",
+]
+
+
+async def ensure_public_url(url: str) -> str:
+    """Raise unless the URL resolves to a public IP (single check, no fetch)."""
+    return await asyncio.to_thread(_ensure_public_url, url)
 
 
 async def fetch_url(url: str, *, settings: Settings, client: Any | None = None) -> FetchedPage:

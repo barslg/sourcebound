@@ -67,6 +67,7 @@ class _SpecParser(HTMLParser):
         self._chain: list[tuple[str, dict[str, str]]] = []
         self._records: list[dict[str, str]] = []
         self._current: dict[str, str] | None = None
+        self._container_depth: int | None = None
         self._field: str | None = None
         self._heading: list[str] = []
         self._heading_text = ""
@@ -80,6 +81,7 @@ class _SpecParser(HTMLParser):
             self._heading_text = ""
         if self._current is None and _matches(self._chain, self._spec.container):
             self._current = {"title": "", "body": "", "anchor": attr.get("id", "")}
+            self._container_depth = len(self._chain)
             return
         if self._current is not None:
             for name, selector in self._spec.fields.items():
@@ -92,7 +94,11 @@ class _SpecParser(HTMLParser):
             if text:
                 self._heading.append(text)
             self._in_heading = False
-        if self._current is not None and _matches(self._chain, self._spec.container):
+        if (
+            self._current is not None
+            and self._container_depth is not None
+            and len(self._chain) == self._container_depth
+        ):
             record = dict(self._current)
             rule = self._spec.address_rule
             if rule.kind == "heading_path":
@@ -101,6 +107,7 @@ class _SpecParser(HTMLParser):
                 record["address"] = record.get("anchor") or "body"
             self._records.append(record)
             self._current = None
+            self._container_depth = None
         if self._chain:
             self._chain.pop()
         self._field = None

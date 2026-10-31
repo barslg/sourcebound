@@ -111,9 +111,11 @@ async def record_pairs(
 ) -> None:
     """Persist every (query, passage) pair for reranker training.
 
-    The model's ranking is stored under its ranker; the FTS ranking is
-    stored as ranker='fts' from the first run (BRIEF §3), and the
-    top-k FTS hits the model did not cite are labelled hard negatives.
+    The model's ranking is stored as ranker='model' with model
+    scores; the real FTS order is stored as ranker='fts' from the
+    first run (BRIEF §3), and the top-k FTS hits the model did not
+    cite are labelled hard negatives. The `ranker` argument names the
+    model side; direct callers may pass their own model-side name.
     """
     import sqlalchemy as sa
 

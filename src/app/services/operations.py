@@ -25,6 +25,17 @@ from app.rbac.require import require, require_scope
 from app.services.audit import write_audit
 
 OPERATION_KIND_ECHO = "echo"
+OPERATION_KIND_TRANSCRIBE_AUDIO = "transcribe_audio"
+
+OPERATION_CODES = {
+    "submit_plan": "course.plan",
+    "submit_generate": "course.generate",
+    "resume_run": "run.retry",
+    "rewrite_block": "course.generate",
+    "rewrite_held_batch": "course.generate",
+    OPERATION_KIND_TRANSCRIBE_AUDIO: "source.upload",
+    OPERATION_KIND_ECHO: "operation.run",
+}
 
 
 async def submit_echo(
@@ -212,7 +223,7 @@ async def execute_operation(
                     if actor_id is not None
                     else None
                 )
-                require(actor, required_code)
+                require(actor, OPERATION_CODES.get(str(kind), required_code))
                 await _set_status(session, operation_id, status="running", progress=0.5)
                 await session.commit()
                 detail = await _run_kind(session, str(kind), operation_id, factory=factory)
@@ -303,6 +314,25 @@ async def _run_kind(
             provider_factory=real_provider_factory(get_settings()),
             session_factory=factory,
         )
+    if kind in ("rewrite_block", "rewrite_held_batch"):
+        from app.errors import ConflictError
+
+        raise ConflictError("block rewriting is not available until the generation pipeline lands")
+    if kind == OPERATION_KIND_TRANSCRIBE_AUDIO:
+        from app.services.library import transcribe_source
+
+        params = (
+            await session.execute(
+                sa.text("SELECT params FROM operations WHERE id = :op"),
+                {"op": str(operation_id)},
+            )
+        ).scalar_one()
+        count = await transcribe_source(
+            session,
+            source_id=UUID(str((params or {})["source_id"])),
+            settings=get_settings(),
+        )
+        return {"source_id": str((params or {})["source_id"]), "passages": count}
     if kind == OPERATION_KIND_ECHO:
         params = (
             await session.execute(

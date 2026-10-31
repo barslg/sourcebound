@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.clients.meta import MetaClient, build_request_body
 from app.config import Settings, get_settings
 from app.db import create_session_factory
-from app.errors import ForbiddenError, LLMError
+from app.errors import ConfigurationError, ForbiddenError, LLMError, ValidationError
 from app.llm import calls, prompts, replies
 from app.llm.registry import is_allowed, resolve_step
 from app.llm.schema import validate_strict_subset
@@ -75,8 +75,19 @@ class MetaProvider:
 
     @staticmethod
     def prompt_version(agent: str, prompt: str) -> str:
-        """Day-1 prompt version: the shared content hash, so any edit re-generates."""
-        return prompts.version_of(f"{agent}:{prompt}")
+        """Version of one agent's prompt: hash of its system file.
+
+        The dynamic prompt text never versions the call: only an edit
+        to prompts/<agent>/system.md re-generates cached replies.
+        Agents whose system file has not landed yet (future pipeline
+        steps) keep the legacy agent:prompt hash instead of failing.
+        """
+        from app.agents.base import prompt_version as system_version
+
+        try:
+            return system_version(agent)
+        except ConfigurationError:
+            return prompts.version_of(f"{agent}:{prompt}")
 
     async def generate_json(
         self,
@@ -93,7 +104,16 @@ class MetaProvider:
         variant: int = 0,
         subject_user_id: UUID | None = None,
         background: bool = False,
+        check: Any = None,
     ) -> dict[str, Any]:
+        """Generate one JSON object; store the reply only when it checks out.
+
+        `check` is the executor's code validator for this agent's
+        output. A reply the checks reject is still recorded as a paid
+        call in the ledger, but it never reaches the reply store — so
+        a resume (or a fresh plan with the same inputs) asks the model
+        again instead of re-serving the same bad reply at $0.
+        """
         validate_strict_subset(schema, name=agent)
         if background:
             call_id = await self.start_background(
@@ -157,6 +177,7 @@ class MetaProvider:
             max_output_tokens=resolved_tokens,
         )
         duration_ms = int((time.monotonic() - started) * 1000)
+        errors: list[str] = list(check(answered.data)) if check is not None else []
         await self._record_call(
             agent=agent,
             model=resolved_model,
@@ -172,9 +193,11 @@ class MetaProvider:
             step_id=step_id,
             variant=variant,
             subject_user_id=subject_user_id,
-            store_reply=subject_user_id is None,
+            store_reply=subject_user_id is None and not errors,
             digest=digest,
         )
+        if errors:
+            raise ValidationError(f"{agent} output rejected: {errors[0]}")
         return answered.data
 
     async def start_background(

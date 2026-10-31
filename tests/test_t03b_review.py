@@ -600,7 +600,11 @@ async def test_lock_held_second_driver_stands_down(
 
 
 async def test_resume_running_run_is_refused(t03_session: AsyncSession) -> None:
-    """Resume accepts stopped runs only; a running run already has a driver."""
+    """Resume refuses a running run only while a driver holds its lock.
+
+    A stranded running run (no driver) resumes; a stopped run
+    resumes; a done run still refuses.
+    """
     from app.errors import ValidationError
     from app.runs import executor
 
@@ -609,6 +613,12 @@ async def test_resume_running_run_is_refused(t03_session: AsyncSession) -> None:
     run_id = await executor.new_run(t03_session, course_id=course, kind="plan", dag=[])
     await t03_session.commit()
     actor = _actor(user, frozenset({"run.retry"}))
+    resumed = await planruns.resume_run(t03_session, actor=actor, run_id=run_id, defer=None)
+    assert resumed == run_id
+    await t03_session.execute(
+        sa.text("UPDATE runs SET status = 'done' WHERE id = :run"), {"run": str(run_id)}
+    )
+    await t03_session.commit()
     with pytest.raises(ValidationError, match="only stopped runs resume"):
         await planruns.resume_run(t03_session, actor=actor, run_id=run_id, defer=None)
 
@@ -728,9 +738,15 @@ async def test_resume_enqueues_operation_and_worker_drives_it(
 
 
 def test_every_t03_function_has_a_production_caller() -> None:
-    """Inventory: no orphaned T03 function without a caller in src/."""
+    """Inventory: every T03 function is called on a real production path.
+
+    Traced with the AST through import aliases, not keywords: a bare
+    mention in a comment, docstring, string, import, or decorator
+    never counts — only a Call node resolving to the function counts,
+    and true self-recursion does not count as a caller.
+    """
+    import ast
     import pathlib
-    import re
 
     functions = [
         "drive_run",
@@ -742,22 +758,67 @@ def test_every_t03_function_has_a_production_caller() -> None:
         "snapshot_version",
         "set_source_as_of",
     ]
-    sources = [
-        path for path in pathlib.Path("src/app").rglob("*.py") if "__pycache__" not in path.parts
-    ]
-    missing: list[str] = []
-    for function in functions:
-        calls = 0
-        for path in sources:
-            for line in path.read_text().splitlines():
-                stripped = line.strip()
-                if stripped.startswith("def ") or stripped.startswith("async def "):
-                    continue
-                if re.search(rf"\b{function}\b", line) and "(" in line:
-                    calls += 1
-        if not calls:
-            missing.append(function)
-    assert missing == []
+    callers: dict[str, set[str]] = {function: set() for function in functions}
+
+    class _Visitor(ast.NodeVisitor):
+        """Resolve every call through the module's import aliases."""
+
+        def __init__(self, module: str) -> None:
+            self._module = module
+            self._aliases: dict[str, tuple[str, str]] = {}
+            self._scope = [module]
+
+        def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+            base = node.module or ""
+            for alias in node.names:
+                self._aliases[alias.asname or alias.name] = (base, alias.name)
+            self.generic_visit(node)
+
+        def visit_Import(self, node: ast.Import) -> None:
+            for alias in node.names:
+                self._aliases[alias.asname or alias.name] = (alias.name, "")
+            self.generic_visit(node)
+
+        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+            self._scope.append(f"{self._module}:{node.name}")
+            self.generic_visit(node)
+            self._scope.pop()
+
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+            self._scope.append(f"{self._module}:{node.name}")
+            self.generic_visit(node)
+            self._scope.pop()
+
+        def _resolve(self, target: ast.expr) -> tuple[str, str]:
+            if isinstance(target, ast.Name):
+                return self._aliases.get(target.id, (self._module, target.id))
+            if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name):
+                base = target.value.id
+                if base in self._aliases:
+                    mod, name = self._aliases[base]
+                    return (f"{mod}.{name}" if name else mod, target.attr)
+                return (self._module, target.attr)
+            return ("", "")
+
+        def visit_Call(self, node: ast.Call) -> None:
+            mod, name = self._resolve(node.func)
+            if name in callers:
+                enclosing = self._scope[-1]
+                func = enclosing.rsplit(":", 1)[-1] if ":" in enclosing else ""
+                if (mod, name) != (self._module, func):
+                    callers[name].add(enclosing)
+            self.generic_visit(node)
+
+    for path in pathlib.Path("src/app").rglob("*.py"):
+        if "__pycache__" in path.parts:
+            continue
+        module = "app." + ".".join(path.relative_to("src/app").with_suffix("").parts)
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        _Visitor(module).visit(tree)
+    missing = {
+        function: sorted(callers[function]) for function in functions if not callers[function]
+    }
+    assert missing == {}, f"functions without a production caller: {missing}"
 
 
 # Item 6: source refs are persisted, handles are checked.
@@ -814,7 +875,7 @@ async def test_plan_writes_citations_and_versions(t03_session: AsyncSession) -> 
 
 
 async def test_bad_handle_holds_never_crashes(t03_session: AsyncSession) -> None:
-    """P99 in an architect reply fails the step with a marker, no KeyError."""
+    """P99 in an architect reply holds the block, never crashes, never stops."""
     from app.agents import architect
 
     errors = architect.check_output(
@@ -832,8 +893,11 @@ async def test_bad_handle_holds_never_crashes(t03_session: AsyncSession) -> None
     actor = _actor(user, frozenset({"run.start", "operation.run", "course.edit", "course.plan"}))
     run_id = await _submit_and_create(t03_session, actor, course, ["literacy"])
     final = await _drive(run_id, _Capture(architect_handles=["P99"]), settings)
-    assert final["status"] == "stopped"
-    assert "unknown handle" in (final["stop_marker"] or "")
+    assert final["status"] == "done"
+    assert final["stop_marker"] is None
+    held = await course_service.held_blocks(t03_session, course_id=course)
+    assert len(held["blocks"]) == 3
+    assert all("unknown handle" in block["hold_reason"] for block in held["blocks"])
 
 
 def test_citation_quote_from_another_passage_holds() -> None:

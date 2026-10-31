@@ -182,6 +182,7 @@ async def _block_in_scope(ctx: RequestContext, *, block_id: UUID) -> UUID:
 
 async def rewrite_block(ctx: RequestContext, *, block_id: str) -> dict[str, str]:
     from app.services.courses import submit_rewrite_operation
+    from app.tasks.jobs import enqueue_operation
 
     actor = require_auth(ctx)
     require(actor, "course.generate")
@@ -191,6 +192,7 @@ async def rewrite_block(ctx: RequestContext, *, block_id: str) -> dict[str, str]
         actor=actor,
         kind="rewrite_block",
         params={"course_id": str(course_id), "block_id": block_id},
+        defer=lambda op: enqueue_operation(op, ctx.settings.database_url),
     )
     await ctx.db.commit()
     return {"operation_id": str(operation_id)}
@@ -221,6 +223,7 @@ async def patch_block(ctx: RequestContext, *, block_id: str, brief: str) -> dict
 async def rewrite_held(ctx: RequestContext, *, course_id: str) -> dict[str, str]:
     from app.services.courses import get_course as get_use_case
     from app.services.courses import held_blocks, submit_rewrite_operation
+    from app.tasks.jobs import enqueue_operation
 
     actor = require_auth(ctx)
     require(actor, "course.generate")
@@ -235,6 +238,7 @@ async def rewrite_held(ctx: RequestContext, *, course_id: str) -> dict[str, str]
             "course_id": course_id,
             "block_ids": [block["id"] for block in held["blocks"]],
         },
+        defer=lambda op: enqueue_operation(op, ctx.settings.database_url),
     )
     await ctx.db.commit()
     return {"operation_id": str(operation_id)}
@@ -318,7 +322,16 @@ async def submit_generate(
 
 
 async def _run_in_scope(ctx: RequestContext, *, run_id: UUID) -> dict[str, Any]:
-    """Load a run only when its course is in the actor's scope (else 404)."""
+    """Load a run only when it is in the actor's scope (else 404).
+
+    Course runs scope through their course owner. Runs without a
+    course (pre-0005) scope through the operations that drove them:
+    only an actor who owns such an operation — or a superadmin —
+    may read or resume the run.
+    """
+    import sqlalchemy as sa
+
+    from app.errors import NotFoundError
     from app.runs.executor import get_run as get_use_case
     from app.services.courses import get_course as get_course_use_case
 
@@ -327,6 +340,17 @@ async def _run_in_scope(ctx: RequestContext, *, run_id: UUID) -> dict[str, Any]:
     if run.get("course_id") is not None:
         course = await get_course_use_case(ctx.db, course_id=UUID(str(run["course_id"])))
         _owner_or_404(course, actor.user_id, actor.is_superadmin)
+        return run
+    if actor.is_superadmin:
+        return run
+    owners = (
+        await ctx.db.execute(
+            sa.text("SELECT actor_id FROM operations WHERE params->>'run_id' = :run"),
+            {"run": str(run_id)},
+        )
+    ).all()
+    if not any(str(owner[0]) == str(actor.user_id) for owner in owners):
+        raise NotFoundError("run not found")
     return run
 
 
@@ -463,7 +487,7 @@ async def approve_source(ctx: RequestContext, *, source_id: str) -> dict[str, bo
 
 async def approve_candidate(ctx: RequestContext, *, candidate_id: str) -> dict[str, str]:
     from app.services.courses import get_course as get_use_case
-    from app.services.library import approve_candidate as approve_use_case
+    from app.services.library import approve_candidate as approve_candidate_use_case
     from app.services.library import get_candidate
 
     actor = require_auth(ctx)
@@ -472,7 +496,7 @@ async def approve_candidate(ctx: RequestContext, *, candidate_id: str) -> dict[s
     if candidate["course_id"] is not None:
         course = await get_use_case(ctx.db, course_id=UUID(str(candidate["course_id"])))
         _owner_or_404(course, actor.user_id, actor.is_superadmin)
-    source_id = await approve_use_case(
+    source_id = await approve_candidate_use_case(
         ctx.db,
         candidate_id=UUID(candidate_id),
         approved_by=actor.user_id,
@@ -484,8 +508,8 @@ async def approve_candidate(ctx: RequestContext, *, candidate_id: str) -> dict[s
 
 async def transcribe_source(ctx: RequestContext, *, source_id: str) -> dict[str, Any]:
     from app.services.courses import owns_any_course
-    from app.services.library import source_course_ids
-    from app.services.library import transcribe_source as transcribe_use_case
+    from app.services.library import source_course_ids, submit_transcribe
+    from app.tasks.jobs import enqueue_operation
 
     actor = require_auth(ctx)
     require(actor, "source.upload")
@@ -495,6 +519,63 @@ async def transcribe_source(ctx: RequestContext, *, source_id: str) -> dict[str,
             from app.errors import NotFoundError
 
             raise NotFoundError("source not found")
-    count = await transcribe_use_case(ctx.db, source_id=UUID(source_id), settings=ctx.settings)
+    operation_id = await submit_transcribe(
+        ctx.db,
+        actor=actor,
+        source_id=UUID(source_id),
+        defer=lambda op: enqueue_operation(op, ctx.settings.database_url),
+    )
     await ctx.db.commit()
-    return {"source_id": source_id, "passages": count}
+    return {"operation_id": str(operation_id)}
+
+
+async def _owned_course_ids(ctx: RequestContext) -> list[UUID] | None:
+    """Courses the actor may see queued items for; None is the superadmin view."""
+    from app.services.courses import list_courses as list_use_case
+
+    actor = require_auth(ctx)
+    if actor.is_superadmin:
+        return None
+    rows = await list_use_case(ctx.db, owner_id=actor.user_id, is_superadmin=False)
+    return [UUID(str(row["id"])) for row in rows]
+
+
+async def list_human_queue(ctx: RequestContext) -> list[dict[str, Any]]:
+    from app.services.library import list_human_queue as list_use_case
+
+    actor = require_auth(ctx)
+    require(actor, "source.approve")
+    return await list_use_case(ctx.db, course_ids=await _owned_course_ids(ctx))
+
+
+async def resolve_human_queue(ctx: RequestContext, *, item_id: str, body: Any) -> dict[str, Any]:
+    import sqlalchemy as sa
+
+    from app.errors import NotFoundError
+    from app.services.library import resolve_human_queue as resolve_use_case
+
+    actor = require_auth(ctx)
+    require(actor, "source.approve")
+    owned = await _owned_course_ids(ctx)
+    if owned is not None:
+        row = (
+            await ctx.db.execute(
+                sa.text("SELECT payload FROM human_queue WHERE id = :item AND status = 'open'"),
+                {"item": item_id},
+            )
+        ).first()
+        if row is None:
+            raise NotFoundError("queue item not found")
+        course = dict(row[0] or {}).get("course_id")
+        if course is None or UUID(str(course)) not in owned:
+            raise NotFoundError("queue item not found")
+    action = str((body or {}).get("action", ""))
+    result = await resolve_use_case(
+        ctx.db,
+        item_id=UUID(item_id),
+        action=action,
+        settings=ctx.settings,
+        approved_by=actor.user_id,
+    )
+    await ctx.db.commit()
+    return result
