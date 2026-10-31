@@ -226,6 +226,7 @@ async def test_list_courses_scoped_to_caller(t03_session: AsyncSession) -> None:
             "status",
             "has_profile",
             "has_plan",
+            "scope_tags",
             "open_questions",
         }
         assert row["has_profile"] is True
