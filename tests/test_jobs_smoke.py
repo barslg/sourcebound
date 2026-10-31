@@ -1,8 +1,9 @@
 """Worker-job smoke: one enqueue, run, row per operation kind on the mock provider.
 
 Kinds: echo, plan, generation (with resume and the no-double-pay money
-guard), translation, resume_run, transcribe_audio. rewrite_* kinds run the
-generation body and are covered by it.
+guard, the reader's unknown/unread cases and the key validation), translation,
+resume_run, transcribe_audio. rewrite_* kinds run run_rewrite_operation, which
+drives the same generation handlers.
 """
 
 from __future__ import annotations
@@ -1075,3 +1076,157 @@ async def test_audio_upload_is_queued_then_ready(t03_session: AsyncSession) -> N
     assert count == 1
     sources = await list_course_sources(t03_session, course_id=course)
     assert sources[0]["ingest_status"] == "ready"
+
+
+async def _smoke_course_and_dag(
+    session: AsyncSession, prefix: str
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """A planned 4-block course (ids b1..b4) and its compiled generation DAG."""
+    demo = await demo_t05.setup_demo(
+        session, settings=_gen_settings(), email=demo_t05.fresh_email(prefix)
+    )
+    await demo_t05.write_demo_tree(session, course_id=demo["course_id"])
+    dag = demo_t05.demo_dag(
+        course_id=demo["course_id"],
+        tree=demo_t05.demo_tree(),
+        sources=demo_t05.demo_sources(demo["passages"]),
+        dossier=demo_t05.demo_dossier(),
+        planted=demo_t05.plant_spot_error(demo["passages"]),
+    )
+    return demo, dag
+
+
+def _edited(inner: Any, edit: Any) -> Any:
+    """Wrap a mock handler: `edit(prompt, reply)` may rewrite the model's JSON reply."""
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        response = inner(request)
+        prompt = str(json.loads(request.content.decode("utf-8")).get("input", ""))
+        reply = json.loads(response.json()["output"][0]["content"][0]["text"])
+        return httpx2.Response(200, json=demo_t05._completed(json.dumps(edit(prompt, reply))))
+
+    return handler
+
+
+async def _smoke_run(
+    session: AsyncSession, demo: dict[str, Any], dag: list[dict[str, Any]], handler: Any
+) -> dict[str, Any]:
+    from app.db import create_session_factory
+    from app.runs import executor
+
+    settings = _gen_settings()
+    run_id = await executor.new_run(
+        session, course_id=demo["course_id"], kind="generation", dag=dag
+    )
+    await session.commit()
+    ledger = create_session_factory(_db_url())
+    http = guarded_client(settings, inner=httpx2.MockTransport(handler))
+    return await executor.drive_run(
+        create_session_factory(_db_url()),
+        run_id=run_id,
+        provider_factory=_gen_provider_factory(http, ledger, settings),
+        handlers=demo_t05.generation_handlers(),
+    )
+
+
+async def _smoke_blocks(session: AsyncSession, course_id: UUID) -> dict[str, tuple[str, str]]:
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT b.plan_node_id, b.status, coalesce(b.hold_reason, '') FROM blocks b"
+                " JOIN topics t ON t.id = b.topic_id JOIN modules m ON m.id = t.module_id"
+                " WHERE m.course_id = :c"
+            ),
+            {"c": str(course_id)},
+        )
+    ).all()
+    return {str(r[0]): (str(r[1]), str(r[2])) for r in rows}
+
+
+async def test_generation_reader_unknown_holds_the_block_and_the_author_has_a_way_out(
+    t03_session: AsyncSession,
+) -> None:
+    """The reader cannot decide b2: it is held (never draft), the run ends done, accept works."""
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-unknown")
+
+    def unknown_b2(prompt: str, reply: dict[str, Any]) -> dict[str, Any]:
+        for verdict in reply.get("verdicts", []):
+            if verdict["plan_node_id"] == "b2":
+                verdict["verdict"] = "unknown"
+                verdict["items"]["answer_key"]["verdict"] = "unknown"
+        return reply
+
+    handler = _edited(demo_t05.mock_demo_handler(), unknown_b2)
+    final = await _smoke_run(t03_session, demo, dag, handler)
+    assert final["status"] == "done", final["stop_marker"]
+    blocks = await _smoke_blocks(t03_session, demo["course_id"])
+    assert blocks["b2"][0] == "held" and "could not decide" in blocks["b2"][1], blocks
+    assert all(status != "draft" for status, _ in blocks.values()), blocks
+    block_id = (
+        await t03_session.execute(
+            sa.text(
+                "SELECT b.id FROM blocks b JOIN topics t ON t.id = b.topic_id"
+                " JOIN modules m ON m.id = t.module_id"
+                " WHERE m.course_id = :c AND b.plan_node_id = 'b2'"
+            ),
+            {"c": str(demo["course_id"])},
+        )
+    ).scalar_one()
+    await course_service.accept_block(t03_session, block_id=UUID(str(block_id)))
+    await t03_session.commit()
+    assert (await _smoke_blocks(t03_session, demo["course_id"]))["b2"][0] == "accepted"
+
+
+async def test_generation_item_unknown_under_a_block_pass_is_held_not_accepted(
+    t03_session: AsyncSession,
+) -> None:
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-item")
+
+    def item_unknown(prompt: str, reply: dict[str, Any]) -> dict[str, Any]:
+        for verdict in reply.get("verdicts", []):
+            if verdict["plan_node_id"] == "b1":
+                verdict["items"]["grounding"]["verdict"] = "unknown"
+        return reply
+
+    final = await _smoke_run(
+        t03_session, demo, dag, _edited(demo_t05.mock_demo_handler(), item_unknown)
+    )
+    assert final["status"] == "done"
+    assert (await _smoke_blocks(t03_session, demo["course_id"]))["b1"][0] == "held"
+
+
+async def test_generation_run_never_ends_done_with_a_block_no_reader_covered(
+    t03_session: AsyncSession,
+) -> None:
+    """Guards the author's way out: only a genuinely unread block stops the run."""
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-unread")
+    dag = [step for step in dag if step["step_key"] != "reader:t2"]
+    for step in dag:
+        step["depends_on"] = [d for d in step.get("depends_on", []) if d != "reader:t2"]
+    final = await _smoke_run(t03_session, demo, dag, demo_t05.mock_demo_handler())
+    assert final["status"] == "stopped"
+    assert "never read" in str(final["stop_marker"])
+    blocks = await _smoke_blocks(t03_session, demo["course_id"])
+    assert blocks["b3"][0] == "draft" and blocks["b1"][0] == "accepted", blocks
+
+
+async def test_generation_choice_without_a_correct_option_is_held(
+    t03_session: AsyncSession,
+) -> None:
+    """A key the grader would misread (nothing correct = 1.0 for picking nothing) holds."""
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-key")
+
+    def no_correct(prompt: str, reply: dict[str, Any]) -> dict[str, Any]:
+        if reply.get("block_type") == "choice":
+            reply["options"] = [
+                {"text": "One", "correct": False},
+                {"text": "Two", "correct": False},
+            ]
+        return reply
+
+    final = await _smoke_run(
+        t03_session, demo, dag, _edited(demo_t05.mock_demo_handler(), no_correct)
+    )
+    assert final["status"] == "done"
+    status, reason = (await _smoke_blocks(t03_session, demo["course_id"]))["b2"]
+    assert status == "held" and "correct" in reason, (status, reason)
