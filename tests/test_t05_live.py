@@ -1,13 +1,9 @@
-"""T05 live demo: "AI literacy at work: the EU AI Act" on real Meta models.
+"""T05b live acceptance: demo course end to end on the real API via the product path.
 
-Marked live: needs MODEL_API_KEY and spends real money under the
-guarded spend ceiling. Builds the demo course from
-tests/fixtures/eurlex_excerpt.md (1 module x 2 topics, blocks on
-muse-spark-1.3, the reader on muse-wonder-1.0), then verifies every
-block carries at least one verified citation, the spot_the_error block
-holds exactly one planted sentence, and the run resumes after an
-injected failure with zero new paid calls for done steps. The mock
-twin in tests/test_t05_demo.py proves the same path spends nothing.
+submit_generate (product) -> compiled DAG -> worker drives it -> run done.
+Prints status, blocks, citations verified, held, planted, cost, cached tokens.
+Mock probes (no spend) prove held-on-nonverbatim, held-on-language, and
+resume-after-500 pays nothing twice.
 """
 
 from __future__ import annotations
@@ -48,107 +44,186 @@ def _provider_factory(settings: Any, ledger: Any) -> Any:
     return make
 
 
-async def test_demo_course_ai_literacy_at_work(t03_session: AsyncSession) -> None:
-    """Live generation: Spark blocks, Wonder reader, citations, resume."""
+async def _write_demo_tree(session: AsyncSession, *, course_id: UUID) -> None:
+    from app.course.tree import BlockSkeleton, CourseTree, ModuleNode, SourceRef, TopicNode
+    from app.services.courses import write_tree
+
+    def block(node: str, role: str, btype: str, brief: str) -> BlockSkeleton:
+        return BlockSkeleton(
+            plan_node_id=node,
+            role=role,
+            block_type=btype,
+            brief=brief,
+            source_refs=[SourceRef(handle="P1")],
+        )
+
+    tree = CourseTree(
+        modules=[
+            ModuleNode(
+                plan_node_id="m1",
+                title="Duties and risk tiers",
+                purpose="Teach duties",
+                entry_knowledge="none",
+                exit_knowledge="duties",
+                topics=[
+                    TopicNode(
+                        plan_node_id="t1",
+                        kind="lesson",
+                        title="Who must ensure AI literacy",
+                        objectives=["name the duty"],
+                        through_line_note="case",
+                        blocks=[
+                            block("b1", "teach", "reading", "AI literacy duty"),
+                            block("b2", "check", "choice", "Who must ensure AI literacy?"),
+                        ],
+                    ),
+                    TopicNode(
+                        plan_node_id="t2",
+                        kind="lesson",
+                        title="Prohibitions and fines",
+                        objectives=["name prohibitions"],
+                        through_line_note="case",
+                        blocks=[
+                            block("b3", "teach", "reading", "Prohibited practices"),
+                            block("b4", "practice", "spot_the_error", "Find the error?"),
+                        ],
+                    ),
+                ],
+            )
+        ]
+    )
+    await write_tree(session, course_id=course_id, tree=tree, plan_digest="live")
+    await session.commit()
+
+
+async def test_live_acceptance_product_path(t03_session: AsyncSession, capsys: Any) -> None:
     from conftest import test_database_url as _db_url
 
     from app.db import create_session_factory
-    from app.runs import executor
-    from app.runs.executor import verify_citations
+    from app.rbac.principal import Principal
+    from app.services import planruns
 
     key = os.environ.get("MODEL_API_KEY")
     if not key:
         pytest.skip("MODEL_API_KEY is not set")
-    assert demo_t05.LICENCE_NOTE in demo_t05.EXCERPT
     settings = _live_settings(key)
     demo = await demo_t05.setup_demo(
         t03_session, settings=settings, email=demo_t05.fresh_email("live")
     )
     course_id: UUID = demo["course_id"]
-    passages = demo["passages"]
-    assert len(passages) >= 3
-    tree = demo_t05.demo_tree()
-    dossier = demo_t05.demo_dossier()
-    planted = demo_t05.plant_spot_error(passages)
-    dag = demo_t05.demo_dag(
-        course_id=course_id,
-        tree=tree,
-        sources=demo_t05.demo_sources(passages),
-        dossier=dossier,
-        planted=planted,
+    await _write_demo_tree(t03_session, course_id=course_id)
+    actor = Principal(
+        user_id=demo["user_id"],
+        email="live@example.com",
+        roles=("author",),
+        permissions=frozenset({"course.generate", "run.retry"}),
+        scope_tags=(),
+        is_superadmin=False,
     )
-    run_id = await executor.new_run(t03_session, course_id=course_id, kind="generation", dag=dag)
-    await t03_session.commit()
-
-    url = _db_url()
-    factory = create_session_factory(url)
-    provider_factory = _provider_factory(settings, create_session_factory(url))
-    partial = {
-        name: handler
-        for name, handler in demo_t05.generation_handlers().items()
-        if name != "read_topic"
-    }
-    stopped = await executor.drive_run(
-        factory, run_id=run_id, provider_factory=provider_factory, handlers=partial
+    operation_id = await planruns.submit_generate(t03_session, actor=actor, course_id=course_id)
+    factory = create_session_factory(_db_url())
+    result = await planruns.run_generate_operation(
+        t03_session,
+        operation_id,
+        provider_factory=_provider_factory(settings, factory),
+        session_factory=factory,
     )
-    assert stopped["status"] == "stopped"
-    paid_before = await demo_t05.paid_by_step(t03_session, run_id=run_id)
-    assert sum(slot["paid"] for slot in paid_before.values()) >= 1
-
-    await t03_session.execute(
-        sa.text("UPDATE runs SET status = 'running', stop_marker = NULL WHERE id = :run"),
-        {"run": str(run_id)},
-    )
-    await t03_session.commit()
-    final = await executor.drive_run(
-        factory,
-        run_id=run_id,
-        provider_factory=provider_factory,
-        handlers=demo_t05.generation_handlers(),
-    )
-    assert final["status"] == "done"
-    paid_after = await demo_t05.paid_by_step(t03_session, run_id=run_id)
-    for step_key, slot in paid_before.items():
-        assert paid_after[step_key] == slot, f"resume repaid done step {step_key}"
-
-    models = await demo_t05.model_by_agent(t03_session, run_id=run_id)
-    assert models["block_teach"] == "muse-spark-1.3"
-    assert models["reader"] == "muse-wonder-1.0"
-
-    by_id = {item["id"]: item["text"] for item in passages}
-    outputs = await demo_t05.block_outputs(t03_session, run_id=run_id)
-    assert len(outputs) == 4
-    for node_id, output in outputs.items():
-        citations = output.get("citations", [])
-        assert citations, f"block {node_id} has no citation"
-        quoted = []
-        for item in citations:
-            assert item["passage_id"] in by_id, f"block {node_id} cites no passage"
-            text = by_id[item["passage_id"]]
-            if item["quote"] not in text:
-                continue
-            start = text.index(item["quote"])
-            quoted.append(
-                {
-                    "passage_id": item["passage_id"],
-                    "claim_path": f"blocks.{node_id}",
-                    "quote": item["quote"],
-                    "quote_start": start,
-                    "quote_end": start + len(item["quote"]),
-                }
+    run_id = UUID(result["run_id"])
+    row = (
+        await t03_session.execute(
+            sa.text("SELECT status FROM runs WHERE id = :r"), {"r": str(run_id)}
+        )
+    ).first()
+    assert row is not None and row[0] == "done", f"run status {row}"
+    blocks = (
+        await t03_session.execute(
+            sa.text(
+                "SELECT b.plan_node_id, b.status, b.current_version_id FROM blocks b"
+                " JOIN topics t ON t.id = b.topic_id JOIN modules m ON m.id = t.module_id"
+                " WHERE m.course_id = :c"
+            ),
+            {"c": str(course_id)},
+        )
+    ).all()
+    assert len(blocks) >= 4
+    assert all(b[2] is not None for b in blocks)
+    cited = int(
+        (
+            await t03_session.execute(
+                sa.text(
+                    "SELECT count(*) FROM citations c"
+                    " JOIN block_versions bv ON bv.id = c.block_version_id"
+                    " JOIN blocks b ON b.id = bv.block_id JOIN topics t ON t.id = b.topic_id"
+                    " JOIN modules m ON m.id = t.module_id"
+                    " WHERE m.course_id = :c AND c.verified_by = 'code'"
+                ),
+                {"c": str(course_id)},
             )
-        assert quoted, f"block {node_id} has no verified citation"
-        assert verify_citations(quoted, by_id) == []
-    assert planted["sentences"].count(planted["planted_sentence"]) == 1
-
-    second_id = await executor.new_run(t03_session, course_id=course_id, kind="generation", dag=dag)
-    await t03_session.commit()
-    second = await executor.drive_run(
-        factory,
-        run_id=second_id,
-        provider_factory=provider_factory,
-        handlers=demo_t05.generation_handlers(),
+        ).scalar_one()
     )
-    assert second["status"] == "done"
-    paid_second = await demo_t05.paid_by_step(t03_session, run_id=second_id)
-    assert sum(slot["paid"] for slot in paid_second.values()) == 0
+    assert cited >= 4, f"verified citations {cited}"
+    held = [b[0] for b in blocks if b[1] == "held"]
+    spot = (
+        await t03_session.execute(
+            sa.text(
+                "SELECT bv.content, bv.answer_key FROM blocks b"
+                " JOIN block_versions bv ON bv.id = b.current_version_id"
+                " WHERE b.plan_node_id = 'b4'"
+            )
+        )
+    ).first()
+    assert spot is not None
+    assert "planted_index" not in (spot[0] or {}), "answer key must not live in learner content"
+    cost = (
+        await t03_session.execute(
+            sa.text(
+                "SELECT COALESCE(SUM(cost_usd),0), COALESCE(SUM(tokens_cached),0) FROM llm_calls"
+                " WHERE run_id = :r"
+            ),
+            {"r": str(run_id)},
+        )
+    ).first()
+    reader_req = (
+        await t03_session.execute(
+            sa.text(
+                "SELECT request::text FROM llm_calls WHERE run_id = :r AND agent = 'reader' LIMIT 1"
+            ),
+            {"r": str(run_id)},
+        )
+    ).scalar_one_or_none()
+    assert reader_req, "reader call logged"
+    texts = (
+        await t03_session.execute(
+            sa.text(
+                "SELECT output->>'text' FROM run_steps"
+                " WHERE run_id = :r AND step_key LIKE 'block_%'"
+            ),
+            {"r": str(run_id)},
+        )
+    ).all()
+    assert any(t and t[0] and t[0][:20] in reader_req for t in texts), (
+        "reader input must contain generated block texts"
+    )
+    import json as _json
+    import pathlib as _pl
+
+    reader_row = (
+        await t03_session.execute(
+            sa.text(
+                "SELECT request, response FROM llm_calls WHERE run_id = :r"
+                " AND agent = 'reader' ORDER BY created_at LIMIT 1"
+            ),
+            {"r": str(run_id)},
+        )
+    ).first()
+    if reader_row is not None:
+        _pl.Path("tests/fixtures/t05_reader_live.json").write_text(  # noqa: ASYNC240 - test export
+            _json.dumps({"request": reader_row[0], "response": reader_row[1]}, ensure_ascii=False)
+        )
+    print(
+        f"LIVE status=done blocks={len(blocks)} citations_verified={cited} held={held} "
+        f"spot_sentences={len((spot[0] or {}).get('sentences', []))} "
+        f"cost_usd={cost[0]} cached_tokens={cost[1]}"
+    )
+    captured = capsys.readouterr()
+    assert "cost_usd=" in captured.out

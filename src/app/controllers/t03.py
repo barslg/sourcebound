@@ -157,6 +157,81 @@ async def cancel_run(ctx: RequestContext, *, run_id: str) -> dict[str, bool]:
     return {"ok": True}
 
 
+async def translate_course(
+    ctx: RequestContext,
+    *,
+    course_id: str,
+    languages: list[str],
+    glossary: dict[str, str] | None = None,
+    idempotency_key: str | None = None,
+) -> dict[str, str]:
+    from app.services.courses import get_course as get_use_case
+    from app.services.planruns import submit_translate as submit_use_case
+    from app.tasks.jobs import enqueue_operation
+
+    actor = require_auth(ctx)
+    require(actor, "course.generate")
+    course = await get_use_case(ctx.db, course_id=UUID(course_id))
+    _owner_or_404(course, actor.user_id, actor.is_superadmin)
+    operation_id = await submit_use_case(
+        ctx.db,
+        actor=actor,
+        course_id=UUID(course_id),
+        languages=languages,
+        glossary=glossary,
+        idempotency_key=idempotency_key,
+        defer=lambda op: enqueue_operation(op, ctx.settings.database_url),
+    )
+    return {"operation_id": str(operation_id)}
+
+
+async def get_learner_course(
+    ctx: RequestContext, *, course_id: str, language: str
+) -> dict[str, Any]:
+    from app.services.courses import get_course as get_use_case
+    from app.services.planruns import learner_course_view
+
+    actor = require_auth(ctx)
+    require(actor, "learner.view")
+    course = await get_use_case(ctx.db, course_id=UUID(course_id))
+    _owner_or_404(course, actor.user_id, actor.is_superadmin)
+    return await learner_course_view(ctx.db, course_id=UUID(course_id), language=language)
+
+
+async def set_source_language(
+    ctx: RequestContext,
+    *,
+    source_id: str,
+    language: str,
+    passage_id: str | None = None,
+) -> dict[str, Any]:
+    from app.services.library import set_passage_language_override
+
+    actor = require_auth(ctx)
+    require(actor, "source.edit")
+    import sqlalchemy as sa
+
+    if passage_id:
+        config = await set_passage_language_override(
+            ctx.db, passage_id=passage_id, language=language
+        )
+        await ctx.db.commit()
+        return {"ok": True, "ts_config": config, "passages": 1}
+    rows = (
+        await ctx.db.execute(
+            sa.text("SELECT id FROM passages WHERE source_id = :source"),
+            {"source": source_id},
+        )
+    ).all()
+    last_config: str | None = None
+    for row in rows:
+        last_config = await set_passage_language_override(
+            ctx.db, passage_id=str(row[0]), language=language
+        )
+    await ctx.db.commit()
+    return {"ok": True, "ts_config": last_config, "passages": len(rows)}
+
+
 async def get_held(ctx: RequestContext, *, course_id: str) -> dict[str, Any]:
     from app.services.courses import get_course as get_use_case
     from app.services.courses import held_blocks

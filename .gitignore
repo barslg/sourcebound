@@ -33,3 +33,4 @@ prompts/
 .agents/
 AGENTS.md
 var/
+!tests/fixtures/**/*.md

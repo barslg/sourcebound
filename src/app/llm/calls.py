@@ -21,6 +21,17 @@ from app.models.llm import llm_calls
 WIPED_REQUEST: dict[str, Any] = {"wiped": True}
 
 
+def sanitize_json(value: Any) -> Any:
+    """Recursively strip NUL bytes (Postgres JSONB rejects \\u0000)."""
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, dict):
+        return {str(k).replace("\x00", ""): sanitize_json(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [sanitize_json(v) for v in value]
+    return value
+
+
 async def log_call(
     session: AsyncSession,
     *,
@@ -56,8 +67,8 @@ async def log_call(
             tokens_reasoning=reasoning_tokens,
             cost_usd=cost,
             duration_ms=duration_ms,
-            request=request,
-            response=response,
+            request=sanitize_json(request),
+            response=sanitize_json(response),
             response_id=response_id,
             status=status,
             variant=variant,
@@ -97,7 +108,7 @@ async def complete_background_call(
             tokens_reasoning=reasoning_tokens,
             cost_usd=cost,
             duration_ms=duration_ms,
-            response=response,
+            response=sanitize_json(response),
         )
     )
 

@@ -41,6 +41,7 @@ AGENT_SCHEMAS: dict[str, dict[str, object]] = {
     "reader": tree.READER_SCHEMA,
     "saboteur": tree.SABOTEUR_SCHEMA,
     "continuity": tree.CONTINUITY_SCHEMA,
+    "translator": tree.TRANSLATOR_SCHEMA,
 }
 
 
@@ -62,8 +63,25 @@ def assemble(system: str, dynamic: str) -> str:
     return f"{system.rstrip()}\n\n## Task input (typed, assembled by code)\n{dynamic}"
 
 
+# Keys code reads from each agent reply; the schema must require them all.
+CODE_REQUIRED: dict[str, set[str]] = {
+    "reader": {"verdicts"},
+    "saboteur": {"sentence", "kind", "mutated"},
+    "translator": {"segments"},
+    "continuity": {"handoffs", "issues"},
+}
+
+
 def validate_agents(root: Path | str = PROMPT_ROOT) -> None:
-    """Startup check: every agent has a prompt file and a strict schema."""
+    """Startup check: prompts, strict schemas, code-required keys subset."""
+    for agent, required in CODE_REQUIRED.items():
+        schema = AGENT_SCHEMAS.get(agent, {})
+        req = schema.get("required", [])
+        missing = required - (set(req) if isinstance(req, list) else set())
+        if missing:
+            raise ConfigurationError(
+                f"agent {agent}: schema misses code-required {sorted(missing)}"
+            )
     for agent, schema in AGENT_SCHEMAS.items():
         system_prompt(agent, root)
         validate_strict_subset(schema, name=agent)

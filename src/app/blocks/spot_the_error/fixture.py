@@ -8,14 +8,12 @@ SENTINEL = "SENTINEL_SPOT_THE_ERROR_ANSWER_KEY_do_not_render"
 
 
 def fixture() -> tuple[dict[str, Any], dict[str, Any]]:
-    """Two true sentences plus one planted negation; key carries the sentinel."""
+    """Two sentences for learners; index and kind live only in the key."""
     content = {
         "sentences": [
             "Deployers must train staff.",
             "The GDPR never applies to AI at work.",
         ],
-        "planted_index": 1,
-        "kind": "scope",
     }
     answer_key = {
         "planted_sentence": "The GDPR never applies to AI at work.",

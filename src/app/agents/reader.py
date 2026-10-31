@@ -18,7 +18,7 @@ RUBRIC_ITEMS: tuple[str, ...] = (
     "continuity",
     "answer_key",
     "audience_language",
-    "planted_error_integrity",
+    "planted_error",
 )
 
 VERDICTS = ("pass", "hold", "unknown")
@@ -69,22 +69,18 @@ def check_reader_output(payload: dict[str, Any], *, node_ids: set[str]) -> list[
         if verdict.get("verdict") not in VERDICTS:
             errors.append(f"verdicts[{position}]: verdict must be pass/hold/unknown")
         items = verdict.get("items")
-        if not isinstance(items, list):
-            errors.append(f"verdicts[{position}]: items must be a list")
+        if not isinstance(items, dict):
+            errors.append(f"verdicts[{position}]: items must be a fixed rubric object")
             continue
-        seen = {
-            str(item.get("item", ""))
-            for item in items
-            if isinstance(item, dict) and str(item.get("item", ""))
-        }
         for required in RUBRIC_ITEMS:
-            if required not in seen:
-                errors.append(f"verdicts[{position}]: missing rubric item {required}")
-        for item in items:
+            item = items.get(required)
             if not isinstance(item, dict):
+                errors.append(f"verdicts[{position}]: missing rubric item {required}")
                 continue
+            if item.get("verdict") not in VERDICTS:
+                errors.append(f"verdicts[{position}]: {required} verdict must be pass/hold/unknown")
             if not str(item.get("evidence", "")).strip():
-                errors.append(f"verdicts[{position}]: {item.get('item')}: evidence is required")
+                errors.append(f"verdicts[{position}]: {required}: evidence is required")
     return errors
 
 

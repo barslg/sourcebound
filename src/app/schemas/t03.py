@@ -46,3 +46,14 @@ class SourceFetchRequest(BaseModel):
 
 class HumanQueueResolveRequest(BaseModel):
     action: str = Field(pattern="^(approve|dismiss)$")
+
+
+class TranslateRequest(BaseModel):
+    languages: list[str] = Field(min_length=1)
+    glossary: dict[str, str] = Field(default_factory=dict)
+    idempotency_key: str | None = None
+
+
+class SourceLanguageRequest(BaseModel):
+    language: str = Field(min_length=2, max_length=10)
+    passage_id: str | None = None

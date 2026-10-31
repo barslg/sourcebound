@@ -8,7 +8,7 @@ const e2eDb = base.replace(/\/[^/?]*(\?.*)?$/, '/muse_e2e')
 const backendEnv = {
   DATABASE_URL: e2eDb,
   APP_ENV: 'local',
-  SUPERADMIN_EMAILS: 'admin@example.test',
+  SUPERADMIN_EMAILS: 'admin@example.com',
   SESSION_SECURE_COOKIE: 'false',
   SSE_PING_S: '5',
   OIDC_ISSUER: `http://127.0.0.1:${oidcPort}`,

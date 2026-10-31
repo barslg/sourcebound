@@ -358,7 +358,7 @@ async def test_generate_refuses_while_questions_open(t03_session: AsyncSession) 
         operations=[{"op": "set_constraint", "key": "scope_act", "answer": {"act": "AI Act"}}],
     )
     await t03_session.commit()
-    from app.errors import ConflictError, UnprocessableError, http_status_for
+    from app.errors import UnprocessableError
 
     with pytest.raises(UnprocessableError, match="plan is empty"):
         await planruns.submit_generate(t03_session, actor=actor, course_id=course_id, defer=None)
@@ -367,14 +367,10 @@ async def test_generate_refuses_while_questions_open(t03_session: AsyncSession) 
         {"c": str(course_id)},
     )
     await t03_session.commit()
-    with pytest.raises(ConflictError, match="generation pipeline"):
-        await planruns.submit_generate(t03_session, actor=actor, course_id=course_id, defer=None)
-    try:
-        await planruns.submit_generate(t03_session, actor=actor, course_id=course_id, defer=None)
-    except ConflictError as exc:
-        assert http_status_for(exc) == 409
-    else:  # pragma: no cover - the raise above always fires
-        raise AssertionError("submit_generate must refuse with 409")
+    operation_id = await planruns.submit_generate(
+        t03_session, actor=actor, course_id=course_id, defer=None
+    )
+    assert operation_id is not None
 
 
 async def test_plan_edit_and_idempotent_submit(t03_session: AsyncSession) -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, UploadFile
+from fastapi import APIRouter, Depends, Request, UploadFile
 
 from app.auth.ctx import RequestContext, get_ctx
 from app.controllers import t03 as controller
@@ -175,6 +175,52 @@ async def upload_source(
         course_id=course_id,
         licence=licence,
         as_of=as_of,
+    )
+
+
+@courses_router.post("/{course_id}/translate", status_code=202)
+async def translate_course(
+    course_id: str,
+    body: dto.TranslateRequest,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, str]:
+    """Translate the course into the given languages as an operation."""
+    return await controller.translate_course(
+        ctx,
+        course_id=course_id,
+        languages=body.languages,
+        glossary=body.glossary,
+        idempotency_key=body.idempotency_key,
+    )
+
+
+@courses_router.get("/{course_id}/learner")
+async def get_learner_course(
+    course_id: str,
+    request: Request,
+    lang: str | None = None,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, Any]:
+    """Learner view in ?lang= / Accept-Language, with fallbacks."""
+    language = lang
+    if language is None:
+        header = (
+            str(request.headers.get("accept-language", "")) if hasattr(request, "headers") else ""
+        )
+        if header:
+            language = header.split(",")[0].strip().split("-")[0]
+    return await controller.get_learner_course(ctx, course_id=course_id, language=language or "en")
+
+
+@sources_router.patch("/{source_id}/language")
+async def set_source_language(
+    source_id: str,
+    body: dto.SourceLanguageRequest,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, Any]:
+    """Store a human language override on a source's passages."""
+    return await controller.set_source_language(
+        ctx, source_id=source_id, language=body.language, passage_id=body.passage_id
     )
 
 

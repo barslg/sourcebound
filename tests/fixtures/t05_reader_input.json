@@ -1,1 +1,62 @@
-{"input": {"blocks": [{"brief": "topic", "plan_node_id": "n1"}], "course_language": "en", "dossier": {"handoffs": []}, "plan": {"modules": []}, "sources": [{"address": "p1/para1", "source_id": "s1", "text": "Deployers must train staff."}], "topic_plan_node_id": "t1"}, "node_ids": ["n1"], "output": {"verdicts": [{"items": [{"evidence": "quote task_fit", "item": "task_fit", "status": "pass"}, {"evidence": "quote grounding", "item": "grounding", "status": "pass"}, {"evidence": "quote continuity", "item": "continuity", "status": "pass"}, {"evidence": "quote answer_key", "item": "answer_key", "status": "pass"}, {"evidence": "quote audience_language", "item": "audience_language", "status": "pass"}, {"evidence": "quote planted_error_integrity", "item": "planted_error_integrity", "status": "pass"}], "plan_node_id": "n1", "verdict": "pass"}]}}
+{
+ "input": {
+  "blocks": [
+   {
+    "brief": "topic",
+    "plan_node_id": "n1"
+   }
+  ],
+  "course_language": "en",
+  "dossier": {
+   "handoffs": []
+  },
+  "plan": {
+   "modules": []
+  },
+  "sources": [
+   {
+    "address": "p1/para1",
+    "source_id": "s1",
+    "text": "Deployers must train staff."
+   }
+  ],
+  "topic_plan_node_id": "t1"
+ },
+ "node_ids": [
+  "n1"
+ ],
+ "output": {
+  "verdicts": [
+   {
+    "items": {
+     "answer_key": {
+      "evidence": "quote answer_key",
+      "verdict": "pass"
+     },
+     "audience_language": {
+      "evidence": "quote audience_language",
+      "verdict": "pass"
+     },
+     "continuity": {
+      "evidence": "quote continuity",
+      "verdict": "pass"
+     },
+     "grounding": {
+      "evidence": "quote grounding",
+      "verdict": "pass"
+     },
+     "planted_error": {
+      "evidence": "quote planted_error_integrity",
+      "verdict": "pass"
+     },
+     "task_fit": {
+      "evidence": "quote task_fit",
+      "verdict": "pass"
+     }
+    },
+    "plan_node_id": "n1",
+    "verdict": "pass"
+   }
+  ]
+ }
+}

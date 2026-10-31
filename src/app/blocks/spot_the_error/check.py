@@ -16,9 +16,10 @@ def grade(
     planted = {
         "sentences": list(content.get("sentences", [])),
         "planted_sentence": str(answer_key.get("planted_sentence", "")),
-        "planted_index": int(answer_key.get("planted_index", 0)),
+        "planted_index": int(answer_key.get("planted_index", -1)),
         "kind": str(answer_key.get("kind", "negation")),
         "passage": str(answer_key.get("passage", "P1")),
         "true_sentence": str(answer_key.get("true_sentence", "")),
+        "fully_correct": bool(answer_key.get("fully_correct", False)),
     }
     return grade_spot_error(planted, submission=submission)

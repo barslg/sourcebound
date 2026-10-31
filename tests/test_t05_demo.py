@@ -67,15 +67,22 @@ async def _verify_demo(
     for node_id, output in outputs.items():
         citations = output.get("citations", [])
         assert citations, f"block {node_id} has no citation"
+        handle_to_id = {
+            f"P{i}": item["id"]
+            for i, item in enumerate(
+                sorted(passages, key=lambda x: (x["source_id"], x["address"])), 1
+            )
+        }
         for citation in citations:
-            assert citation["passage_id"] in by_id, f"block {node_id} cites no passage"
+            pid = handle_to_id.get(str(citation["passage_id"]), str(citation["passage_id"]))
+            assert pid in by_id, f"block {node_id} cites no passage"
         quoted = []
         for item in citations:
-            text = by_id[item["passage_id"]]
+            text = by_id[handle_to_id.get(str(item["passage_id"]), str(item["passage_id"]))]
             start = text.index(item["quote"])
             quoted.append(
                 {
-                    "passage_id": item["passage_id"],
+                    "passage_id": pid,
                     "claim_path": f"blocks.{node_id}",
                     "quote": item["quote"],
                     "quote_start": start,

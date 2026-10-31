@@ -138,14 +138,14 @@ STEPS: dict[str, StepSpec] = {
     "architect": StepSpec(model="muse-wonder-1.0", effort="high", max_output_tokens=8000),
     "block_teach": StepSpec(model="muse-spark-1.3", effort="medium", max_output_tokens=4000),
     "block_example": StepSpec(model="muse-spark-1.3", effort="medium", max_output_tokens=4000),
-    "block_check": StepSpec(model="muse-spark-1.3", effort="high", max_output_tokens=4000),
+    "block_check": StepSpec(model="muse-spark-1.3", effort="medium", max_output_tokens=4000),
     "block_practice": StepSpec(model="muse-spark-1.3", effort="high", max_output_tokens=6000),
     "block_test": StepSpec(model="muse-spark-1.3", effort="high", max_output_tokens=6000),
-    "reader": StepSpec(model="muse-wonder-1.0", effort="high", max_output_tokens=4000),
+    "reader": StepSpec(model="muse-wonder-1.0", effort="high", max_output_tokens=12000),
     "saboteur": StepSpec(model="muse-wonder-1.0", effort="medium", max_output_tokens=4000),
     "translator": StepSpec(model="muse-spark-1.3", effort="low", max_output_tokens=8000),
     "tutor": StepSpec(model="muse-spark-1.3", effort="low", max_output_tokens=2000),
-    "continuity": StepSpec(model="muse-wonder-1.0", effort="high", max_output_tokens=4000),
+    "continuity": StepSpec(model="muse-wonder-1.0", effort="high", max_output_tokens=8000),
 }
 
 

@@ -122,6 +122,8 @@ T03_TABLES = [
     "blocks",
     "topics",
     "modules",
+    "translation_blocks",
+    "course_translations",
     "course_versions",
     "courses",
     "course_groups",
@@ -132,6 +134,7 @@ T03_TABLES = [
     "runs",
     "operations",
     "notifications",
+    "translation_memory",
 ]
 
 

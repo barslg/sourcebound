@@ -71,18 +71,177 @@ def store_path(store_root: str | Path, digest: str, suffix: str) -> Path:
     return Path(store_root) / f"{digest}{suffix}"
 
 
+_EN_STOPWORDS = frozenset(
+    {
+        "the",
+        "and",
+        "of",
+        "to",
+        "in",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "with",
+        "for",
+        "on",
+        "that",
+        "this",
+        "it",
+        "as",
+        "by",
+        "an",
+        "a",
+        "or",
+        "not",
+        "must",
+        "shall",
+        "will",
+        "have",
+        "has",
+        "from",
+        "their",
+        "they",
+        "you",
+        "we",
+        "if",
+        "when",
+        "who",
+        "what",
+        "which",
+    }
+)
+_NB_STOPWORDS = frozenset(
+    {
+        "og",
+        "i",
+        "er",
+        "det",
+        "at",
+        "av",
+        "til",
+        "på",
+        "med",
+        "for",
+        "en",
+        "et",
+        "som",
+        "ikke",
+        "skal",
+        "må",
+        "kan",
+        "vil",
+        "har",
+        "være",
+        "eller",
+        "men",
+        "om",
+        "når",
+        "hvem",
+        "hva",
+        "hvilke",
+        "denne",
+        "dette",
+        "også",
+        "derfor",
+        "fordi",
+        "mellom",
+        "gjennom",
+        "gjelder",
+        "blir",
+        "våre",
+        "deres",
+        "samtidig",
+        "etter",
+        "før",
+        "hos",
+    }
+)
+_UK_STOPWORDS = frozenset(
+    {
+        "та",
+        "і",
+        "в",
+        "у",
+        "є",
+        "що",
+        "на",
+        "з",
+        "із",
+        "до",
+        "для",
+        "не",
+        "це",
+        "як",
+        "або",
+        "але",
+        "який",
+        "яка",
+        "які",
+        "також",
+        "тому",
+        "коли",
+        "хто",
+        "повинні",
+        "можуть",
+        "цього",
+        "при",
+        "про",
+        "від",
+    }
+)
+
+
+def language_scores(text: str) -> dict[str, int]:
+    """Stopword evidence per language; script is weak, never sole, evidence.
+
+    One æøå/Cyrillic word (a place name like Tromsø inside an English
+    sentence) scores nothing: script counts only from two or more
+    script-bearing words, and never outweighs clear stopword evidence.
+    """
+    words = re.findall(r"[^\W\d_]+", text.lower())
+    word_set = set(words)
+    scores = {
+        "en": len(word_set & _EN_STOPWORDS),
+        "nb": len(word_set & _NB_STOPWORDS),
+        "uk": len(word_set & _UK_STOPWORDS),
+    }
+    if sum(1 for w in words if re.search(r"[æøå]", w)) >= 2:
+        scores["nb"] += 2
+    if sum(1 for w in words if re.search(r"[Ѐ-џ]", w)) >= 2:
+        scores["uk"] += 3
+    return scores
+
+
 def detect_language(text: str) -> str:
-    """Code heuristics for en/nb/uk (BRIEF §9): Cyrillic is uk, æøå or
-    Norwegian-only words are nb, everything else is en. A stored
-    override wins over this guess wherever callers accept one."""
-    if re.search(r"[Ѐ-џ]", text):
-        return "uk"
-    if re.search(r"[æøåÆØÅ]", text):
-        return "nb"
-    words = set(re.findall(r"[a-zæøå]+", text.lower()))
-    if words & _NB_MARKERS:
-        return "nb"
-    return "en"
+    """Code heuristics for en/nb/uk (BRIEF §9): stopwords plus script.
+
+    Function words decide; script only reinforces. English is the
+    scoreless default. A stored override wins over this guess wherever
+    callers accept one.
+    """
+    scores = language_scores(text)
+    best = max(scores, key=lambda lang: scores[lang])
+    if scores[best] == 0:
+        return "en"
+    return best
+
+
+async def set_passage_language_override(
+    session: AsyncSession, *, passage_id: str, language: str
+) -> str:
+    """Store a human language override on one passage; return its ts_config."""
+    if language in TS_CONFIG_BY_LANGUAGE.values():
+        config = language
+    else:
+        config = ts_config_for_language(language)
+    await session.execute(
+        sa.text("UPDATE passages SET ts_config = :cfg WHERE id = :pid"),
+        {"cfg": config, "pid": passage_id},
+    )
+    return config
 
 
 def ts_config_for_passage(text: str, override: str | None = None) -> str:
@@ -532,6 +691,16 @@ async def intake_url(
     source_id = UUID(str(row[0]))
     if course_id is not None:
         await bind_source_to_course(session, course_id=course_id, source_id=source_id)
+    if parser_spec is None:
+        from app.agents import librarian as _lib
+
+        derived = _lib.derive_parser_spec(page.text)
+        if derived is not None:
+            try:
+                if _lib.execute_parser_spec(page.text, derived):
+                    parser_spec = derived
+            except ValueError:
+                parser_spec = None
     if parser_spec is not None:
         from app.agents import librarian
 

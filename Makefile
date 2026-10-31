@@ -1,7 +1,7 @@
 .PHONY: check check-live check-public check-frontend
 check:
-	uv run ruff check src tests migrations scripts
-	uv run ruff format --check src tests migrations scripts
+	uv run ruff check src tests migrations scripts frontend/e2e
+	uv run ruff format --check src tests migrations scripts frontend/e2e
 	uv run mypy src
 	uv run pytest -m "not live"
 	uv run python scripts/check_layers.py

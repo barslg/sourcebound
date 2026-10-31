@@ -3,7 +3,7 @@
 Usage: python frontend/e2e/oidc_stub.py PORT. The /auth endpoint answers a
 browser navigation with a 302 back to redirect_uri carrying a fresh one-time
 code bound to the request's nonce and PKCE challenge, and the signed-in
-account named by login_hint (default stub@example.test).
+account named by login_hint (default stub@example.com).
 """
 
 from __future__ import annotations
@@ -25,7 +25,9 @@ CODES: dict[str, dict[str, str]] = {}
 
 
 def _challenge(verifier: str) -> str:
-    return base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    return (
+        base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    )
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -44,15 +46,28 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         base = f"http://127.0.0.1:{self.server.server_port}"
         if parsed.path == "/.well-known/openid-configuration":
-            self._json({"issuer": base, "authorization_endpoint": base + "/auth", "token_endpoint": base + "/token", "jwks_uri": base + "/jwks.json"})
+            self._json(
+                {
+                    "issuer": base,
+                    "authorization_endpoint": base + "/auth",
+                    "token_endpoint": base + "/token",
+                    "jwks_uri": base + "/jwks.json",
+                }
+            )
         elif parsed.path == "/jwks.json":
             self._json(_JWKS)
         elif parsed.path == "/auth":
             q = {k: v[0] for k, v in parse_qs(parsed.query).items()}
             code = f"code-{uuid.uuid4().hex}"
-            CODES[code] = {"nonce": q["nonce"], "challenge": q["code_challenge"], "email": q.get("login_hint", "stub@example.test")}
+            CODES[code] = {
+                "nonce": q["nonce"],
+                "challenge": q["code_challenge"],
+                "email": q.get("login_hint", "stub@example.com"),
+            }
             self.send_response(302)
-            self.send_header("Location", q["redirect_uri"] + "?" + urlencode({"code": code, "state": q["state"]}))
+            self.send_header(
+                "Location", q["redirect_uri"] + "?" + urlencode({"code": code, "state": q["state"]})
+            )
             self.send_header("Content-Length", "0")
             self.end_headers()
         else:
@@ -61,12 +76,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         form = parse_qs(self.rfile.read(int(self.headers.get("Content-Length", "0"))).decode())
         stored = CODES.pop((form.get("code") or [""])[0], None)
-        if stored is None or _challenge((form.get("code_verifier") or [""])[0]) != stored["challenge"]:
+        if (
+            stored is None
+            or _challenge((form.get("code_verifier") or [""])[0]) != stored["challenge"]
+        ):
             self._json({"error": "bad_code"}, 400)
             return
         base = f"http://127.0.0.1:{self.server.server_port}"
         email = stored["email"]
-        token = _mint_id_token(base, CLIENT_ID, stored["nonce"], f"sub-{email}", "", email, True, "", 300)
+        token = _mint_id_token(
+            base, CLIENT_ID, stored["nonce"], f"sub-{email}", "", email, True, "", 300
+        )
         self._json({"access_token": "fake", "token_type": "Bearer", "id_token": token})
 
 

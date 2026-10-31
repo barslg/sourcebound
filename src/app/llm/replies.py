@@ -14,6 +14,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.llm.calls import sanitize_json
 from app.models.llm import llm_replies
 
 
@@ -57,10 +58,10 @@ async def put_reply(
             request_hash=digest,
             model=model,
             prompt_version=prompt_version,
-            response=response,
+            response=sanitize_json(response),
         )
         .on_conflict_do_update(
             index_elements=[llm_replies.c.request_hash],
-            set_={"response": response},
+            set_={"response": sanitize_json(response)},
         )
     )

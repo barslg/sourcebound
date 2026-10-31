@@ -377,6 +377,86 @@ GENERATOR_SCHEMA: dict[str, Any] = _strict_object(
     }
 )
 
+_CITATIONS = {
+    "type": "array",
+    "items": _strict_object({"passage_id": _string(), "quote": _string()}),
+}
+
+BLOCK_GENERATOR_SCHEMAS: dict[str, dict[str, Any]] = {
+    "reading": _strict_object(
+        {"block_type": _string(), "text": _string(), "citations": _CITATIONS, "answer": _string()}
+    ),
+    "figure": _strict_object(
+        {"block_type": _string(), "text": _string(), "citations": _CITATIONS, "answer": _string()}
+    ),
+    "choice": _strict_object(
+        {
+            "block_type": _string(),
+            "text": _string(),
+            "citations": _CITATIONS,
+            "answer": _string(),
+            "options": {
+                "type": "array",
+                "items": _strict_object({"text": _string(), "correct": {"type": "boolean"}}),
+            },
+        }
+    ),
+    "matching": _strict_object(
+        {
+            "block_type": _string(),
+            "text": _string(),
+            "citations": _CITATIONS,
+            "answer": _string(),
+            "pairs": {
+                "type": "array",
+                "items": _strict_object({"left": _string(), "right": _string()}),
+            },
+        }
+    ),
+    "cloze": _strict_object(
+        {
+            "block_type": _string(),
+            "text": _string(),
+            "citations": _CITATIONS,
+            "answer": _string(),
+            "blanks": {"type": "array", "items": _string()},
+        }
+    ),
+    "scenario_practice": _strict_object(
+        {
+            "block_type": _string(),
+            "text": _string(),
+            "citations": _CITATIONS,
+            "answer": _string(),
+            "items": {
+                "type": "array",
+                "items": _strict_object(
+                    {"text": _string(), "passage_id": _string(), "tier": _string()}
+                ),
+            },
+        }
+    ),
+    "spot_the_error": _strict_object(
+        {
+            "block_type": _string(),
+            "text": _string(),
+            "citations": _CITATIONS,
+            "answer": _string(),
+            "sentences": {"type": "array", "items": _string()},
+        }
+    ),
+}
+
+
+def _rubric_item() -> dict[str, Any]:
+    return _strict_object(
+        {
+            "verdict": {"type": "string", "enum": ["pass", "hold", "unknown"]},
+            "evidence": _string(),
+        }
+    )
+
+
 READER_SCHEMA: dict[str, Any] = _strict_object(
     {
         "verdicts": {
@@ -384,20 +464,17 @@ READER_SCHEMA: dict[str, Any] = _strict_object(
             "items": _strict_object(
                 {
                     "plan_node_id": _string(),
-                    "verdict": {
-                        "type": "string",
-                        "enum": ["pass", "hold", "unknown"],
-                    },
-                    "items": {
-                        "type": "array",
-                        "items": _strict_object(
-                            {
-                                "item": _string(),
-                                "status": _string(),
-                                "evidence": _string(),
-                            }
-                        ),
-                    },
+                    "verdict": {"type": "string", "enum": ["pass", "hold", "unknown"]},
+                    "items": _strict_object(
+                        {
+                            "task_fit": _rubric_item(),
+                            "grounding": _rubric_item(),
+                            "continuity": _rubric_item(),
+                            "answer_key": _rubric_item(),
+                            "audience_language": _rubric_item(),
+                            "planted_error": _rubric_item(),
+                        }
+                    ),
                 }
             ),
         }
@@ -411,6 +488,17 @@ SABOTEUR_SCHEMA: dict[str, Any] = _strict_object(
         "mutated": _string(),
     }
 )
+
+TRANSLATOR_SCHEMA: dict[str, Any] = _strict_object(
+    {
+        "segments": {
+            "type": "array",
+            "items": _strict_object({"id": _string(), "text": _string()}),
+        },
+    }
+)
+
+GLOSSARY_SCHEMA: dict[str, Any] = TRANSLATOR_SCHEMA
 
 CONTINUITY_SCHEMA: dict[str, Any] = _strict_object(
     {

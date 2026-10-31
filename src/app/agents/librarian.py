@@ -162,6 +162,23 @@ def execute_parser_spec(html: str, spec: dict[str, Any]) -> list[dict[str, str]]
     ]
 
 
+def derive_parser_spec(html: str) -> dict[str, Any] | None:
+    """Deterministic first-intake spec from page structure (stored + reused).
+
+    Model-written specs (build_prompt) still win when supplied or
+    stored; this covers the first crawl so a spec is always written.
+    """
+    container = "article" if "<article" in html else "section" if "<section" in html else "body"
+    heading = next((tag for tag in ("h1", "h2", "h3") if f"<{tag}" in html), "h2")
+    spec: dict[str, Any] = {
+        "container": container,
+        "fields": {"title": heading, "body": "p"},
+        "address_rule": {"kind": "heading_path", "selector": container},
+        "pagination": {"next_selector": None, "max_pages": 1},
+    }
+    return spec if validate_parser_spec(spec) == [] else None
+
+
 def build_prompt(page_sample: str, course_language: str = "en") -> str:
     """Full librarian prompt: stable system prefix plus a page sample."""
     dynamic = json.dumps(
