@@ -1,23 +1,36 @@
 import type { Page, Route } from '@playwright/test'
 import { expect, ids, signInAs, test } from './fixtures'
+import { ROWS } from '../src/router/registry'
 
 const json = (route: Route, status: number, body: unknown): Promise<void> =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
 const denied = { error: 'forbidden', message: 'You do not have permission for this action.' }
 const broken = { error: 'internal', message: 'internal error' }
 
-interface Screen { name: string; path: () => string; api: string; emptyBody: unknown; emptyLink: RegExp; emptyView?: string }
+interface Screen { name: string; row: string; path: () => string; api: string; emptyBody: unknown; emptyLink: RegExp; noEmpty?: boolean }
 
 const SCREENS: Screen[] = [
-  { name: 'courses', path: () => '/courses', api: '**/api/v1/courses', emptyBody: [], emptyLink: /Create your first course/ },
-  { name: 'users', path: () => '/users', api: '**/api/v1/users', emptyBody: [], emptyLink: /Invite people|No accounts/ },
-  { name: 'roles', path: () => '/roles', api: '**/api/v1/roles', emptyBody: [], emptyLink: /No roles/ },
-  { name: 'invites', path: () => '/invites', api: '**/api/v1/invites', emptyBody: [], emptyLink: /Create the first invite/ },
-  { name: 'sources', path: () => `/courses/${ids().course}/sources`, api: `**/api/v1/courses/${ids().course}/sources`, emptyBody: [], emptyLink: /Add your first source/ },
-  { name: 'plan', path: () => `/courses/${ids().course}/plan`, api: `**/api/v1/courses/${ids().course}/plan`, emptyBody: { modules: [] }, emptyLink: /Build the plan/ },
-  { name: 'fix', path: () => `/courses/${ids().course}/fix`, api: `**/api/v1/courses/${ids().course}/held`, emptyBody: { blocks: [], batch_quote_usd: null }, emptyLink: /Go to (Generate|Publish)/ },
-  { name: 'run', path: () => `/runs/${ids().run}`, api: `**/api/v1/runs/${ids().run}`, emptyBody: null, emptyLink: /./ },
+  { name: 'courses', row: 'courses', path: () => '/courses', api: '**/api/v1/courses', emptyBody: [], emptyLink: /Create your first course/ },
+  { name: 'users', row: 'users', path: () => '/users', api: '**/api/v1/users', emptyBody: [], emptyLink: /Invite people|No accounts/ },
+  { name: 'roles', row: 'roles', path: () => '/roles', api: '**/api/v1/roles', emptyBody: [], emptyLink: /No roles/ },
+  { name: 'invites', row: 'invites', path: () => '/invites', api: '**/api/v1/invites', emptyBody: [], emptyLink: /Create the first invite/ },
+  { name: 'sources', row: 'course-sources', path: () => `/courses/${ids().course}/sources`, api: `**/api/v1/courses/${ids().course}/sources`, emptyBody: [], emptyLink: /Add your first source/ },
+  { name: 'plan', row: 'course-plan', path: () => `/courses/${ids().course}/plan`, api: `**/api/v1/courses/${ids().course}/plan`, emptyBody: { modules: [] }, emptyLink: /Build the plan/ },
+  { name: 'fix', row: 'course-fix', path: () => `/courses/${ids().course}/fix`, api: `**/api/v1/courses/${ids().course}/held`, emptyBody: { blocks: [], batch_quote_usd: null }, emptyLink: /Go to (Generate|Publish)/ },
+  { name: 'run', row: 'run', path: () => `/runs/${ids().run}`, api: `**/api/v1/runs/${ids().run}`, emptyBody: null, emptyLink: /./, noEmpty: true },
+  { name: 'publish', row: 'course-publish', path: () => `/courses/${ids().publish}/publish`, api: `**/api/v1/courses/${ids().publish}`, emptyBody: null, emptyLink: /./, noEmpty: true },
+  { name: 'preview', row: 'course-preview', path: () => `/courses/${ids().translated}/preview`, api: `**/api/v1/courses/${ids().translated}/learner*`, emptyBody: null, emptyLink: /./, noEmpty: true },
 ]
+
+test('states: every state the registry declares for a route is exercised by a screen here', () => {
+  const tested = (row: string): string[] => {
+    const own = SCREENS.filter((x) => x.row === row)
+    return own.length === 0 ? [] : ['loading', 'error', 'denied', ...(own.some((x) => !x.noEmpty) ? ['empty'] : [])]
+  }
+  const missing = ROWS.flatMap((r) => r.states.filter((st) => st !== 'queued' && !tested(r.name).includes(st)).map((st) => `${r.name}: ${st}`))
+  expect(missing).toEqual([])
+  expect(SCREENS.filter((x) => !ROWS.some((r) => r.name === x.row))).toEqual([])
+})
 
 for (const s of SCREENS) {
   test(`states: ${s.name} shows loading, error, denied`, async ({ page, context }) => {
@@ -43,7 +56,7 @@ for (const s of SCREENS) {
   })
 }
 
-for (const s of SCREENS.filter((x) => x.name !== 'run')) {
+for (const s of SCREENS.filter((x) => !x.noEmpty)) {
   test(`states: ${s.name} empty line names the next action`, async ({ page, context }) => {
     await signInAs(context, 'admin')
     await page.route(s.api, (route) => (route.request().method() === 'GET' ? json(route, 200, s.emptyBody) : route.continue()))
