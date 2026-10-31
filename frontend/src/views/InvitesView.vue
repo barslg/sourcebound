@@ -1,0 +1,114 @@
+<script setup lang="ts">
+import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
+import Button from 'primevue/button'
+import InputNumber from 'primevue/inputnumber'
+import InputText from 'primevue/inputtext'
+import { ApiError, request } from '@/api/client'
+import { ENDPOINTS, inviteRevoke } from '@/api/endpoints'
+import type { Invite } from '@/api/types'
+import { notify } from '@/composables/notify'
+import { parseTags } from '@/composables/tags'
+import { useSessionStore } from '@/stores/session'
+
+const { t, d } = useI18n()
+const router = useRouter()
+const session = useSessionStore()
+const tagsText = ref('')
+const maxUses = ref<number | null>(null)
+const expires = ref('')
+const busy = ref(false)
+const error = ref<string | null>(null)
+const created = ref<Invite[]>([])
+
+function linkOf(token: string): string {
+  return new URL(router.resolve(`/invite/${encodeURIComponent(token)}`).href, window.location.origin).toString()
+}
+
+async function create(): Promise<void> {
+  busy.value = true
+  error.value = null
+  try {
+    const body: Record<string, unknown> = { course_tags: parseTags(tagsText.value), granted_role: 'student' }
+    if (maxUses.value !== null) body.max_uses = maxUses.value
+    if (expires.value.trim()) body.expires_at = new Date(expires.value.trim()).toISOString()
+    const invite = await request<Invite>(ENDPOINTS.invites, { method: 'POST', body })
+    created.value = [invite, ...created.value]
+    notify('success', t('invites.created'))
+    tagsText.value = ''
+  } catch (cause) {
+    error.value = cause instanceof ApiError ? cause.message : cause instanceof RangeError ? cause.message : String(cause)
+  } finally {
+    busy.value = false
+  }
+}
+
+async function revoke(invite: Invite): Promise<void> {
+  try {
+    await request(inviteRevoke(invite.token), { method: 'POST' })
+    created.value = created.value.map((i) => (i.token === invite.token ? { ...i, revoked_at: new Date().toISOString() } : i))
+    notify('success', t('invites.revoked'))
+  } catch (cause) {
+    notify('error', cause instanceof ApiError ? cause.message : String(cause))
+  }
+}
+
+async function copy(token: string): Promise<void> {
+  await navigator.clipboard.writeText(linkOf(token))
+  notify('success', t('invites.copied'))
+}
+</script>
+
+<template>
+  <h1 class="page-title">{{ t('invites.title') }}</h1>
+  <p class="muted">{{ t('invites.intro') }}</p>
+  <form class="stack" @submit.prevent="create">
+    <div class="field">
+      <label for="inv-tags">{{ t('invites.tags') }}</label>
+      <InputText id="inv-tags" v-model="tagsText" />
+      <span class="hint">{{ t('common.tagsHint') }}</span>
+    </div>
+    <div class="field">
+      <label for="inv-max">{{ t('invites.maxUses') }}</label>
+      <InputNumber v-model="maxUses" input-id="inv-max" :min="1" :use-grouping="false" />
+      <span class="hint">{{ t('invites.maxUsesHint') }}</span>
+    </div>
+    <div class="field">
+      <label for="inv-exp">{{ t('invites.expires') }}</label>
+      <InputText id="inv-exp" v-model="expires" />
+      <span class="hint">{{ t('invites.expiresHint') }}</span>
+    </div>
+    <p v-if="error" class="mono danger-text" role="alert" data-testid="form-error">{{ error }}</p>
+    <div class="row">
+      <Button
+        type="submit"
+        :label="t('invites.create')"
+        :loading="busy"
+        :aria-busy="busy"
+        :disabled="!session.can('invite.create') || parseTags(tagsText).length === 0"
+        data-testid="invite-create"
+      />
+    </div>
+  </form>
+  <section class="stack">
+    <p v-if="created.length === 0" class="state muted" data-view="empty">{{ t('invites.empty') }}</p>
+    <ul v-else class="bell-panel invite-list" data-testid="invite-list">
+      <li v-for="invite in created" :key="invite.token" class="bell-item" data-testid="invite-item">
+        <div class="row">
+          <span class="mono" data-testid="invite-link">{{ linkOf(invite.token) }}</span>
+          <span v-if="invite.revoked_at" class="chip chip-warn">{{ t('invites.revokedChip') }}</span>
+        </div>
+        <div class="row muted">
+          <span>{{ invite.max_uses === null ? t('invites.usesUnlimited', { used: invite.used_count }) : t('invites.uses', { used: invite.used_count, max: invite.max_uses }) }}</span>
+          <span>{{ invite.expires_at ? t('invites.expiresOn', { date: d(new Date(invite.expires_at), 'short') }) : t('invites.noExpiry') }}</span>
+          <span v-for="tag in invite.course_tags" :key="tag" class="chip mono">{{ tag }}</span>
+        </div>
+        <div class="row">
+          <Button :label="t('invites.copy')" size="small" severity="secondary" @click="copy(invite.token)" />
+          <Button :label="t('invites.revoke')" size="small" severity="danger" outlined :disabled="Boolean(invite.revoked_at)" @click="revoke(invite)" />
+        </div>
+      </li>
+    </ul>
+  </section>
+</template>
