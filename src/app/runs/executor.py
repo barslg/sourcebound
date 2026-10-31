@@ -837,3 +837,158 @@ async def write_plan_citations(
             )
             count += 1
     return count
+
+
+async def generate_block_step(
+    session: AsyncSession,
+    *,
+    run_id: UUID,
+    entry: dict[str, Any],
+    provider_factory: Callable[[AsyncSession], Any],
+) -> None:
+    """One block generator call: prompt assembly plus code-checked output.
+
+    The only model-call site for generation; agents build prompts and
+    check replies, this step pays for the call. Prompt prefix order is
+    system + rubric, approved source, frozen plan + dossier, skeleton;
+    cache scope is agent:block_type:course_id.
+    """
+    from app.agents import generate_block
+
+    step_key = str(entry["step_key"])
+    agent, _, node_id = step_key.partition(":")
+    block_type = str(entry.get("block_type", "reading"))
+    course_id = str(entry.get("course_id", ""))
+    prompt = generate_block.build_generation_prompt(
+        agent=agent,
+        block_type=block_type,
+        course_id=course_id,
+        course_language=str(entry.get("course_language", "en")),
+        sources=list(entry.get("sources", [])),
+        plan=dict(entry.get("plan", {})),
+        dossier=dict(entry.get("dossier", {})),
+        skeleton=dict(entry.get("skeleton", {"plan_node_id": node_id})),
+    )
+    digest = step_digest(agent=agent, prompt=prompt, upstream={"node": node_id})
+    claim = await claim_step(session, run_id=run_id, step_key=step_key, input_digest=digest)
+    provider = provider_factory(session)
+    if claim["reused_output"] is not None:
+        output = dict(claim["reused_output"])
+    else:
+        from app.llm.prompts import cache_key
+
+        output = await provider.generate_json(
+            agent=agent,
+            prompt=prompt,
+            schema=generate_block.schema(),
+            cache_key=cache_key(agent, block_type, course_id),
+            run_id=run_id,
+            step_id=claim["step_id"],
+            variant=int(claim["attempt"]) - 1,
+            check=generate_block.check_block_output,
+        )
+        await finish_step(session, step_id=claim["step_id"], output=output)
+    await session.commit()
+
+
+async def read_topic_step(
+    session: AsyncSession,
+    *,
+    run_id: UUID,
+    entry: dict[str, Any],
+    provider_factory: Callable[[AsyncSession], Any],
+) -> None:
+    """One reader call per topic with per-block pass/hold/unknown verdicts."""
+    from app.agents import reader
+
+    step_key = str(entry["step_key"])
+    _, _, topic_id = step_key.partition(":")
+    node_ids = {str(item.get("plan_node_id", "")) for item in entry.get("blocks", [])}
+    prompt = reader.build_reader_prompt(
+        topic_plan_node_id=topic_id,
+        course_language=str(entry.get("course_language", "en")),
+        sources=list(entry.get("sources", [])),
+        plan=dict(entry.get("plan", {})),
+        dossier=dict(entry.get("dossier", {})),
+        blocks=list(entry.get("blocks", [])),
+    )
+    digest = step_digest(agent="reader", prompt=prompt, upstream={"topic": topic_id})
+    claim = await claim_step(session, run_id=run_id, step_key=step_key, input_digest=digest)
+    provider = provider_factory(session)
+    if claim["reused_output"] is not None:
+        output = dict(claim["reused_output"])
+    else:
+        output = await provider.generate_json(
+            agent="reader",
+            prompt=prompt,
+            schema=reader.schema(),
+            run_id=run_id,
+            step_id=claim["step_id"],
+            variant=int(claim["attempt"]) - 1,
+            check=lambda reply: reader.check_reader_output(reply, node_ids=node_ids),
+        )
+        await finish_step(session, step_id=claim["step_id"], output=output)
+    await session.commit()
+
+
+async def read_continuity_step(
+    session: AsyncSession,
+    *,
+    run_id: UUID,
+    entry: dict[str, Any],
+    provider_factory: Callable[[AsyncSession], Any],
+) -> None:
+    """One continuity reader call per module over topic handoffs."""
+    from app.agents import continuity
+
+    step_key = str(entry["step_key"])
+    _, _, module_id = step_key.partition(":")
+    prompt = continuity.build_continuity_prompt(
+        module_plan_node_id=module_id,
+        course_language=str(entry.get("course_language", "en")),
+        handoffs=list(entry.get("handoffs", [])),
+        dossier=dict(entry.get("dossier", {})),
+    )
+    digest = step_digest(agent="continuity", prompt=prompt, upstream={"module": module_id})
+    claim = await claim_step(session, run_id=run_id, step_key=step_key, input_digest=digest)
+    provider = provider_factory(session)
+    if claim["reused_output"] is not None:
+        output = dict(claim["reused_output"])
+    else:
+        output = await provider.generate_json(
+            agent="continuity",
+            prompt=prompt,
+            schema=continuity.schema(),
+            run_id=run_id,
+            step_id=claim["step_id"],
+            variant=int(claim["attempt"]) - 1,
+            check=continuity.check_continuity_output,
+        )
+        await finish_step(session, step_id=claim["step_id"], output=output)
+    await session.commit()
+
+
+async def rework_blocks_step(
+    session: AsyncSession,
+    *,
+    run_id: UUID,
+    entry: dict[str, Any],
+    provider_factory: Callable[[AsyncSession], Any],
+) -> None:
+    """Rework marker: only named blocks rerun; settled blocks are skipped."""
+    step_key = str(entry["step_key"])
+    digest = input_digest_of({"kind": "rework", "named": entry.get("named", [])})
+    claim = await claim_step(session, run_id=run_id, step_key=step_key, input_digest=digest)
+    if claim["reused_output"] is None:
+        await finish_step(
+            session, step_id=claim["step_id"], output={"reworked": list(entry.get("named", []))}
+        )
+    await session.commit()
+
+
+GENERATION_HANDLERS: dict[str, str] = {
+    "generate_block": "generate_block_step",
+    "read_topic": "read_topic_step",
+    "read_continuity": "read_continuity_step",
+    "rework_blocks": "rework_blocks_step",
+}

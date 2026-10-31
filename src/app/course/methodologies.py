@@ -1,8 +1,12 @@
 """Methodology registry: declared in code, synced to the DB at startup.
 
-Each methodology prescribes block roles per topic kind; the architect
-and validate_tree() honour the prescription. T03 seeds the generic
-two; T05 adds the full Merrill pipeline with its seven block types.
+Merrill's First Principles is the demo path: Activation (one choice
+pre-question on the case), Demonstration (reading, figure only when the
+passage holds data), Application by Bloom target (cloze/matching for
+remember-understand, scenario_practice for apply-analyze), Integration
+(spot_the_error). The module final test is choice + matching + one
+spot_the_error. Backward Design and Kolb are registered so the compiler
+can expand them; the demo need not run them.
 """
 
 from __future__ import annotations
@@ -22,22 +26,76 @@ METHODOLOGIES: tuple[dict[str, Any], ...] = (
     },
     {
         "code": "merrill_first_principles",
-        "name": "Merrill's First Principles (T03 skeleton)",
-        "description": "Activation, demonstration, application, integration; full pipeline in T05.",
+        "name": "Merrill's First Principles",
+        "description": (
+            "Activation, demonstration, application, integration per topic;"
+            " module test of choice, matching, and one spot_the_error."
+        ),
+        "compatible_with": ["remember", "understand", "apply", "analyze"],
+        "pipeline": "merrill",
+        "prescription": {
+            "lesson": ["teach", "example", "check", "practice", "practice"],
+            "module_test": ["test", "test", "test"],
+            "lesson_blocks": {
+                "activation": [["teach", "choice"]],
+                "demonstration": [["teach", "reading"]],
+                "demonstration_data": [["teach", "reading"], ["teach", "figure"]],
+                "application_low": [["practice", "cloze"], ["practice", "matching"]],
+                "application_high": [
+                    ["practice", "scenario_practice"],
+                    ["check", "cloze"],
+                ],
+                "integration": [["practice", "spot_the_error"]],
+                "example": [["example", "reading"]],
+            },
+            "module_test_blocks": [
+                ["test", "choice"],
+                ["test", "matching"],
+                ["test", "spot_the_error"],
+            ],
+        },
+    },
+    {
+        "code": "backward_design",
+        "name": "Backward Design",
+        "description": "Outcomes first, then evidence, then learning plan per topic.",
+        "compatible_with": ["apply", "evaluate"],
+        "pipeline": "backward_design",
+        "prescription": {
+            "lesson": ["teach", "practice", "check"],
+            "module_test": ["test", "test"],
+        },
+    },
+    {
+        "code": "kolb_experiential",
+        "name": "Kolb Experiential Learning",
+        "description": "Concrete experience, reflection, concepts, active try-out.",
         "compatible_with": ["apply", "analyze"],
+        "pipeline": "kolb",
         "prescription": {
             "lesson": ["teach", "example", "practice", "check"],
-            "module_test": ["test"],
+            "module_test": ["test", "test"],
         },
     },
 )
+
+
+def methodology_codes() -> list[str]:
+    """Every registered methodology code."""
+    return [str(entry["code"]) for entry in METHODOLOGIES]
+
+
+def _is_role_list(value: Any) -> bool:
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
 
 
 def prescription_for(codes: list[str]) -> dict[str, list[str]]:
     """Merged role prescription for the chosen methodologies.
 
     The first methodology that prescribes a topic kind wins for that
-    kind, so mixed profiles stay deterministic.
+    kind, so mixed profiles stay deterministic. Only plain role lists
+    count; detailed block maps (lesson_blocks, module_test_blocks)
+    are compiler input, not role contracts.
     """
     merged: dict[str, list[str]] = {}
     wanted = list(codes)
@@ -47,8 +105,36 @@ def prescription_for(codes: list[str]) -> dict[str, list[str]]:
         prescription = entry["prescription"]
         assert isinstance(prescription, dict)
         for kind, roles in prescription.items():
+            if kind not in ("lesson", "module_test") or not _is_role_list(roles):
+                continue
             merged.setdefault(kind, list(roles))
     return merged
+
+
+def expand_merrill(
+    *, topic_kind: str, bloom_target: str = "apply", has_data: bool = False
+) -> list[tuple[str, str]]:
+    """Merrill block plan: (role, block_type) pairs for one topic.
+
+    Activation is one choice pre-question on the case; demonstration is
+    reading plus figure only when the passage holds data; application
+    follows the Bloom target (cloze/matching for remember-understand,
+    scenario_practice for apply-analyze); integration is spot_the_error.
+    A module_test is choice + matching + exactly one spot_the_error.
+    """
+    if topic_kind == "module_test":
+        return [("test", "choice"), ("test", "matching"), ("test", "spot_the_error")]
+    low = bloom_target.strip().lower() in ("remember", "understand")
+    plan: list[tuple[str, str]] = [("teach", "choice"), ("example", "reading")]
+    plan.append(("teach", "reading"))
+    if has_data:
+        plan.append(("teach", "figure"))
+    if low:
+        plan.extend([("practice", "cloze"), ("practice", "matching")])
+    else:
+        plan.extend([("practice", "scenario_practice"), ("check", "cloze")])
+    plan.append(("practice", "spot_the_error"))
+    return plan
 
 
 async def sync_methodologies(session: Any) -> None:
