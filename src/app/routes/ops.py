@@ -25,14 +25,15 @@ async def accept_invite(token: str, ctx: RequestContext = Depends(get_ctx)) -> R
     """Accept an invite.
 
     Signed in: grant the scoped student role now. Signed out: stash
-    the invite hash on an anonymous session and point at sign-in; the
-    callback applies it after login.
+    the invite id on an anonymous session and 303 at sign-in with the
+    course page as the return address; the callback applies the invite
+    server-side after login.
     """
     if ctx.principal is None:
         from app.auth.session import set_session_cookie
 
         target, fresh_token = await controller.stash_pending_invite(ctx, token=token)
-        redirect = RedirectResponse(target, status_code=307)
+        redirect = RedirectResponse(target, status_code=303)
         if fresh_token:
             secret = (
                 ctx.settings.session_secret_key.get_secret_value()

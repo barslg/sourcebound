@@ -200,7 +200,7 @@ async def finish_login(
     state: str,
     code: str,
     superadmin_emails: Collection[str] = (),
-    pending_invite_token: str | None = None,
+    pending_invite_id: str | None = None,
     expected_session_id: UUID | None = None,
 ) -> tuple[UserRecord, LoginOutcome]:
     """Redeem a one-time state plus code; create or refresh the account.
@@ -311,12 +311,17 @@ async def finish_login(
     await refuse_if_unusable(session, user_id)
 
     applied: tuple[str, ...] | None = None
-    if pending_invite_token:
-        from app.services.invites import accept_invite
+    if pending_invite_id:
+        from app.services.invites import accept_invite_by_id
 
-        applied = tuple(
-            await accept_invite(session, user_id=user_id, token_hash=pending_invite_token)
-        )
+        try:
+            stashed_id = UUID(pending_invite_id)
+        except ValueError:
+            stashed_id = None
+        if stashed_id is not None:
+            applied = tuple(
+                await accept_invite_by_id(session, user_id=user_id, invite_id=stashed_id)
+            )
     row = (
         await session.execute(
             sa.text(

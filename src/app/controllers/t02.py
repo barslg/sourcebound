@@ -155,11 +155,14 @@ async def list_invites(ctx: RequestContext) -> list[dto.InviteListItem]:
     ]
 
 
-async def revoke_invite(ctx: RequestContext, *, token: str) -> None:
-    from app.services.invites import hash_invite_token
+async def revoke_invite(ctx: RequestContext, *, invite_id: str) -> None:
     from app.services.invites import revoke_invite as revoke_use_case
 
-    await revoke_use_case(ctx.db, actor=require_auth(ctx), token_hash=hash_invite_token(token))
+    await revoke_use_case(
+        ctx.db,
+        actor=require_auth(ctx),
+        invite_id=parse_uuid_or_404(invite_id, what="invite"),
+    )
 
 
 async def accept_invite(ctx: RequestContext, *, token: str) -> list[str]:
@@ -171,19 +174,27 @@ async def accept_invite(ctx: RequestContext, *, token: str) -> list[str]:
 
 
 async def stash_pending_invite(ctx: RequestContext, *, token: str) -> tuple[str, str | None]:
-    """Stash an invite hash on an anonymous session; return (login_url, fresh_token)."""
-    from app.auth.session import create_session, session_id_for_token, set_pending_invite
-    from app.services.invites import hash_invite_token
+    """Stash an invite id on an anonymous session; return (login_url, fresh_token).
 
-    digest = hash_invite_token(token)
+    The invite id (never the raw token) is stored server-side, and the
+    login return address points at the course page, so the token appears
+    in no row, URL, or header after the accept POST.
+    """
+    from urllib.parse import quote
+
+    from app.auth.session import create_session, session_id_for_token, set_pending_invite_id
+    from app.services.invites import hash_invite_token, invite_details
+
+    invite_id, course_tags = await invite_details(ctx.db, token_hash=hash_invite_token(token))
     fresh_token: str | None = None
     session_id = ctx.login_session.id if ctx.login_session else None
     if session_id is None:
         fresh_token, _ = await create_session(ctx.db, None, ttl_s=ctx.settings.session_ttl_s)
         session_id = await session_id_for_token(ctx.db, fresh_token)
     assert session_id is not None
-    await set_pending_invite(ctx.db, session_id, digest)
-    return f"/api/v1/auth/login?provider=google&next=/api/v1/invites/{token}/accept", fresh_token
+    await set_pending_invite_id(ctx.db, session_id, str(invite_id))
+    course_path = f"/courses/{quote(course_tags[0])}" if course_tags else "/"
+    return f"/api/v1/auth/login?provider=google&next={course_path}", fresh_token
 
 
 async def submit_echo(

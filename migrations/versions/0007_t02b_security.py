@@ -90,11 +90,20 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Normalise rows orphaned while the actor was a plain uuid, so the
+    # restored foreign key validates: this is what SET NULL would have done.
+    op.execute(
+        "UPDATE audit_log SET actor_id = NULL"
+        " WHERE actor_id IS NOT NULL AND actor_id NOT IN (SELECT id FROM users)"
+    )
     op.create_foreign_key(
         "audit_log_actor_id_fkey", "audit_log", "users", ["actor_id"], ["id"], ondelete="SET NULL"
     )
     op.drop_column("auth_states", "used_at")
     op.drop_column("auth_states", "session_id")
+    # Pending invite hashes are not uuids and cannot survive the cast back;
+    # they are single-use login state, so the downgrade drops them.
+    op.execute("UPDATE sessions SET pending_invite_token = NULL")
     op.alter_column(
         "sessions",
         "pending_invite_token",

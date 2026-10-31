@@ -251,22 +251,25 @@ async def test_invite_token_never_stored_in_plain_text(session: AsyncSession) ->
 
 
 async def test_pending_invite_stored_hashed(session: AsyncSession) -> None:
-    """Item 7: sessions.pending_invite_token holds the hash, not the token."""
-    from app.auth.session import create_session, session_id_for_token, set_pending_invite
+    """Item 7 (T02c): sessions.pending_invite_id holds the id, never the token."""
+    import uuid as uuid_mod
+
+    from app.auth.session import create_session, session_id_for_token, set_pending_invite_id
 
     token, _ = await create_session(session, None)
     await session.commit()
     session_id = await session_id_for_token(session, token)
     assert session_id is not None
-    await set_pending_invite(session, session_id, "digest-hex-value")
+    invite_id = str(uuid_mod.uuid4())
+    await set_pending_invite_id(session, session_id, invite_id)
     await session.commit()
     stored = (
         await session.execute(
-            sa.text("SELECT pending_invite_token FROM sessions WHERE id = :sid"),
+            sa.text("SELECT pending_invite_id FROM sessions WHERE id = :sid"),
             {"sid": str(session_id)},
         )
     ).scalar_one()
-    assert stored == "digest-hex-value"
+    assert stored == invite_id
 
 
 async def test_worker_sees_ban_immediately(session: AsyncSession) -> None:

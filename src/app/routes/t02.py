@@ -125,10 +125,10 @@ async def create_invite(
     return await controller.create_invite(ctx, body=body)
 
 
-@invites_router.post("/{token}/revoke")
-async def revoke_invite(token: str, ctx: RequestContext = Depends(get_ctx)) -> dict[str, bool]:  # noqa: B008 - FastAPI dependency injection idiom
-    """Revoke an invite link."""
-    await controller.revoke_invite(ctx, token=token)
+@invites_router.post("/{invite_id}/revoke")
+async def revoke_invite(invite_id: str, ctx: RequestContext = Depends(get_ctx)) -> dict[str, bool]:  # noqa: B008 - FastAPI dependency injection idiom
+    """Revoke an invite link by id (what GET /invites returns)."""
+    await controller.revoke_invite(ctx, invite_id=invite_id)
     return {"ok": True}
 
 

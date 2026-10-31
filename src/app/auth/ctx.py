@@ -44,10 +44,16 @@ def _anonymous_accept_request(request: Request) -> bool:
 
 
 def _origin_allowed(request: Request) -> bool:
-    """Unsafe requests carrying Origin/Referer must come from this host."""
+    """Unsafe requests carrying Origin/Referer must come from this host.
+
+    A sandboxed document sends `Origin: null`; it carries no host to
+    compare, so it is never allowed.
+    """
     origin = request.headers.get("origin") or request.headers.get("referer")
     if not origin:
         return True
+    if origin.strip().lower() == "null":
+        return False
     from urllib.parse import urlparse
 
     try:
@@ -55,7 +61,7 @@ def _origin_allowed(request: Request) -> bool:
     except ValueError:
         return False
     if not claimed:
-        return True
+        return False
     own = request.url.netloc.lower()
     return claimed == own
 

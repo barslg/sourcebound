@@ -186,7 +186,7 @@ class GoogleProvider:
             email=email,
             name=str(claims.get("name", "") or ""),
             avatar=str(claims.get("picture", "") or ""),
-            email_verified=bool(claims.get("email_verified", False)),
+            email_verified=claims.get("email_verified") is True,
         )
 
     @staticmethod

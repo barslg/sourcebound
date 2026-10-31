@@ -191,9 +191,9 @@ async def test_object_outside_scope_answers_404(session: AsyncSession) -> None:
     await assign_role(session, user_id, "student", scope_tags=["course-a"], actor=None)
     await session.commit()
     principal = await load_principal(session, user_id)
-    require_scope(principal, ["course-a"])
+    require_scope(principal, ["course-a"], code="section.courses")
     with pytest.raises(NotFoundError):
-        require_scope(principal, ["course-b"])
+        require_scope(principal, ["course-b"], code="section.courses")
 
 
 async def test_principal_reflects_role_change_immediately(session: AsyncSession) -> None:

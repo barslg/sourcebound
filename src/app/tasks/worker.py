@@ -34,5 +34,3 @@ def create_worker_app() -> App:
 
 
 app = create_worker_app()
-
-from app.tasks.jobs import run_operation_job as run_operation_job  # noqa: E402,F401

@@ -30,7 +30,7 @@ class SessionRow:
     user_id: UUID | None
     csrf_token: str
     expires_at: datetime
-    pending_invite_token: str | None
+    pending_invite_id: str | None
     absolute_expires_at: datetime | None = None
 
 
@@ -102,14 +102,14 @@ def _parse(row: sa.Row[Any]) -> SessionRow:
     mapping = row._mapping
     raw_user: Any = mapping["user_id"]
     raw_expires: Any = mapping["expires_at"]
-    raw_pending: Any = mapping["pending_invite_token"]
+    raw_pending: Any = mapping["pending_invite_id"]
     raw_absolute: Any = mapping["absolute_expires_at"]
     return SessionRow(
         id=UUID(str(mapping["id"])),
         user_id=UUID(str(raw_user)) if raw_user is not None else None,
         csrf_token=str(mapping["csrf_token"]),
         expires_at=raw_expires,
-        pending_invite_token=str(raw_pending) if raw_pending is not None else None,
+        pending_invite_id=str(raw_pending) if raw_pending is not None else None,
         absolute_expires_at=raw_absolute,
     )
 
@@ -153,7 +153,7 @@ async def load_session(
     row = (
         await session.execute(
             sa.text(
-                "SELECT id, user_id, csrf_token, expires_at, pending_invite_token,"
+                "SELECT id, user_id, csrf_token, expires_at, pending_invite_id,"
                 " absolute_expires_at FROM sessions WHERE token_hash = :hash"
             ),
             {"hash": hash_token(token)},
@@ -187,7 +187,7 @@ async def load_session(
         user_id=found.user_id,
         csrf_token=found.csrf_token,
         expires_at=rolled,
-        pending_invite_token=found.pending_invite_token,
+        pending_invite_id=found.pending_invite_id,
         absolute_expires_at=absolute,
     )
 
@@ -207,13 +207,17 @@ async def revoke_user_sessions(session: AsyncSession, user_id: UUID) -> None:
     )
 
 
-async def set_pending_invite(
-    session: AsyncSession, session_id: UUID, invite_token: str | None
+async def set_pending_invite_id(
+    session: AsyncSession, session_id: UUID, invite_id: str | None
 ) -> None:
-    """Stash (or clear) the invite a signed-out visitor accepted."""
+    """Stash (or clear) the invite id a signed-out visitor accepted.
+
+    The id is stored, never the raw token: the token appears in no
+    session row, URL, or header after the accept POST.
+    """
     await session.execute(
-        sa.text("UPDATE sessions SET pending_invite_token = :token WHERE id = :sid"),
-        {"token": invite_token, "sid": str(session_id)},
+        sa.text("UPDATE sessions SET pending_invite_id = :invite WHERE id = :sid"),
+        {"invite": invite_id, "sid": str(session_id)},
     )
 
 
