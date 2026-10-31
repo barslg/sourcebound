@@ -201,6 +201,92 @@ async def hold_blocks(
         )
 
 
+async def give_content(session: AsyncSession, course: Any) -> list[str]:
+    """Write one source-language version into every block so the learner view has text."""
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT b.id, b.plan_node_id FROM blocks b JOIN topics t ON t.id = b.topic_id"
+                " JOIN modules m ON m.id = t.module_id WHERE m.course_id = :c"
+                " ORDER BY m.ordinal, t.ordinal, b.ordinal"
+            ),
+            {"c": str(course)},
+        )
+    ).all()
+    for block_id, node in rows:
+        version = (
+            await session.execute(
+                sa.text(
+                    "INSERT INTO block_versions (block_id, version_no, content)"
+                    " SELECT :b, COALESCE(MAX(version_no), 0) + 1, CAST(:c AS jsonb)"
+                    " FROM block_versions WHERE block_id = :b RETURNING id"
+                ),
+                {"b": str(block_id), "c": json.dumps({"text": f"Source text of {node}"})},
+            )
+        ).scalar_one()
+        await session.execute(
+            sa.text("UPDATE blocks SET current_version_id = :v WHERE id = :b"),
+            {"v": str(version), "b": str(block_id)},
+        )
+    return [str(node) for _, node in rows]
+
+
+async def add_translation(
+    session: AsyncSession,
+    version: Any,
+    language: str,
+    status: str,
+    states: list[str],
+    nodes: list[str],
+) -> None:
+    """One course_translations row with a translation_blocks row per given state."""
+    translation = (
+        await session.execute(
+            sa.text(
+                "INSERT INTO course_translations (id, course_version_id, language, status)"
+                " VALUES (gen_random_uuid(), :v, :l, :s) RETURNING id"
+            ),
+            {"v": str(version), "l": language, "s": status},
+        )
+    ).scalar_one()
+    for node, state in zip(nodes, states, strict=False):
+        await session.execute(
+            sa.text(
+                "INSERT INTO translation_blocks"
+                " (id, translation_id, plan_node_id, block_type, status, content)"
+                " VALUES (gen_random_uuid(), :t, :n, 'text', :s, CAST(:c AS jsonb))"
+            ),
+            {
+                "t": str(translation),
+                "n": node,
+                "s": state,
+                "c": json.dumps({"text": f"{language} text of {node}"}) if state == "ok" else "{}",
+            },
+        )
+
+
+async def seed_translations(session: AsyncSession, owner: str) -> dict[str, str]:
+    """Two published courses: nb partial with held blocks plus uk ready; uk failed."""
+    from app.services.courses import snapshot_version
+
+    labs: dict[str, str] = {}
+    translated = await seed_planned_course(session, owner, "Translated lab")
+    nodes = await give_content(session, translated)
+    version = await snapshot_version(session, course_id=translated, publish=True)
+    await add_translation(
+        session, version, "nb", "partial", ["ok", "held", "held", "ok", "ok", "ok"], nodes
+    )
+    await add_translation(session, version, "uk", "ready", ["ok"] * len(nodes), nodes)
+    labs["translated"] = str(translated)
+    failed = await seed_planned_course(session, owner, "Translation failed lab")
+    nodes = await give_content(session, failed)
+    version = await snapshot_version(session, course_id=failed, publish=True)
+    await add_translation(session, version, "uk", "failed", ["failed"], nodes)
+    labs["translate_failed"] = str(failed)
+    labs["no_version"] = str(await seed_planned_course(session, owner, "No version lab"))
+    return labs
+
+
 async def seed_labs(session: AsyncSession, owner: str) -> dict[str, str]:
     from app.runs.executor import new_run
 
@@ -270,6 +356,7 @@ async def seed_labs(session: AsyncSession, owner: str) -> dict[str, str]:
     labs["conflict"] = str(await seed_planned_course(session, owner, "Conflict lab"))
     labs["dnd"] = str(await seed_planned_course(session, owner, "Drag lab"))
     labs["publish"] = str(await seed_planned_course(session, owner, "Publish lab"))
+    labs.update(await seed_translations(session, owner))
     return labs
 
 

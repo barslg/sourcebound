@@ -40,7 +40,7 @@ test('the course list answers a learner with the denied state carrying the backe
   expect((await res).status()).toBe(403)
   const box = page.locator('[data-view="denied"]')
   await expect(box).toBeVisible()
-  await expect(box).toContainText('You do not have permission for this action.')
+  await expect(box).toContainText('You do not have access to this.')
 })
 
 test('the course list shows a retryable error when the request fails', async ({ page, context }) => {

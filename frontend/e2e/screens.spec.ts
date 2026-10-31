@@ -147,7 +147,7 @@ test('sources: an address the backend cannot fetch waits for a person and adds n
   await expect(page.getByTestId('source-fetch')).toBeDisabled()
   await page.getByLabel('Web address', { exact: true }).fill('http://127.0.0.1:9/none')
   await page.getByTestId('source-fetch').click()
-  await expect(page.getByTestId('form-error')).toContainText('refusing non-public address')
+  await expect(page.getByTestId('form-error')).toContainText('The request is invalid.')
   await expect(page.getByTestId('candidate').filter({ hasText: '127.0.0.1' })).toHaveCount(0)
 })
 
