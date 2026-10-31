@@ -39,10 +39,15 @@ def build_translated_answer_key(
         pairs = _list(content.get("pairs"))
         lefts = [str(p.get("left", "")) for p in pairs if isinstance(p, dict)]
         rights = [str(p.get("right", "")) for p in pairs if isinstance(p, dict)]
+        stored = _dict(answer_key.get("mapping_by_index"))
         mapping = _dict(answer_key.get("mapping"))
-        by_index: dict[str, int] = {}
+        by_index: dict[str, int] = {
+            str(left): int(right)
+            for left, right in stored.items()
+            if str(left).isdigit() and str(right).isdigit()
+        }
         for left, right in mapping.items():
-            if str(left) in lefts and str(right) in rights:
+            if not by_index and str(left) in lefts and str(right) in rights:
                 by_index[str(lefts.index(str(left)))] = rights.index(str(right))
         if not by_index:  # pairs are already matched in order
             by_index = {str(i): i for i in range(len(pairs))}
@@ -60,12 +65,20 @@ def build_translated_answer_key(
         texts = [str(it.get("text", "")) for it in items if isinstance(it, dict)]
         labels = _dict(answer_key.get("labels"))
         passages = _dict(answer_key.get("passages"))
-        key["labels_by_index"] = {
-            str(texts.index(str(item))): tier for item, tier in labels.items() if str(item) in texts
+        labels_by_index = {
+            str(k): str(v) for k, v in _dict(answer_key.get("labels_by_index")).items()
         }
-        key["passages_by_index"] = {
-            str(texts.index(str(item))): pid for item, pid in passages.items() if str(item) in texts
+        passages_by_index = {
+            str(k): str(v) for k, v in _dict(answer_key.get("passages_by_index")).items()
         }
+        for item, tier in labels.items():
+            if str(item) in texts:
+                labels_by_index.setdefault(str(texts.index(str(item))), str(tier))
+        for item, pid in passages.items():
+            if str(item) in texts:
+                passages_by_index.setdefault(str(texts.index(str(item))), str(pid))
+        key["labels_by_index"] = labels_by_index
+        key["passages_by_index"] = passages_by_index
         return key
     if block_type == "spot_the_error":
         sentences = _list(translated_content.get("sentences"))
