@@ -447,6 +447,18 @@ async def drive_run(
             )
 
 
+def dag_block_nodes(dag: list[dict[str, Any]]) -> list[str]:
+    """Plan node ids of the blocks a run's own DAG generates (the no-draft gate reads these)."""
+    return sorted(
+        {
+            str((entry.get("skeleton") or {}).get("plan_node_id", ""))
+            for entry in dag
+            if entry.get("handler") == "generate_block" and entry.get("skeleton")
+        }
+        - {""}
+    )
+
+
 async def _drive_locked(
     factory: async_sessionmaker[AsyncSession],
     *,
@@ -550,14 +562,16 @@ async def _drive_locked(
                 )
             ).first()
             if run_row is not None and run_row[0] == "generation" and run_row[1] is not None:
+                own_nodes = dag_block_nodes(dag)
                 drafts = (
                     await session.execute(
                         sa.text(
                             "SELECT count(*) FROM blocks b JOIN topics t ON t.id = b.topic_id"
                             " JOIN modules m ON m.id = t.module_id"
                             " WHERE m.course_id = :c AND b.status = 'draft'"
+                            " AND b.plan_node_id = ANY(:nodes)"
                         ),
-                        {"c": str(run_row[1])},
+                        {"c": str(run_row[1]), "nodes": own_nodes},
                     )
                 ).scalar()
                 if drafts:
@@ -1165,15 +1179,34 @@ async def _plant_spot_block(
     stored_all = await _stored_passage_texts(session, passage_ids=list(handle_to_passage.values()))
     verified = await _verified_sentences(session, handle_to_passage=handle_to_passage)
     seed = _spot_seed(node_id, variant)
-    exercise = _plant(
-        verified=verified,
-        reader_holds=[],
-        seed=seed,
-        mutated=mutated,
-        kind=kind,
-        pick=pick,
-        fully_correct=bool(pick.get("fully_correct")) if pick is not None else None,
-    )
+    try:
+        exercise = _plant(
+            verified=verified,
+            reader_holds=[],
+            seed=seed,
+            mutated=mutated,
+            kind=kind,
+            pick=pick,
+            fully_correct=bool(pick.get("fully_correct")) if pick is not None else None,
+        )
+    except ValueError as exc:
+        reason = f"the exercise could not be planted: {exc}"[:500]
+        await _persist_block(
+            session,
+            course_id=course_id,
+            node_id=node_id,
+            content={"text": ""},
+            answer_key=None,
+            step_id=step_id,
+            status="held",
+            hold_reason=reason,
+        )
+        await finish_step(
+            session,
+            step_id=step_id,
+            output={"block_type": "spot_the_error", "held": True, "hold_reason": reason},
+        )
+        return
     pid = handle_to_passage.get(str(exercise.get("passage", "P1")), "")
     quote = str(exercise.get("true_sentence") or (pick or {}).get("sentence", ""))[:120]
     output: dict[str, Any] = {
@@ -1689,6 +1722,8 @@ async def read_topic_step(
                         " JOIN topics t ON t.id = b.topic_id"
                         " JOIN modules m ON m.id = t.module_id"
                         " WHERE m.course_id = :c AND b.plan_node_id = :n)"
+                        " AND (accepted_version_id IS NULL"
+                        " OR accepted_version_id <> current_version_id)"
                     ),
                     {"r": reason, "c": course_id, "n": node},
                 )

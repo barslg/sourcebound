@@ -850,6 +850,9 @@ async def run_rewrite_operation(
             )
         finally:
             await _close_factory(provider_factory)
+        async with session_factory() as fresh:
+            await course_service.mark_generated_if_complete(fresh, course_id=course_id)
+            await fresh.commit()
     return {"run_id": str(run_id)}
 
 

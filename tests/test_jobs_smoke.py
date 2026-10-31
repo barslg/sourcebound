@@ -1230,3 +1230,152 @@ async def test_generation_choice_without_a_correct_option_is_held(
     assert final["status"] == "done"
     status, reason = (await _smoke_blocks(t03_session, demo["course_id"]))["b2"]
     assert status == "held" and "correct" in reason, (status, reason)
+
+
+async def _dag_without_t2(demo: dict[str, Any], dag: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The DAG of a rewrite-sized run: topic t1 only, b3 and b4 stay draft outside it."""
+    drop = {"reader:t2", "saboteur:b4"}
+    kept = [
+        e
+        for e in dag
+        if e["step_key"] not in drop
+        and (e.get("skeleton") or {}).get("plan_node_id") not in ("b3", "b4")
+    ]
+    keys = {e["step_key"] for e in kept}
+    return [e for e in kept if all(d in keys for d in e.get("depends_on", []))]
+
+
+async def test_a_run_ends_done_when_its_own_blocks_are_read_though_others_stay_draft(
+    t03_session: AsyncSession,
+) -> None:
+    """Guards the author's way out: the no-draft gate counts the run's own blocks only."""
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-own")
+    final = await _smoke_run(
+        t03_session, demo, await _dag_without_t2(demo, dag), demo_t05.mock_demo_handler()
+    )
+    assert final["status"] == "done", final["stop_marker"]
+    blocks = await _smoke_blocks(t03_session, demo["course_id"])
+    assert blocks["b3"][0] == "draft" and blocks["b1"][0] == "accepted", blocks
+
+
+async def test_an_authors_accept_survives_a_fresh_run_replaying_the_reader_hold(
+    t03_session: AsyncSession,
+) -> None:
+    """Guards the author's way out: the accept is pinned to the version it was given on."""
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-pin")
+
+    def hold_b1(prompt: str, reply: dict[str, Any]) -> dict[str, Any]:
+        for verdict in reply.get("verdicts", []):
+            if verdict["plan_node_id"] == "b1":
+                verdict["verdict"] = "hold"
+                verdict["hold_reason"] = "held by the reader"
+                verdict["items"]["grounding"]["verdict"] = "hold"
+        return reply
+
+    handler = _edited(demo_t05.mock_demo_handler(), hold_b1)
+    assert (await _smoke_run(t03_session, demo, dag, handler))["status"] == "done"
+    assert (await _smoke_blocks(t03_session, demo["course_id"]))["b1"][0] == "held"
+    block_id = (
+        await t03_session.execute(
+            sa.text(
+                "SELECT b.id FROM blocks b JOIN topics t ON t.id = b.topic_id"
+                " JOIN modules m ON m.id = t.module_id"
+                " WHERE m.course_id = :c AND b.plan_node_id = 'b1'"
+            ),
+            {"c": str(demo["course_id"])},
+        )
+    ).scalar_one()
+    await course_service.accept_block(t03_session, block_id=UUID(str(block_id)))
+    await t03_session.commit()
+    assert (await _smoke_run(t03_session, demo, dag, handler))["status"] == "done"
+    assert (await _smoke_blocks(t03_session, demo["course_id"]))["b1"][0] == "accepted"
+
+
+TUTOR_REAL = (
+    "Who must ensure AI literacy of staff?",
+    "What AI practices are prohibited?",
+    "What is the maximum fine for prohibited AI practices?",
+    "How large are fines for non-compliance with operator obligations?",
+    "Does the AI Act ban subliminal techniques?",
+    "What are the four functions of the AI RMF Core?",
+    "What does the MAP function do?",
+    "Which characteristics make an AI system trustworthy?",
+    "How does the framework define risk?",
+    "Is the AI RMF mandatory or voluntary?",
+)
+TUTOR_OFF_TOPIC = (
+    "What is the capital of Norway?",
+    "How do I bake sourdough bread?",
+    "Who won the football world cup in 2018?",
+    "What are the fines for speeding on the motorway?",
+    "How many staff does a restaurant need?",
+    "What is the weather forecast for Oslo tomorrow?",
+    "Explain how photosynthesis works.",
+    "What is the maximum tax rate on income?",
+    "Who must wear a helmet when cycling?",
+    "What measures reduce carbon emissions in transport?",
+)
+
+
+class _CountingProvider:
+    calls = 0
+
+    async def generate_json(self, **kwargs: Any) -> dict[str, Any]:
+        type(self).calls += 1
+        return {"quotes": []}
+
+
+async def test_tutor_threshold_keeps_off_topic_questions_away_from_the_model(world: Any) -> None:
+    """Money guard: 10 real questions reach the model, 10 off-topic ones never do ($0).
+
+    Two public sources (EUR-Lex AI Act excerpt, NIST AI RMF excerpt); the
+    default threshold sits between the lowest real score (0.0304) and the
+    highest off-topic score (0.0203).
+    """
+    from pathlib import Path
+
+    from app.rbac.principal import load_principal
+    from app.services.tutor import NOT_IN_MATERIALS, ask
+
+    s = world.s
+    text = Path(__file__).parent.joinpath("fixtures/nist_ai_rmf_excerpt.md").read_text()
+    source = await library.store_upload(
+        s,
+        settings=_gen_settings(),
+        created_by=world.w["user_id"],
+        filename="nist_ai_rmf_excerpt.md",
+        media="text",
+        content=text.encode(),
+        licence="US Government work, public domain",
+        course_id=world.w["course_id"],
+    )
+    await library.ingest_passages(
+        s, source_id=source, passages=library.chunk_markdown(text), ts_config="english"
+    )
+    await library.approve_source(s, source_id=source, approved_by=world.w["user_id"])
+    await s.commit()
+    principal = await load_principal(s, world.student)
+    threshold = Settings(_env_file=None).tutor_min_score
+
+    async def reaches_model(question: str) -> tuple[int, dict[str, Any]]:
+        _CountingProvider.calls = 0
+        reply = await ask(
+            s,
+            principal,
+            UUID(world.course),
+            question,
+            language=None,
+            make_provider_factory=lambda: lambda session: _CountingProvider(),
+            min_score=threshold,
+            max_passages=4,
+            max_chars=500,
+        )
+        return _CountingProvider.calls, reply
+
+    for question in TUTOR_REAL:
+        calls, _ = await reaches_model(question)
+        assert calls == 1, ("a real question was refused", question)
+    for question in TUTOR_OFF_TOPIC:
+        calls, reply = await reaches_model(question)
+        assert calls == 0 and reply["mode"] == NOT_IN_MATERIALS, ("paid for off-topic", question)
+        assert reply["quotes"] == [] and "hint" in reply
