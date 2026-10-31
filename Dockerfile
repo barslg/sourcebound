@@ -10,6 +10,7 @@ ENV UV_COMPILE_BYTECODE=1
 COPY pyproject.toml uv.lock .python-version ./
 COPY src/ ./src/
 COPY migrations/ ./migrations/
+COPY prompts/ ./prompts/
 COPY alembic.ini ./
 RUN uv sync --frozen --no-dev
 
@@ -23,6 +24,7 @@ ENV PATH="/app/.venv/bin:${PATH}" \
 COPY --from=builder --chown=10001:10001 /app/.venv /app/.venv
 COPY --from=builder --chown=10001:10001 /app/src /app/src
 COPY --from=builder --chown=10001:10001 /app/migrations /app/migrations
+COPY --from=builder --chown=10001:10001 /app/prompts /app/prompts
 COPY --from=builder --chown=10001:10001 /app/alembic.ini /app/alembic.ini
 USER 10001
 EXPOSE 8000

@@ -47,7 +47,12 @@ async def start_login(
     token: str | None = None
     if ctx.login_session is None:
         token, _ = await create_session(ctx.db, None, ttl_s=ctx.settings.session_ttl_s)
-    url, _ = await begin_login(ctx.db, provider, next_url=next_url)
+        from app.auth.session import session_id_for_token
+
+        bound_id = await session_id_for_token(ctx.db, token) if token else None
+    else:
+        bound_id = ctx.login_session.id
+    url, _ = await begin_login(ctx.db, provider, next_url=next_url, session_id=bound_id)
     return url, token
 
 
@@ -64,6 +69,7 @@ async def finish_login(
 
     provider = provider_for(ctx.settings, provider_name, request)
     pending = ctx.login_session.pending_invite_token if ctx.login_session else None
+    expected = ctx.login_session.id if ctx.login_session else None
     user, outcome = await finish_use_case(
         ctx.db,
         provider,
@@ -71,6 +77,7 @@ async def finish_login(
         code=code,
         superadmin_emails=ctx.settings.superadmin_email_set,
         pending_invite_token=pending,
+        expected_session_id=expected,
     )
     token, _ = await create_session(ctx.db, user.id, ttl_s=ctx.settings.session_ttl_s)
     if ctx.login_session is not None:
@@ -86,6 +93,7 @@ async def finish_login(
             applied_invite_scopes=list(outcome.applied_invite_scopes or [])
             if outcome.applied_invite_scopes is not None
             else None,
+            next_url=outcome.next_url,
         ),
         token,
     )

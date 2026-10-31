@@ -33,24 +33,43 @@ async def submit_echo(
     actor: Principal,
     payload: dict[str, Any],
     defer: Callable[[UUID], Awaitable[None]] | None,
+    idempotency_key: str | None = None,
 ) -> UUID:
-    """Validate, authorise, persist, and enqueue an echo operation."""
+    """Validate, authorise, persist, and enqueue an echo operation.
+
+    A repeated submit with the same idempotency key returns the first
+    operation instead of starting a duplicate.
+    """
     require(actor, "operation.run")
     message = payload.get("message", "")
     if not isinstance(message, str) or not message.strip():
         raise ValidationError("payload.message must be a non-empty string")
     if len(message) > 10000:
         raise ValidationError("payload.message is too long")
+    if idempotency_key:
+        existing = (
+            await session.execute(
+                sa.text(
+                    "SELECT id FROM operations WHERE actor_id = :actor"
+                    " AND idempotency_key = :key LIMIT 1"
+                ),
+                {"actor": str(actor.user_id), "key": idempotency_key},
+            )
+        ).first()
+        if existing is not None:
+            return UUID(str(existing[0]))
     row = (
         await session.execute(
             sa.text(
-                "INSERT INTO operations (kind, status, params, progress, actor_id)"
-                " VALUES (:kind, 'queued', CAST(:params AS jsonb), 0, :actor) RETURNING id"
+                "INSERT INTO operations (kind, status, params, progress, actor_id, idempotency_key)"
+                " VALUES (:kind, 'queued', CAST(:params AS jsonb), 0, :actor, :key)"
+                " RETURNING id"
             ),
             {
                 "kind": OPERATION_KIND_ECHO,
                 "params": json.dumps({"message": message}),
                 "actor": str(actor.user_id),
+                "key": idempotency_key,
             },
         )
     ).one()
@@ -86,8 +105,13 @@ async def get_operation(
         raise NotFoundError("operation not found")
     values = tuple(row)
     owner = str(values[6]) if values[6] is not None else None
-    if not actor.is_superadmin and owner != str(actor.user_id) and not actor.has("operation.view"):
-        raise NotFoundError("operation not found")
+    if not actor.is_superadmin and owner != str(actor.user_id):
+        from app.errors import ForbiddenError
+
+        try:
+            require(actor, "operation.view")
+        except ForbiddenError as exc:
+            raise NotFoundError("operation not found") from exc
     return {
         "operation_id": str(values[0]),
         "kind": values[1],
@@ -169,7 +193,7 @@ async def execute_operation(
                 require(actor, required_code)
                 await _set_status(session, operation_id, status="running", progress=0.5)
                 await session.commit()
-                detail = await _run_kind(session, str(kind), operation_id)
+                detail = await _run_kind(session, str(kind), operation_id, factory=factory)
                 await _set_status(session, operation_id, status="done", progress=1.0, result=detail)
                 target = UUID(str(actor_id)) if actor_id is not None else None
                 if target is not None:
@@ -227,12 +251,36 @@ async def execute_operation(
             await engine.dispose()
 
 
-async def _run_kind(session: AsyncSession, kind: str, operation_id: UUID) -> dict[str, Any]:
+async def _run_kind(
+    session: AsyncSession,
+    kind: str,
+    operation_id: UUID,
+    *,
+    factory: async_sessionmaker[AsyncSession] | None = None,
+) -> dict[str, Any]:
     """Do the kind-specific work; echo returns its submitted message."""
-    if kind in ("submit_plan", "submit_generate"):
-        from app.services.planruns import run_plan_operation
+    if kind == "submit_plan":
+        from app.services.planruns import real_provider_factory, run_plan_operation
 
-        return await run_plan_operation(session, operation_id)
+        return await run_plan_operation(
+            session,
+            operation_id,
+            provider_factory=real_provider_factory(get_settings()),
+            session_factory=factory,
+        )
+    if kind == "submit_generate":
+        from app.errors import ConflictError
+
+        raise ConflictError("block generation is not available until the generation pipeline lands")
+    if kind == "resume_run":
+        from app.services.planruns import real_provider_factory, run_resume_operation
+
+        return await run_resume_operation(
+            session,
+            operation_id,
+            provider_factory=real_provider_factory(get_settings()),
+            session_factory=factory,
+        )
     if kind == OPERATION_KIND_ECHO:
         params = (
             await session.execute(

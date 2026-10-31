@@ -22,7 +22,12 @@ def make_session_factory() -> async_sessionmaker[AsyncSession]:
 
 
 async def truncate_all(session: AsyncSession) -> None:
-    """Remove every row from every app table; keep alembic/procrastinate state."""
+    """Remove every row from every app table; keep alembic/procrastinate state.
+
+    Each table clears in its own savepoint: a table blocked by an
+    out-of-scope foreign key (course owners are RESTRICT) skips without
+    rolling back the tables already cleared.
+    """
     tables = [
         "invite_uses",
         "notifications",
@@ -31,6 +36,8 @@ async def truncate_all(session: AsyncSession) -> None:
         "auth_states",
         "sessions",
         "identities",
+        "superadmin_identities",
+        "bans",
         "invites",
         "user_roles",
         "role_permissions",
@@ -43,10 +50,13 @@ async def truncate_all(session: AsyncSession) -> None:
         "llm_replies",
     ]
     for table in tables:
+        nested = await session.begin_nested()
         try:
             await session.execute(sa.text(f'DELETE FROM "{table}"'))
         except Exception:
-            await session.rollback()
+            await nested.rollback()
+        else:
+            await nested.commit()
     await session.commit()
 
 

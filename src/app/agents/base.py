@@ -16,7 +16,18 @@ from app.errors import ConfigurationError
 from app.llm import prompts as prompt_registry
 from app.llm.schema import validate_strict_subset
 
-PROMPT_ROOT = Path("prompts")
+
+def _default_prompt_root() -> Path:
+    """Absolute prompt dir from the installed package location.
+
+    The old relative `prompts/` broke every start outside the repo
+    root (notably the Docker image); resolving from this file keeps
+    one layout in dev, tests, and the image.
+    """
+    return Path(__file__).resolve().parents[3] / "prompts"
+
+
+PROMPT_ROOT = _default_prompt_root()
 
 AGENT_SCHEMAS: dict[str, dict[str, object]] = {
     "researcher": tree.RESEARCHER_SCHEMA,

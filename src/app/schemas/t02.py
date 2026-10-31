@@ -35,6 +35,11 @@ class BanRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=1000)
 
 
+class UserRoleGrant(BaseModel):
+    name: str
+    scope_tags: list[str]
+
+
 class UserResponse(BaseModel):
     id: str
     email: str
@@ -44,6 +49,7 @@ class UserResponse(BaseModel):
     banned_at: str | None
     banned_reason: str
     created_at: str | None
+    roles: list[UserRoleGrant] = Field(default_factory=list)
 
 
 class RoleRequest(BaseModel):
@@ -79,7 +85,6 @@ class InviteRequest(BaseModel):
     course_tags: list[str] = Field(min_length=1)
     max_uses: int | None = Field(default=None, ge=1)
     expires_at: datetime | None = None
-    granted_role: str = Field(default="student", max_length=100)
 
 
 class InviteResponse(BaseModel):
@@ -91,8 +96,33 @@ class InviteResponse(BaseModel):
     revoked_at: str | None
 
 
+class InviteListItem(BaseModel):
+    id: str
+    course_tags: list[str]
+    max_uses: int | None
+    used_count: int
+    expires_at: str | None
+    revoked_at: str | None
+
+
+class PermissionResponse(BaseModel):
+    code: str
+    category: str
+    label: str
+    description: str
+
+
+class NotificationResponse(BaseModel):
+    id: str
+    kind: str
+    payload: dict[str, object]
+    read: bool
+    created_at: str | None
+
+
 class EchoRequest(BaseModel):
     message: str = Field(min_length=1, max_length=10000)
+    idempotency_key: str | None = Field(default=None, max_length=100)
 
 
 class SubmitResponse(BaseModel):

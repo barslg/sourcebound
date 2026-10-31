@@ -1,8 +1,8 @@
 """Role use cases: CRUD, assignment, and anti-escalation.
 
 Every change writes its audit row in the same session so an audit
-failure rolls the change back. The principal cache version is bumped
-after each committed change by the caller-facing helpers here.
+failure rolls the change back. Principals load fresh from the database,
+so every change takes effect immediately in all processes.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import ConflictError, NotFoundError, ValidationError
-from app.rbac.principal import Principal, bump_version
+from app.rbac.principal import Principal
 from app.rbac.require import require
 from app.services.audit import write_audit
 
@@ -31,6 +31,9 @@ async def _reject_unknown(session: AsyncSession, codes: Collection[str]) -> None
     unknown = sorted(set(codes) - known)
     if unknown:
         raise ValidationError(f"unknown permission codes: {', '.join(unknown)}")
+
+
+CRUD_VERBS = frozenset({"create", "read", "update", "delete"})
 
 
 def _check_escalation(actor: Principal | None, codes: Collection[str], role_name: str) -> None:
@@ -50,6 +53,53 @@ def _check_escalation(actor: Principal | None, codes: Collection[str], role_name
         raise ForbiddenError(PERMISSION_DENIED_MESSAGE)
 
 
+def _check_assignment(
+    actor: Principal | None,
+    *,
+    target_id: UUID,
+    role_codes: Collection[str],
+    scope_tags: Collection[str],
+) -> None:
+    """Anti-escalation for grants: codes and tags ⊆ the actor's, never oneself."""
+    if actor is None or actor.is_superadmin:
+        return
+    from app.errors import ForbiddenError
+    from app.rbac.require import PERMISSION_DENIED_MESSAGE
+
+    if target_id == actor.user_id:
+        raise ForbiddenError(PERMISSION_DENIED_MESSAGE)
+    if sorted(set(role_codes) - actor.permissions):
+        raise ForbiddenError(PERMISSION_DENIED_MESSAGE)
+    wanted = set(scope_tags)
+    if not wanted and actor.scope_tags:
+        raise ForbiddenError(PERMISSION_DENIED_MESSAGE)
+    if wanted - set(actor.scope_tags):
+        raise ForbiddenError(PERMISSION_DENIED_MESSAGE)
+
+
+def _validate_crud(crud: Mapping[str, Collection[str]] | None) -> dict[str, list[str]]:
+    """CRUD matrix values are verbs only; anything else is refused."""
+    cleaned: dict[str, list[str]] = {}
+    for record_type, verbs in dict(crud or {}).items():
+        if not record_type or not isinstance(record_type, str):
+            raise ValidationError("crud record types must be non-empty strings")
+        unknown = sorted(set(verbs) - CRUD_VERBS)
+        if unknown:
+            raise ValidationError(f"unknown crud verbs for {record_type!r}: {', '.join(unknown)}")
+        cleaned[record_type] = sorted(set(verbs))
+    return cleaned
+
+
+def _validate_scope_tags(scope_tags: Collection[str] | None) -> list[str] | None:
+    """Scope tags are plain non-empty strings when given."""
+    if scope_tags is None:
+        return None
+    cleaned = [str(tag) for tag in scope_tags]
+    if any(not tag for tag in cleaned):
+        raise ValidationError("scope tags must be non-empty strings")
+    return sorted(set(cleaned))
+
+
 async def _role_id(session: AsyncSession, name: str) -> UUID:
     row = (
         await session.execute(sa.text("SELECT id FROM roles WHERE name = :name"), {"name": name})
@@ -57,6 +107,16 @@ async def _role_id(session: AsyncSession, name: str) -> UUID:
     if row is None:
         raise NotFoundError("role not found")
     return UUID(str(row[0]))
+
+
+async def _role_codes(session: AsyncSession, role_id: UUID) -> set[str]:
+    rows = (
+        await session.execute(
+            sa.text("SELECT permission_code FROM role_permissions WHERE role_id = :role"),
+            {"role": str(role_id)},
+        )
+    ).all()
+    return {str(row[0]) for row in rows}
 
 
 async def create_role(
@@ -74,6 +134,8 @@ async def create_role(
         require(actor, "role.edit")
     await _reject_unknown(session, permission_codes)
     _check_escalation(actor, permission_codes, name)
+    cleaned_crud = _validate_crud(crud)
+    cleaned_tags = _validate_scope_tags(scope_tags) or []
     try:
         row = (
             await session.execute(
@@ -83,8 +145,8 @@ async def create_role(
                 ),
                 {
                     "name": name,
-                    "crud": json.dumps(dict(crud or {})),
-                    "tags": list(scope_tags),
+                    "crud": json.dumps(cleaned_crud),
+                    "tags": cleaned_tags,
                 },
             )
         ).one()
@@ -108,7 +170,6 @@ async def create_role(
         entity_id=str(role_id),
         meta=meta,
     )
-    bump_version()
     return role_id
 
 
@@ -126,6 +187,10 @@ async def update_role(
         require(actor, "role.edit")
     role_id = await _role_id(session, name)
     if permission_codes is not None:
+        from app.rbac.catalogue import ADMIN_ROLE_NAME
+
+        if name == ADMIN_ROLE_NAME and not set(permission_codes):
+            raise ValidationError("the administrator role must keep its permissions")
         await _reject_unknown(session, permission_codes)
         _check_escalation(actor, permission_codes, name)
         await session.execute(
@@ -148,12 +213,12 @@ async def update_role(
     if crud is not None:
         await session.execute(
             sa.text("UPDATE roles SET crud = CAST(:crud AS jsonb) WHERE id = :role"),
-            {"crud": json.dumps(dict(crud)), "role": str(role_id)},
+            {"crud": json.dumps(_validate_crud(crud)), "role": str(role_id)},
         )
     if scope_tags is not None:
         await session.execute(
             sa.text("UPDATE roles SET scope_tags = :tags WHERE id = :role"),
-            {"tags": list(scope_tags), "role": str(role_id)},
+            {"tags": _validate_scope_tags(scope_tags) or [], "role": str(role_id)},
         )
     await write_audit(
         session,
@@ -163,7 +228,6 @@ async def update_role(
         entity_id=str(role_id),
         meta={"name": name},
     )
-    bump_version()
 
 
 async def delete_role(session: AsyncSession, *, name: str, actor: Principal | None) -> None:
@@ -185,7 +249,6 @@ async def delete_role(session: AsyncSession, *, name: str, actor: Principal | No
         entity_id=str(role_id),
         meta={"name": name},
     )
-    bump_version()
 
 
 async def list_roles(session: AsyncSession) -> list[dict[str, Any]]:
@@ -218,17 +281,28 @@ async def assign_role(
     scope_tags: Collection[str] = (),
     actor: Principal | None = None,
 ) -> None:
-    """Grant a role scoped to tags; administrators assign via require upstream."""
+    """Grant a role scoped to tags; a second grant unions the scopes."""
     if actor is not None:
         require(actor, "role.assign")
     role_id = await _role_id(session, role_name)
+    cleaned = _validate_scope_tags(scope_tags) or []
+    _check_assignment(
+        actor, target_id=user_id, role_codes=await _role_codes(session, role_id), scope_tags=cleaned
+    )
+    existing = (
+        await session.execute(
+            sa.text("SELECT scope_tags FROM user_roles WHERE user_id = :user AND role_id = :role"),
+            {"user": str(user_id), "role": str(role_id)},
+        )
+    ).first()
+    merged = sorted(set(cleaned) | set(existing[0] or [])) if existing else cleaned
     await session.execute(
         sa.text(
             "INSERT INTO user_roles (user_id, role_id, scope_tags)"
             " VALUES (:user, :role, :tags)"
             " ON CONFLICT (user_id, role_id) DO UPDATE SET scope_tags = EXCLUDED.scope_tags"
         ),
-        {"user": str(user_id), "role": str(role_id), "tags": list(scope_tags)},
+        {"user": str(user_id), "role": str(role_id), "tags": merged},
     )
     await write_audit(
         session,
@@ -238,7 +312,6 @@ async def assign_role(
         entity_id=str(user_id),
         meta={"role": role_name, "scope_tags": list(scope_tags)},
     )
-    bump_version()
 
 
 async def revoke_role(
@@ -264,4 +337,3 @@ async def revoke_role(
         entity_id=str(user_id),
         meta={"role": role_name},
     )
-    bump_version()

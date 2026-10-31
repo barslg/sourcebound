@@ -11,6 +11,8 @@ from app.schemas import t02 as dto
 users_router = APIRouter(prefix="/users", tags=["users"])
 roles_router = APIRouter(prefix="/roles", tags=["roles"])
 invites_router = APIRouter(prefix="/invites", tags=["invites"])
+permissions_router = APIRouter(prefix="/permissions", tags=["permissions"])
+notifications_router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
 @users_router.get("", response_model=list[dto.UserResponse])
@@ -97,6 +99,23 @@ async def revoke_role(
     return {"ok": True}
 
 
+@users_router.delete("/{user_id}/roles/{name}")
+async def revoke_user_role(
+    user_id: str,
+    name: str,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, bool]:
+    """Remove one role grant from a user."""
+    await controller.revoke_user_role(ctx, user_id=user_id, name=name)
+    return {"ok": True}
+
+
+@invites_router.get("", response_model=list[dto.InviteListItem])
+async def list_invites(ctx: RequestContext = Depends(get_ctx)) -> list[dto.InviteListItem]:  # noqa: B008 - FastAPI dependency injection idiom
+    """List invite links visible in the caller's scope."""
+    return await controller.list_invites(ctx)
+
+
 @invites_router.post("", response_model=dto.InviteResponse, status_code=201)
 async def create_invite(
     body: dto.InviteRequest,
@@ -110,4 +129,30 @@ async def create_invite(
 async def revoke_invite(token: str, ctx: RequestContext = Depends(get_ctx)) -> dict[str, bool]:  # noqa: B008 - FastAPI dependency injection idiom
     """Revoke an invite link."""
     await controller.revoke_invite(ctx, token=token)
+    return {"ok": True}
+
+
+@permissions_router.get("", response_model=list[dto.PermissionResponse])
+async def list_permissions(
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> list[dto.PermissionResponse]:
+    """The permission catalogue with categories, for the roles editor."""
+    return await controller.list_permissions(ctx)
+
+
+@notifications_router.get("", response_model=list[dto.NotificationResponse])
+async def list_notifications(
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> list[dto.NotificationResponse]:
+    """The caller's notifications, newest first, with a read flag."""
+    return await controller.list_notifications(ctx)
+
+
+@notifications_router.post("/{notification_id}/read")
+async def mark_notification_read(
+    notification_id: str,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, bool]:
+    """Mark one of the caller's notifications as read."""
+    await controller.mark_notification_read(ctx, notification_id=notification_id)
     return {"ok": True}

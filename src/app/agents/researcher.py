@@ -35,18 +35,39 @@ def rephrase_queries(query: str) -> list[str]:
     return folds
 
 
-def build_dynamic(query: str, rephrased: list[str], handles: list[dict[str, Any]]) -> str:
-    """Typed dynamic part: query, rephrasings, passage handles."""
+def build_dynamic(
+    query: str,
+    rephrased: list[str],
+    handles: list[dict[str, Any]],
+    course_language: str = "en",
+    source_languages: list[str] | None = None,
+) -> str:
+    """Typed dynamic part: language, query, rephrasings, passage handles."""
     return json.dumps(
-        {"query": query, "rephrased": rephrased, "passages": handles},
+        {
+            "course_language": course_language,
+            "source_languages": sorted(set(source_languages or [])),
+            "query": query,
+            "rephrased": rephrased,
+            "passages": handles,
+        },
         ensure_ascii=False,
         sort_keys=True,
     )
 
 
-def build_prompt(query: str, rephrased: list[str], handles: list[dict[str, Any]]) -> str:
+def build_prompt(
+    query: str,
+    rephrased: list[str],
+    handles: list[dict[str, Any]],
+    course_language: str = "en",
+    source_languages: list[str] | None = None,
+) -> str:
     """Full researcher prompt: stable system prefix plus typed input."""
-    return assemble(system_prompt("researcher"), build_dynamic(query, rephrased, handles))
+    return assemble(
+        system_prompt("researcher"),
+        build_dynamic(query, rephrased, handles, course_language, source_languages),
+    )
 
 
 def check_output(payload: dict[str, Any], handles: set[str]) -> list[str]:
@@ -85,10 +106,18 @@ async def record_pairs(
     ranked: list[dict[str, Any]],
     handle_to_passage: dict[str, UUID],
     ranker: str,
+    fts_order: list[UUID] | None = None,
+    hard_negative_k: int = 3,
 ) -> None:
-    """Persist every (query, passage) pair for reranker training."""
+    """Persist every (query, passage) pair for reranker training.
+
+    The model's ranking is stored under its ranker; the FTS ranking is
+    stored as ranker='fts' from the first run (BRIEF §3), and the
+    top-k FTS hits the model did not cite are labelled hard negatives.
+    """
     import sqlalchemy as sa
 
+    cited = {str(handle_to_passage.get(str(item.get("handle")))) for item in ranked}
     for item in ranked:
         passage_id = handle_to_passage.get(str(item.get("handle")))
         if passage_id is None:
@@ -108,6 +137,27 @@ async def record_pairs(
                 "ranker": ranker,
                 "rank": int(item.get("rank", 0)),
                 "score": item.get("score"),
+            },
+        )
+    for position, passage_id in enumerate(fts_order or [], start=1):
+        key = str(passage_id)
+        if ranker == "fts" and (key in cited or position > hard_negative_k):
+            continue
+        label = "hard_negative" if key not in cited and position <= hard_negative_k else "retrieved"
+        await session.execute(
+            sa.text(
+                "INSERT INTO retrieval_pairs"
+                " (query, query_lang, passage_id, ranker, rank, score,"
+                " label, label_source)"
+                " VALUES (:query, :lang, :passage, 'fts', :rank, NULL,"
+                " :label, 'pipeline')"
+            ),
+            {
+                "query": query,
+                "lang": query_lang,
+                "passage": key,
+                "rank": position,
+                "label": label,
             },
         )
 

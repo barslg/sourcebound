@@ -73,7 +73,7 @@ async def test_submit_persists_queued_operation(session: AsyncSession) -> None:
 
 async def test_worker_completes_operation_and_notifies(session: AsyncSession) -> None:
     from app.rbac.catalogue import sync_catalogue
-    from app.rbac.principal import bump_version, load_principal
+    from app.rbac.principal import load_principal
     from app.rbac.roles import assign_role, create_role
     from app.services.operations import execute_operation, submit_echo
 
@@ -82,7 +82,6 @@ async def test_worker_completes_operation_and_notifies(session: AsyncSession) ->
     user_id = await _user(session)
     await assign_role(session, user_id, "operator", scope_tags=[], actor=None)
     await session.commit()
-    bump_version()
     actor = await load_principal(session, user_id)
     operation_id = await submit_echo(session, actor=actor, payload={"message": "hi"}, defer=None)
     await session.commit()
@@ -138,9 +137,7 @@ async def test_worker_reauthorises_and_fails_without_rights(
     await session.commit()
     await session.execute(sa.text("DELETE FROM user_roles WHERE user_id = :u"), {"u": str(user_id)})
     await session.commit()
-    from app.rbac.principal import bump_version
 
-    bump_version()
     await execute_operation(
         operation_id,
         database_url=test_database_url(),

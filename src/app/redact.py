@@ -16,6 +16,7 @@ REDACTED = "[redacted]"
 _PATTERNS = (
     re.compile(r"LLM_[A-Za-z0-9_\-]{8,}"),
     re.compile(r"sk-[A-Za-z0-9_\-]{8,}"),
+    re.compile(r"GOCSPX-[A-Za-z0-9_\-]{8,}"),
     re.compile(r"(?i)(bearer\s+)[A-Za-z0-9_\-.~+/=]{8,}"),
 )
 

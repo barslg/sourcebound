@@ -44,6 +44,20 @@ class ConflictError(AppError):
     error_code = "conflict"
 
 
+class UnprocessableError(AppError):
+    """The request is valid but the resource state refuses it (held blocks)."""
+
+    status_code = 422
+    error_code = "unprocessable"
+
+
+class UnsupportedMediaError(AppError):
+    """The upload media has no ingestion path (images/audio need theirs)."""
+
+    status_code = 415
+    error_code = "unsupported_media"
+
+
 class LLMError(AppError):
     """The model call failed after the retry policy was exhausted."""
 
@@ -64,6 +78,8 @@ EXCEPTION_STATUS_TABLE: dict[type[Exception], int] = {
     ForbiddenError: 403,
     NotFoundError: 404,
     ConflictError: 409,
+    UnprocessableError: 422,
+    UnsupportedMediaError: 415,
     LLMError: 502,
     ConfigurationError: 500,
     AppError: 500,

@@ -155,9 +155,13 @@ def execute_parser_spec(html: str, spec: dict[str, Any]) -> list[dict[str, str]]
     ]
 
 
-def build_prompt(page_sample: str) -> str:
+def build_prompt(page_sample: str, course_language: str = "en") -> str:
     """Full librarian prompt: stable system prefix plus a page sample."""
-    dynamic = json.dumps({"page_sample": page_sample[:4000]}, ensure_ascii=False)
+    dynamic = json.dumps(
+        {"course_language": course_language, "page_sample": page_sample[:4000]},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
     return assemble(system_prompt("librarian"), dynamic)
 
 

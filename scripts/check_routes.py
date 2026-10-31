@@ -9,7 +9,7 @@ the check asserts:
   least one require("code") literal with a code from the RBAC catalogue.
 
 Exempt (never carry a code): /health, /auth/login, /auth/callback,
-/auth/csrf, and GET /invites/{token}/accept. Self-scoped (the caller's own
+/auth/csrf, and POST /invites/{token}/accept. Self-scoped (the caller's own
 session, principal, stream, or owner-scoped read): /auth/logout, /auth/me,
 /events, and GET /operations/{operation_id}.
 
@@ -35,7 +35,7 @@ EXEMPT = {
     ("GET", "/api/v1/auth/login"),
     ("GET", "/api/v1/auth/callback"),
     ("GET", "/api/v1/auth/csrf"),
-    ("GET", "/api/v1/invites/{token}/accept"),
+    ("POST", "/api/v1/invites/{token}/accept"),
 }
 
 SELF_SCOPED = {
@@ -47,6 +47,10 @@ SELF_SCOPED = {
     "/api/v1/events": "own stream",
     # Owner-scoped read; anyone else's operation answers 404.
     "/api/v1/operations/{operation_id}": "owner-scoped read",
+    # Returns only the caller's own notifications.
+    "/api/v1/notifications": "own notifications",
+    # Marks only the caller's own notification as read.
+    "/api/v1/notifications/{notification_id}/read": "own notification",
 }
 
 INDEXED_PACKAGES = ("controllers", "services", "rbac")

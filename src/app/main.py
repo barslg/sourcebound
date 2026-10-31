@@ -72,12 +72,15 @@ def create_app(settings: Settings | None = None, *, sync_on_startup: bool = True
     app.include_router(t02_routes.users_router, prefix="/api/v1")
     app.include_router(t02_routes.roles_router, prefix="/api/v1")
     app.include_router(t02_routes.invites_router, prefix="/api/v1")
+    app.include_router(t02_routes.permissions_router, prefix="/api/v1")
+    app.include_router(t02_routes.notifications_router, prefix="/api/v1")
     app.include_router(ops_routes.invites_accept_router, prefix="/api/v1")
     app.include_router(ops_routes.operations_router, prefix="/api/v1")
     app.include_router(ops_routes.events_router, prefix="/api/v1")
     app.include_router(t03_routes.courses_router, prefix="/api/v1")
     app.include_router(t03_routes.sources_router, prefix="/api/v1")
     app.include_router(t03_routes.runs_router, prefix="/api/v1")
+    app.include_router(t03_routes.blocks_router, prefix="/api/v1")
     return app
 
 

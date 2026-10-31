@@ -21,18 +21,23 @@ def build_dynamic(
     constraints: list[dict[str, Any]],
     prescription: dict[str, list[str]],
     passages: list[dict[str, Any]],
+    course_language: str = "en",
+    source_languages: list[str] | None = None,
 ) -> str:
-    """Typed dynamic part: profile, constraints, prescription, handles."""
-    return json.dumps(
-        {
-            "profile": profile,
-            "constraints": constraints,
-            "prescription": prescription,
-            "passages": passages,
-        },
-        ensure_ascii=False,
-        sort_keys=True,
-    )
+    """Typed dynamic part: language, sources, profile, prescription.
+
+    Sources come first so the stable approved-source prefix stays
+    cache-friendly; the plan contract follows.
+    """
+    ordered = {
+        "course_language": course_language,
+        "source_languages": sorted(set(source_languages or [])),
+        "passages": passages,
+        "profile": profile,
+        "constraints": constraints,
+        "prescription": prescription,
+    }
+    return json.dumps(ordered, ensure_ascii=False)
 
 
 def build_prompt(
@@ -40,21 +45,43 @@ def build_prompt(
     constraints: list[dict[str, Any]],
     prescription: dict[str, list[str]],
     passages: list[dict[str, Any]],
+    course_language: str = "en",
+    source_languages: list[str] | None = None,
 ) -> str:
     """Full architect prompt: stable system prefix plus typed input."""
     return assemble(
         system_prompt("architect"),
-        build_dynamic(profile, constraints, prescription, passages),
+        build_dynamic(
+            profile, constraints, prescription, passages, course_language, source_languages
+        ),
     )
 
 
-def check_output(payload: dict[str, Any], prescription: dict[str, list[str]]) -> list[str]:
-    """Validate an architect reply in code; return error strings."""
+def check_output(
+    payload: dict[str, Any],
+    prescription: dict[str, list[str]],
+    handles: set[str] | None = None,
+) -> list[str]:
+    """Validate an architect reply in code; return error strings.
+
+    When `handles` (the step's own P-handles) is given, a source ref
+    outside it is rejected: handles are step-local, so P99 from
+    another step must hold the block, never crash the run.
+    """
     try:
         output = ArchitectOutput.model_validate(payload)
     except PydanticValidationError as exc:
         return [f"schema: {error['loc']}: {error['msg']}" for error in exc.errors()]
     errors = validate_tree(CourseTree(modules=output.modules), prescription)
+    if handles is not None:
+        for module in output.modules:
+            for topic in module.topics:
+                for block in topic.blocks:
+                    for ref in block.source_refs:
+                        if ref.handle not in handles:
+                            errors.append(
+                                f"block {block.plan_node_id}: unknown handle {ref.handle!r}"
+                            )
     block_count = sum(len(topic.blocks) for module in output.modules for topic in module.topics)
     if output.estimate_inputs.blocks != block_count:
         errors.append(

@@ -129,26 +129,41 @@ async def test_live_structured_grounded_and_cached() -> None:
             assert repeat == first
             assert transport.calls == calls_before
 
-            # (d) A new question over the same cached prefix reuses cache.
-            followup_prompt = (
+            # (d) Two questions over one long identical prefix reuse cache.
+            # Meta caches long stable prefixes (measured 2026-10-31: an
+            # identical ~1.7k-token prefix sent twice under one
+            # prompt_cache_key reported 1605 cached_tokens on the second
+            # call); a 19-token prompt never caches.
+            long_materials = "\n\n".join([SOURCE] * 16)
+            shared_prefix = (
                 "Answer ONLY from the materials below. If the answer is "
                 "not in the materials, set found_in_materials to false "
                 "and say in answer that it is not in the materials.\n\n"
-                "Question: who keeps the blue ledger today "
-                f"(run {nonce})?\n\nMaterials:\n{SOURCE}"
+                f"Materials:\n{long_materials}\n\nQuestion: "
             )
-            followup = await provider.generate_json(
+            first_long_prompt = (
+                f"{shared_prefix}what did entry to the night house cost (run {nonce})?"
+            )
+            first_long = await provider.generate_json(
                 agent="smoke",
-                prompt=followup_prompt,
+                prompt=first_long_prompt,
                 schema=verdict_schema,
                 cache_key="smoke-agent",
             )
-            assert followup["found_in_materials"] is True
+            assert first_long["found_in_materials"] is True
+            second_long_prompt = f"{shared_prefix}who keeps the blue ledger today (run {nonce})?"
+            second_long = await provider.generate_json(
+                agent="smoke",
+                prompt=second_long_prompt,
+                schema=verdict_schema,
+                cache_key="smoke-agent",
+            )
+            assert second_long["found_in_materials"] is True
             row = (
                 (
                     await session.execute(
                         sa.select(llm_calls).where(
-                            llm_calls.c.request["input"].astext == followup_prompt
+                            llm_calls.c.request["input"].astext == second_long_prompt
                         )
                     )
                 )
@@ -157,9 +172,9 @@ async def test_live_structured_grounded_and_cached() -> None:
             )
             assert row["tokens_cached"] > 0
 
-            assert transport.calls == 3
-            assert await count(llm_calls) - rows_before == 4
-            assert await count(llm_replies) - stored_before == 3
+            assert transport.calls == 4
+            assert await count(llm_calls) - rows_before == 5
+            assert await count(llm_replies) - stored_before == 4
             assert await calls.total_spend_usd(session) - spend_before > 0
     finally:
         await engine.dispose()

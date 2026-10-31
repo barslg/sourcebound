@@ -42,6 +42,24 @@ FORBIDDEN_SUFFIXES = (".sql", ".dump", ".sqlite")
 FORBIDDEN_PATH_PREFIXES = ("build/logs/", "logs/")
 FORBIDDEN_PATH_EXACT = {"build/state.json"}
 
+# Files allowed to name secret shapes: the gitleaks rule file, this
+# checker (it lists the markers it hunts), the redaction module (it
+# masks the shapes it names), and the gate fixtures that plant markers
+# on purpose. Content checks skip these paths by explicit allow-list;
+# the markers themselves are never weakened. Path checks still apply
+# to every file.
+CONTENT_ALLOWLIST_EXACT = {
+    ".gitleaks.toml",
+    "scripts/check_public_tree.py",
+    "src/app/redact.py",
+}
+CONTENT_ALLOWLIST_PREFIXES = ("tests/gates/",)
+
+
+def is_allowlisted(name: str) -> bool:
+    """True when content checks skip this path (see CONTENT_ALLOWLIST_*)."""
+    return name in CONTENT_ALLOWLIST_EXACT or name.startswith(CONTENT_ALLOWLIST_PREFIXES)
+
 
 def tracked_files(repo: Path) -> list[str]:
     """Tracked paths via git ls-files, null-separated for odd names."""
@@ -113,6 +131,8 @@ def check_tree(repo: Path, names: list[str]) -> list[str]:
         path_hit = check_path(name)
         if path_hit is not None:
             violations.append(path_hit)
+        if is_allowlisted(name):
+            continue
         path = repo / name
         if path.is_file() and is_text(path):
             try:

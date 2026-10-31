@@ -64,7 +64,11 @@ async def set_profile(ctx: RequestContext, *, course_id: str, body: Any) -> dict
 
 
 async def edit_plan(
-    ctx: RequestContext, *, course_id: str, operations: list[dict[str, Any]]
+    ctx: RequestContext,
+    *,
+    course_id: str,
+    operations: list[dict[str, Any]],
+    base_version: int | None = None,
 ) -> dict[str, Any]:
     from app.services.courses import edit_plan as edit_use_case
     from app.services.courses import get_course as get_use_case
@@ -73,13 +77,184 @@ async def edit_plan(
     require(actor, "course.edit")
     course = await get_use_case(ctx.db, course_id=UUID(course_id))
     _owner_or_404(course, actor.user_id, actor.is_superadmin)
-    tree = await edit_use_case(ctx.db, course_id=UUID(course_id), operations=operations)
+    tree = await edit_use_case(
+        ctx.db, course_id=UUID(course_id), operations=operations, base_version=base_version
+    )
     await ctx.db.commit()
     return tree
 
 
+async def list_courses(ctx: RequestContext) -> list[dict[str, Any]]:
+    from app.services.courses import list_courses as list_use_case
+
+    actor = require_auth(ctx)
+    require(actor, "course.edit")
+    return await list_use_case(ctx.db, owner_id=actor.user_id, is_superadmin=actor.is_superadmin)
+
+
+async def get_plan(ctx: RequestContext, *, course_id: str) -> dict[str, Any]:
+    from app.services.courses import get_course as get_use_case
+    from app.services.courses import read_tree
+
+    actor = require_auth(ctx)
+    require(actor, "course.edit")
+    course = await get_use_case(ctx.db, course_id=UUID(course_id))
+    _owner_or_404(course, actor.user_id, actor.is_superadmin)
+    return await read_tree(ctx.db, course_id=UUID(course_id))
+
+
+async def get_estimate(ctx: RequestContext, *, course_id: str) -> dict[str, Any]:
+    from app.services.courses import course_estimate as estimate_use_case
+    from app.services.courses import get_course as get_use_case
+
+    actor = require_auth(ctx)
+    require(actor, "course.edit")
+    course = await get_use_case(ctx.db, course_id=UUID(course_id))
+    _owner_or_404(course, actor.user_id, actor.is_superadmin)
+    return await estimate_use_case(ctx.db, course_id=UUID(course_id))
+
+
+async def list_sources(ctx: RequestContext, *, course_id: str) -> list[dict[str, Any]]:
+    from app.services.courses import get_course as get_use_case
+    from app.services.library import list_course_sources
+
+    actor = require_auth(ctx)
+    require(actor, "course.edit")
+    course = await get_use_case(ctx.db, course_id=UUID(course_id))
+    _owner_or_404(course, actor.user_id, actor.is_superadmin)
+    return await list_course_sources(ctx.db, course_id=UUID(course_id))
+
+
+async def reject_source(ctx: RequestContext, *, source_id: str) -> dict[str, bool]:
+    from app.services.courses import get_course as get_course_use_case
+    from app.services.courses import owns_any_course
+    from app.services.library import reject_source as reject_use_case
+    from app.services.library import source_course_ids
+
+    actor = require_auth(ctx)
+    require(actor, "source.approve")
+    bound = await source_course_ids(ctx.db, source_id=UUID(source_id))
+    if bound and not actor.is_superadmin:
+        if not await owns_any_course(ctx.db, owner_id=actor.user_id, course_ids=bound):
+            from app.errors import NotFoundError
+
+            raise NotFoundError("source not found")
+        for course in bound:
+            row = await get_course_use_case(ctx.db, course_id=course)
+            _owner_or_404(row, actor.user_id, actor.is_superadmin)
+    await reject_use_case(ctx.db, source_id=UUID(source_id))
+    await ctx.db.commit()
+    return {"ok": True}
+
+
+async def cancel_run(ctx: RequestContext, *, run_id: str) -> dict[str, bool]:
+    from app.runs.executor import cancel_run as cancel_use_case
+
+    actor = require_auth(ctx)
+    require(actor, "run.cancel")
+    await _run_in_scope(ctx, run_id=UUID(run_id))
+    await cancel_use_case(ctx.db, run_id=UUID(run_id))
+    return {"ok": True}
+
+
+async def get_held(ctx: RequestContext, *, course_id: str) -> dict[str, Any]:
+    from app.services.courses import get_course as get_use_case
+    from app.services.courses import held_blocks
+
+    actor = require_auth(ctx)
+    require(actor, "course.edit")
+    course = await get_use_case(ctx.db, course_id=UUID(course_id))
+    _owner_or_404(course, actor.user_id, actor.is_superadmin)
+    return await held_blocks(ctx.db, course_id=UUID(course_id))
+
+
+async def _block_in_scope(ctx: RequestContext, *, block_id: UUID) -> UUID:
+    """The block's course id, 404 when outside the actor's scope."""
+    from app.services.courses import block_course_id
+    from app.services.courses import get_course as get_use_case
+
+    actor = require_auth(ctx)
+    course_id = await block_course_id(ctx.db, block_id=block_id)
+    course = await get_use_case(ctx.db, course_id=course_id)
+    _owner_or_404(course, actor.user_id, actor.is_superadmin)
+    return course_id
+
+
+async def rewrite_block(ctx: RequestContext, *, block_id: str) -> dict[str, str]:
+    from app.services.courses import submit_rewrite_operation
+
+    actor = require_auth(ctx)
+    require(actor, "course.generate")
+    course_id = await _block_in_scope(ctx, block_id=UUID(block_id))
+    operation_id = await submit_rewrite_operation(
+        ctx.db,
+        actor=actor,
+        kind="rewrite_block",
+        params={"course_id": str(course_id), "block_id": block_id},
+    )
+    await ctx.db.commit()
+    return {"operation_id": str(operation_id)}
+
+
+async def accept_block(ctx: RequestContext, *, block_id: str) -> dict[str, bool]:
+    from app.services.courses import accept_block as accept_use_case
+
+    actor = require_auth(ctx)
+    require(actor, "course.edit")
+    await _block_in_scope(ctx, block_id=UUID(block_id))
+    await accept_use_case(ctx.db, block_id=UUID(block_id))
+    await ctx.db.commit()
+    return {"ok": True}
+
+
+async def patch_block(ctx: RequestContext, *, block_id: str, brief: str) -> dict[str, bool]:
+    from app.services.courses import set_block_brief
+
+    actor = require_auth(ctx)
+    require(actor, "course.edit")
+    await _block_in_scope(ctx, block_id=UUID(block_id))
+    await set_block_brief(ctx.db, block_id=UUID(block_id), brief=brief)
+    await ctx.db.commit()
+    return {"ok": True}
+
+
+async def rewrite_held(ctx: RequestContext, *, course_id: str) -> dict[str, str]:
+    from app.services.courses import get_course as get_use_case
+    from app.services.courses import held_blocks, submit_rewrite_operation
+
+    actor = require_auth(ctx)
+    require(actor, "course.generate")
+    course = await get_use_case(ctx.db, course_id=UUID(course_id))
+    _owner_or_404(course, actor.user_id, actor.is_superadmin)
+    held = await held_blocks(ctx.db, course_id=UUID(course_id))
+    operation_id = await submit_rewrite_operation(
+        ctx.db,
+        actor=actor,
+        kind="rewrite_held_batch",
+        params={
+            "course_id": course_id,
+            "block_ids": [block["id"] for block in held["blocks"]],
+        },
+    )
+    await ctx.db.commit()
+    return {"operation_id": str(operation_id)}
+
+
+async def publish_course(ctx: RequestContext, *, course_id: str) -> dict[str, str]:
+    from app.services.courses import get_course as get_use_case
+    from app.services.courses import publish_course as publish_use_case
+
+    actor = require_auth(ctx)
+    require(actor, "course.publish")
+    course = await get_use_case(ctx.db, course_id=UUID(course_id))
+    _owner_or_404(course, actor.user_id, actor.is_superadmin)
+    version_id = await publish_use_case(ctx.db, course_id=UUID(course_id))
+    await ctx.db.commit()
+    return {"version_id": str(version_id)}
+
+
 async def validate_plan(ctx: RequestContext, *, course_id: str) -> dict[str, Any]:
-    from app.services.courses import blocking_questions
+    from app.services.courses import blocking_questions, validate_course_tree
     from app.services.courses import get_course as get_use_case
 
     actor = require_auth(ctx)
@@ -87,7 +262,12 @@ async def validate_plan(ctx: RequestContext, *, course_id: str) -> dict[str, Any
     course = await get_use_case(ctx.db, course_id=UUID(course_id))
     _owner_or_404(course, actor.user_id, actor.is_superadmin)
     questions = await blocking_questions(ctx.db, course_id=UUID(course_id))
-    return {"blocking_questions": questions, "can_generate": not questions}
+    tree_errors = await validate_course_tree(ctx.db, course_id=UUID(course_id))
+    return {
+        "blocking_questions": questions,
+        "tree_errors": tree_errors,
+        "can_generate": not questions,
+    }
 
 
 async def submit_plan(
@@ -102,6 +282,7 @@ async def submit_plan(
     from app.tasks.jobs import enqueue_operation
 
     actor = require_auth(ctx)
+    require(actor, "course.plan")
     course = await get_use_case(ctx.db, course_id=UUID(course_id))
     _owner_or_404(course, actor.user_id, actor.is_superadmin)
     operation_id = await submit_use_case(
@@ -123,6 +304,7 @@ async def submit_generate(
     from app.tasks.jobs import enqueue_operation
 
     actor = require_auth(ctx)
+    require(actor, "course.generate")
     course = await get_use_case(ctx.db, course_id=UUID(course_id))
     _owner_or_404(course, actor.user_id, actor.is_superadmin)
     operation_id = await submit_use_case(
@@ -135,12 +317,23 @@ async def submit_generate(
     return {"operation_id": str(operation_id)}
 
 
-async def get_run(ctx: RequestContext, *, run_id: str) -> dict[str, Any]:
+async def _run_in_scope(ctx: RequestContext, *, run_id: UUID) -> dict[str, Any]:
+    """Load a run only when its course is in the actor's scope (else 404)."""
     from app.runs.executor import get_run as get_use_case
+    from app.services.courses import get_course as get_course_use_case
 
     actor = require_auth(ctx)
+    run = await get_use_case(ctx.db, run_id=run_id)
+    if run.get("course_id") is not None:
+        course = await get_course_use_case(ctx.db, course_id=UUID(str(run["course_id"])))
+        _owner_or_404(course, actor.user_id, actor.is_superadmin)
+    return run
+
+
+async def get_run(ctx: RequestContext, *, run_id: str) -> dict[str, Any]:
+    actor = require_auth(ctx)
     require(actor, "run.start")
-    return await get_use_case(ctx.db, run_id=UUID(run_id))
+    return await _run_in_scope(ctx, run_id=UUID(run_id))
 
 
 async def resume_run(ctx: RequestContext, *, run_id: str) -> dict[str, str]:
@@ -148,6 +341,8 @@ async def resume_run(ctx: RequestContext, *, run_id: str) -> dict[str, str]:
     from app.tasks.jobs import enqueue_operation
 
     actor = require_auth(ctx)
+    require(actor, "run.retry")
+    await _run_in_scope(ctx, run_id=UUID(run_id))
     resumed_id = await resume_use_case(
         ctx.db,
         actor=actor,
@@ -158,17 +353,31 @@ async def resume_run(ctx: RequestContext, *, run_id: str) -> dict[str, str]:
 
 
 async def upload_source(
-    ctx: RequestContext, *, filename: str, media: str, content: bytes
+    ctx: RequestContext,
+    *,
+    filename: str,
+    media: str,
+    content: bytes,
+    course_id: str | None = None,
+    licence: str = "",
+    as_of: str | None = None,
 ) -> dict[str, str]:
+    from app.services.courses import get_course as get_use_case
     from app.services.library import (
-        chunk_markdown,
-        chunk_text,
+        chunk_upload,
         ingest_passages,
+        queue_transcription,
+        set_source_as_of,
         store_upload,
     )
 
     actor = require_auth(ctx)
-    require(actor, "source.create")
+    require(actor, "source.upload")
+    course_uuid = UUID(course_id) if course_id else None
+    if course_uuid is not None:
+        course = await get_use_case(ctx.db, course_id=course_uuid)
+        _owner_or_404(course, actor.user_id, actor.is_superadmin)
+    passages = chunk_upload(content, media=media, filename=filename)
     source_id = await store_upload(
         ctx.db,
         settings=ctx.settings,
@@ -176,37 +385,116 @@ async def upload_source(
         filename=filename,
         media=media,
         content=content,
+        licence=licence,
+        course_id=course_uuid,
     )
-    text = content.decode("utf-8", errors="replace")
-    if media == "markdown":
-        passages = chunk_markdown(text)
+    await ingest_passages(ctx.db, source_id=source_id, passages=passages)
+    if media == "audio":
+        await queue_transcription(ctx.db, source_id=source_id)
+    from datetime import date
+
+    from app.errors import ValidationError
+
+    if as_of is None:
+        day = date.today()
     else:
-        passages = chunk_text(text, kind="pdf")
-    await ingest_passages(ctx.db, source_id=source_id, passages=passages, ts_config="english")
+        try:
+            day = date.fromisoformat(as_of)
+        except ValueError as exc:
+            raise ValidationError(f"as_of must be an ISO date, got {as_of!r}") from exc
+    await set_source_as_of(ctx.db, source_id=source_id, as_of=day)
     await ctx.db.commit()
     return {"source_id": str(source_id)}
 
 
 async def fetch_source(ctx: RequestContext, *, url: str, course_id: str | None) -> dict[str, str]:
+    from app.services.courses import get_course as get_use_case
     from app.services.library import intake_url
 
     actor = require_auth(ctx)
-    require(actor, "source.create")
+    require(actor, "source.upload")
+    course_uuid = UUID(course_id) if course_id else None
+    if course_uuid is not None:
+        course = await get_use_case(ctx.db, course_id=course_uuid)
+        _owner_or_404(course, actor.user_id, actor.is_superadmin)
     result = await intake_url(
         ctx.db,
         settings=ctx.settings,
         url=url,
-        course_id=UUID(course_id) if course_id else None,
+        course_id=course_uuid,
     )
     await ctx.db.commit()
     return result
 
 
 async def approve_source(ctx: RequestContext, *, source_id: str) -> dict[str, bool]:
+    from app.services.courses import get_course as get_course_use_case
+    from app.services.courses import owns_any_course
     from app.services.library import approve_source as approve_use_case
+    from app.services.library import source_course_ids
 
     actor = require_auth(ctx)
     require(actor, "source.approve")
+    bound = await source_course_ids(ctx.db, source_id=UUID(source_id))
+    if bound and not actor.is_superadmin:
+        if not await owns_any_course(ctx.db, owner_id=actor.user_id, course_ids=bound):
+            from app.errors import NotFoundError
+
+            raise NotFoundError("source not found")
+        # The actor approves within their own courses, never another owner's.
+        owned: list[UUID] = []
+        for course in bound:
+            row = await get_course_use_case(ctx.db, course_id=course)
+            if row["owner_id"] == str(actor.user_id):
+                owned.append(course)
+        for course in owned:
+            await approve_use_case(
+                ctx.db,
+                source_id=UUID(source_id),
+                approved_by=actor.user_id,
+                course_id=course,
+            )
+        await ctx.db.commit()
+        return {"ok": True}
     await approve_use_case(ctx.db, source_id=UUID(source_id), approved_by=actor.user_id)
     await ctx.db.commit()
     return {"ok": True}
+
+
+async def approve_candidate(ctx: RequestContext, *, candidate_id: str) -> dict[str, str]:
+    from app.services.courses import get_course as get_use_case
+    from app.services.library import approve_candidate as approve_use_case
+    from app.services.library import get_candidate
+
+    actor = require_auth(ctx)
+    require(actor, "source.approve")
+    candidate = await get_candidate(ctx.db, candidate_id=UUID(candidate_id))
+    if candidate["course_id"] is not None:
+        course = await get_use_case(ctx.db, course_id=UUID(str(candidate["course_id"])))
+        _owner_or_404(course, actor.user_id, actor.is_superadmin)
+    source_id = await approve_use_case(
+        ctx.db,
+        candidate_id=UUID(candidate_id),
+        approved_by=actor.user_id,
+        settings=ctx.settings,
+    )
+    await ctx.db.commit()
+    return {"source_id": str(source_id)}
+
+
+async def transcribe_source(ctx: RequestContext, *, source_id: str) -> dict[str, Any]:
+    from app.services.courses import owns_any_course
+    from app.services.library import source_course_ids
+    from app.services.library import transcribe_source as transcribe_use_case
+
+    actor = require_auth(ctx)
+    require(actor, "source.upload")
+    bound = await source_course_ids(ctx.db, source_id=UUID(source_id))
+    if bound and not actor.is_superadmin:
+        if not await owns_any_course(ctx.db, owner_id=actor.user_id, course_ids=bound):
+            from app.errors import NotFoundError
+
+            raise NotFoundError("source not found")
+    count = await transcribe_use_case(ctx.db, source_id=UUID(source_id), settings=ctx.settings)
+    await ctx.db.commit()
+    return {"source_id": source_id, "passages": count}

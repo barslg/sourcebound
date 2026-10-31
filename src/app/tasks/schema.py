@@ -17,7 +17,7 @@ from app.config import get_settings
 from app.errors import ConfigurationError
 from app.tasks.worker import psycopg_dsn
 
-APP_DOTTED_PATH = "app.tasks.worker.app"
+APP_DOTTED_PATH = "app.tasks.jobs.app"
 
 
 def schema_present(dsn: str) -> bool:

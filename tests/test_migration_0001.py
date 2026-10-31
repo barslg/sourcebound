@@ -98,4 +98,7 @@ def test_0001_upgrade_then_downgrade_then_upgrade() -> None:
     command.upgrade(cfg, "head")
     tables = _harness_tables(url)
     for table, columns in EXPECTED_COLUMNS.items():
+        if table == "invites":
+            # At head the plaintext token is gone (T02b item 7: sha256 only).
+            columns = {"id", "token_hash", "max_uses", "used_count", "created_by", "created_at"}
         assert columns <= tables[table], f"{table} missing {columns - tables[table]}"

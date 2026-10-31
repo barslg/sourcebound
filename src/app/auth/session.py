@@ -8,6 +8,7 @@ from config). No tokens live in the browser besides this cookie.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -15,7 +16,10 @@ from typing import Any
 from uuid import UUID
 
 import sqlalchemy as sa
+from fastapi import Response
 from sqlalchemy.ext.asyncio import AsyncSession
+
+ABSOLUTE_SESSION_TTL_S = 30 * 24 * 3600
 
 
 @dataclass(frozen=True)
@@ -27,6 +31,7 @@ class SessionRow:
     csrf_token: str
     expires_at: datetime
     pending_invite_token: str | None
+    absolute_expires_at: datetime | None = None
 
 
 def hash_token(token: str) -> str:
@@ -34,37 +39,108 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+def sign_session_token(token: str, *, secret: str) -> str:
+    """Append an HMAC signature so cookie forgery needs the session secret."""
+    signature = hmac.new(secret.encode(), token.encode(), hashlib.sha256).hexdigest()
+    return f"{token}.{signature}"
+
+
+def parse_session_cookie(value: str, *, secret: str | None) -> str | None:
+    """Recover the raw token from a cookie value; None when the signature is bad."""
+    if not secret:
+        return value or None
+    token, dot, signature = value.partition(".")
+    if not dot or not token or not signature:
+        return None
+    expected = hmac.new(secret.encode(), token.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected):
+        return None
+    return token
+
+
+def cookie_name_for(app_env: str, base_name: str) -> str:
+    """__Host- prefixed cookie outside local so the browser locks it to HTTPS."""
+    if app_env == "local":
+        return base_name
+    bare = base_name.removeprefix("__Host-")
+    return f"__Host-{bare}"
+
+
+def cookie_secure_for(app_env: str, configured: bool) -> bool:
+    """Secure cookies everywhere except local development."""
+    return True if app_env != "local" else configured
+
+
+def cookie_value_for(token: str, secret: str | None) -> str:
+    """The cookie value for a fresh token: signed whenever a secret is set."""
+    return sign_session_token(token, secret=secret) if secret else token
+
+
+def set_session_cookie(
+    response: Response,
+    *,
+    app_env: str,
+    cookie_name: str,
+    secret: str | None,
+    token: str,
+    ttl_s: int,
+    secure_configured: bool = False,
+) -> None:
+    """Attach the backend session cookie: HttpOnly, Lax, Secure outside local."""
+    response.set_cookie(
+        cookie_name_for(app_env, cookie_name),
+        cookie_value_for(token, secret),
+        httponly=True,
+        samesite="lax",
+        secure=cookie_secure_for(app_env, secure_configured),
+        max_age=ttl_s,
+        path="/",
+    )
+
+
 def _parse(row: sa.Row[Any]) -> SessionRow:
     mapping = row._mapping
     raw_user: Any = mapping["user_id"]
     raw_expires: Any = mapping["expires_at"]
     raw_pending: Any = mapping["pending_invite_token"]
+    raw_absolute: Any = mapping["absolute_expires_at"]
     return SessionRow(
         id=UUID(str(mapping["id"])),
         user_id=UUID(str(raw_user)) if raw_user is not None else None,
         csrf_token=str(mapping["csrf_token"]),
         expires_at=raw_expires,
         pending_invite_token=str(raw_pending) if raw_pending is not None else None,
+        absolute_expires_at=raw_absolute,
     )
 
 
 async def create_session(
-    session: AsyncSession, user_id: UUID | None, *, ttl_s: int = 604800
+    session: AsyncSession,
+    user_id: UUID | None,
+    *,
+    ttl_s: int = 604800,
+    absolute_ttl_s: int = ABSOLUTE_SESSION_TTL_S,
 ) -> tuple[str, str]:
-    """Mint a session; return the (token, csrf_token) pair for the cookie."""
+    """Mint a session; return the (token, csrf_token) pair for the cookie.
+
+    Rolling expiry extends on use; the absolute expiry never moves, so a
+    session always ends even under continuous use.
+    """
     token = secrets.token_urlsafe(48)
     csrf_token = secrets.token_urlsafe(32)
-    expires_at = datetime.now(UTC) + timedelta(seconds=ttl_s)
+    now = datetime.now(UTC)
     await session.execute(
         sa.text(
-            "INSERT INTO sessions (token_hash, user_id, csrf_token, expires_at)"
-            " VALUES (:hash, :user, :csrf, :expires)"
+            "INSERT INTO sessions (token_hash, user_id, csrf_token, expires_at,"
+            " absolute_expires_at)"
+            " VALUES (:hash, :user, :csrf, :expires, :absolute)"
         ),
         {
             "hash": hash_token(token),
             "user": str(user_id) if user_id else None,
             "csrf": csrf_token,
-            "expires": expires_at,
+            "expires": now + timedelta(seconds=ttl_s),
+            "absolute": now + timedelta(seconds=absolute_ttl_s),
         },
     )
     return token, csrf_token
@@ -77,8 +153,8 @@ async def load_session(
     row = (
         await session.execute(
             sa.text(
-                "SELECT id, user_id, csrf_token, expires_at, pending_invite_token"
-                " FROM sessions WHERE token_hash = :hash"
+                "SELECT id, user_id, csrf_token, expires_at, pending_invite_token,"
+                " absolute_expires_at FROM sessions WHERE token_hash = :hash"
             ),
             {"hash": hash_token(token)},
         )
@@ -90,13 +166,18 @@ async def load_session(
     expires = found.expires_at
     if expires.tzinfo is None:
         expires = expires.replace(tzinfo=UTC)
-    if expires <= now:
+    absolute = found.absolute_expires_at
+    if absolute is not None and absolute.tzinfo is None:
+        absolute = absolute.replace(tzinfo=UTC)
+    if expires <= now or (absolute is not None and absolute <= now):
         await session.execute(
             sa.text("DELETE FROM sessions WHERE token_hash = :hash"),
             {"hash": hash_token(token)},
         )
         return None
     rolled = now + timedelta(seconds=ttl_s)
+    if absolute is not None and rolled > absolute:
+        rolled = absolute
     await session.execute(
         sa.text("UPDATE sessions SET expires_at = :expires WHERE id = :sid"),
         {"expires": rolled, "sid": str(found.id)},
@@ -107,6 +188,7 @@ async def load_session(
         csrf_token=found.csrf_token,
         expires_at=rolled,
         pending_invite_token=found.pending_invite_token,
+        absolute_expires_at=absolute,
     )
 
 

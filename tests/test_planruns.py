@@ -150,6 +150,7 @@ async def _course_with_source(session: AsyncSession) -> tuple[UUID, UUID]:
             b"Providers and deployers must ensure training.\n\n"
             b"Human oversight applies to high-risk systems."
         ),
+        course_id=course_id,
     )
     await library.ingest_passages(
         session,
@@ -203,7 +204,7 @@ async def test_plan_submit_writes_run_and_drives_to_done(t03_session: AsyncSessi
     from app.runs import executor
 
     user_id, course_id = await _course_with_source(t03_session)
-    actor = _actor(user_id, frozenset({"run.start", "operation.run", "course.edit"}))
+    actor = _actor(user_id, frozenset({"run.start", "operation.run", "course.edit", "course.plan"}))
     operation_id = await planruns.submit_plan(
         t03_session,
         actor=actor,
@@ -239,7 +240,7 @@ async def test_planted_500_stops_run_and_resume_pays_nothing_twice(
     t03_session: AsyncSession,
 ) -> None:
     user_id, course_id = await _course_with_source(t03_session)
-    actor = _actor(user_id, frozenset({"run.start", "operation.run", "course.edit"}))
+    actor = _actor(user_id, frozenset({"run.start", "operation.run", "course.edit", "course.plan"}))
     operation_id = await planruns.submit_plan(
         t03_session,
         actor=actor,
@@ -299,7 +300,7 @@ async def test_planted_500_stops_run_and_resume_pays_nothing_twice(
 
 async def test_second_identical_run_pays_zero(t03_session: AsyncSession) -> None:
     user_id, course_id = await _course_with_source(t03_session)
-    actor = _actor(user_id, frozenset({"run.start", "operation.run", "course.edit"}))
+    actor = _actor(user_id, frozenset({"run.start", "operation.run", "course.edit", "course.plan"}))
     settings = _settings()
     run_ids = []
     for _ in range(2):
@@ -342,7 +343,7 @@ async def test_generate_refuses_while_questions_open(t03_session: AsyncSession) 
         ],
     )
     await t03_session.commit()
-    actor = _actor(user_id, frozenset({"run.start", "operation.run"}))
+    actor = _actor(user_id, frozenset({"run.start", "operation.run", "course.generate"}))
     questions = await course_service.blocking_questions(t03_session, course_id=course_id)
     assert len(questions) == 1
     with pytest.raises(Exception, match="answer required questions first"):
@@ -353,15 +354,21 @@ async def test_generate_refuses_while_questions_open(t03_session: AsyncSession) 
         operations=[{"op": "set_constraint", "key": "scope_act", "answer": {"act": "AI Act"}}],
     )
     await t03_session.commit()
-    operation_id = await planruns.submit_generate(
-        t03_session, actor=actor, course_id=course_id, defer=None
-    )
-    assert isinstance(operation_id, UUID)
+    from app.errors import ConflictError, http_status_for
+
+    with pytest.raises(ConflictError, match="generation pipeline"):
+        await planruns.submit_generate(t03_session, actor=actor, course_id=course_id, defer=None)
+    try:
+        await planruns.submit_generate(t03_session, actor=actor, course_id=course_id, defer=None)
+    except ConflictError as exc:
+        assert http_status_for(exc) == 409
+    else:  # pragma: no cover - the raise above always fires
+        raise AssertionError("submit_generate must refuse with 409")
 
 
 async def test_plan_edit_and_idempotent_submit(t03_session: AsyncSession) -> None:
     user_id, course_id = await _course_with_source(t03_session)
-    actor = _actor(user_id, frozenset({"run.start", "operation.run", "course.edit"}))
+    actor = _actor(user_id, frozenset({"run.start", "operation.run", "course.edit", "course.plan"}))
     first = await planruns.submit_plan(
         t03_session,
         actor=actor,

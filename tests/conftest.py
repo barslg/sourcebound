@@ -101,6 +101,10 @@ def _test_database() -> Iterator[str]:
     cfg = Config("alembic.ini")
     cfg.set_main_option("sqlalchemy.url", url)
     command.upgrade(cfg, "head")
+    from app.tasks.schema import ensure_procrastinate_schema
+    from app.tasks.worker import psycopg_dsn
+
+    ensure_procrastinate_schema(psycopg_dsn(url))
     yield url
 
 
@@ -113,6 +117,7 @@ T03_TABLES = [
     "sources",
     "profile_constraints",
     "course_profiles",
+    "course_sources",
     "block_versions",
     "blocks",
     "topics",
