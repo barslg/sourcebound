@@ -17,7 +17,7 @@ from uuid import UUID
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.errors import ValidationError
+from app.errors import UnprocessableError, ValidationError
 from app.rbac.principal import Principal
 from app.services import learner
 
@@ -54,6 +54,32 @@ def _spot_submission(
     return submission
 
 
+def _matching_submission(payload: dict[str, Any], content: dict[str, Any]) -> dict[str, Any]:
+    """{left_id: right_id} as served -> authored indices for the check.
+
+    A learner never sees authored order, so `mapping_by_index` (and the
+    legacy text mapping keyed by authored text) is refused; ids outside
+    the served columns are refused too.
+    """
+    from app.blocks.matching.render import displayed_order, left_id, right_id
+
+    if "mapping_by_index" in payload:
+        raise UnprocessableError("answer matching with the ids of the served items: mapping")
+    mapping = payload.get("mapping", {})
+    if not isinstance(mapping, dict):
+        raise UnprocessableError("mapping must map left item ids to right item ids")
+    pairs = [p for p in content.get("pairs", []) if isinstance(p, dict)]
+    order = displayed_order([str(p.get("right", "")) for p in pairs])
+    lefts = {left_id(i): i for i in range(len(pairs))}
+    rights = {right_id(shown): authored for shown, authored in enumerate(order)}
+    out: dict[str, int] = {}
+    for left, right in mapping.items():
+        if str(left) not in lefts or str(right) not in rights:
+            raise UnprocessableError("mapping names an item that was not served")
+        out[str(lefts[str(left)])] = rights[str(right)]
+    return {"mapping_by_index": out}
+
+
 def _normalise(
     block: dict[str, Any],
     payload: dict[str, Any],
@@ -64,6 +90,8 @@ def _normalise(
     kind = block["block_type"]
     if kind == "spot_the_error":
         return _spot_submission(payload, list(resolved["content"].get("sentences", [])), by_pid)
+    if kind == "matching":
+        return _matching_submission(payload, resolved["content"])
     if kind == "scenario_practice":
         passages = payload.get("passages")
         if isinstance(passages, dict):
@@ -74,31 +102,24 @@ def _normalise(
 def _feedback(
     block: dict[str, Any],
     raw: dict[str, Any],
-    resolved: dict[str, Any],
     chips_by_handle: dict[str, dict[str, str]],
 ) -> dict[str, Any]:
+    """The learner's feedback: never a key value except the find-the-error reveal.
+
+    Every type but spot_the_error returns only its static habit line;
+    the verdict itself is `correct` / `partial` / `score` on the reply
+    and the pointer is `hint_from_source`. Find-the-error shows, after
+    the attempt, the one true sentence of THIS exercise (the brief).
+    """
     fb = dict(raw.get("feedback", {}))
-    passage = chips_by_handle.get(str(fb.get("passage", "")))
     if block["block_type"] == "spot_the_error":
         return {
             "wrong_sentence": fb.get("wrong", ""),
             "true_statement": fb.get("true", ""),
-            "passage": passage,
+            "passage": chips_by_handle.get(str(fb.get("passage", ""))),
             "habit_line": fb.get("habit", ""),
         }
-    if block["block_type"] == "choice":
-        options = list(resolved["content"].get("options", []))
-        correct = resolved["answer_key"].get("correct")
-        indices = correct if isinstance(correct, list) else [correct]
-        fb["true"] = "; ".join(
-            str(options[i]) for i in indices if isinstance(i, int) and i < len(options)
-        )
-    return {
-        "wrong": fb.get("wrong", ""),
-        "true": fb.get("true", ""),
-        "passage": passage,
-        "habit": fb.get("habit", ""),
-    }
+    return {"habit": fb.get("habit", "")}
 
 
 async def _next_attempt(session: AsyncSession, user_id: UUID, block_id: str) -> int:
@@ -185,7 +206,7 @@ async def grade_and_store(
         "correct": score >= 1.0,
         "partial": 0.0 < score < 1.0,
         "score": score,
-        "feedback": _feedback(block, raw, resolved, chips_by_handle),
+        "feedback": _feedback(block, raw, chips_by_handle),
         "hint_from_source": hint,
         "attempt_no": attempt_no,
         "source_links": chip_list,
@@ -253,7 +274,9 @@ async def answer_block(
         course,
         block,
         payload,
-        language=language or course["language"],
+        language=language
+        or await learner.served_language(session, principal.user_id, block["id"])
+        or course["language"],
         max_bytes=max_bytes,
     )
     attempts = await learner.attempts_of(
@@ -290,7 +313,9 @@ async def submit_module_test(
                     course,
                     block,
                     answers[block["id"]],
-                    language=language or course["language"],
+                    language=language
+                    or await learner.served_language(session, principal.user_id, block["id"])
+                    or course["language"],
                     max_bytes=max_bytes,
                 )
             )

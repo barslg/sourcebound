@@ -15,10 +15,5 @@ def grade(
     acknowledged = bool(submission.get("acknowledged", True))
     return {
         "score": 1.0 if acknowledged else 0.0,
-        "feedback": {
-            "wrong": "",
-            "true": "",
-            "passage": "",
-            "habit": "Check the numbers against the source.",
-        },
+        "feedback": {"habit": "Check the numbers against the source."},
     }

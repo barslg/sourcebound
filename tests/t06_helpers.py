@@ -35,6 +35,15 @@ SENTINELS = (
 )
 
 
+CHOICE_OPTION = "SENTINEL_CHOICE_CORRECT_OPTION"
+MATCH_RIGHTS = ("SENTINEL_MATCH_RIGHT_0", "SENTINEL_MATCH_RIGHT_1")
+CLOZE_BLANKS = ("SENTINEL_CLOZE_BLANK_0", "SENTINEL_CLOZE_BLANK_1")
+TIERS = ("SENTINEL_TIER_HIGH", "SENTINEL_TIER_LOW")
+SPOT_TRUE = "SENTINEL_SPOT_TRUE_"
+SERVED_VALUES = (CHOICE_OPTION, *MATCH_RIGHTS)
+KEY_ONLY_VALUES = (*CLOZE_BLANKS, *TIERS)
+
+
 def app_settings() -> Settings:
     return Settings(
         _env_file=None,
@@ -185,14 +194,18 @@ def block_specs(passages: list[dict[str, str]], prefix: str) -> list[dict[str, A
     add("figure", "example", "t1", content, key, chips[1:2])
     content, key = fx("choice")
     content["citations"] = public(chips[:1])
+    content["options"][0] = CHOICE_OPTION
     key["correct"] = [0]
     add("choice", "check", "t1", content, key, chips[:1])
     content, key = fx("matching")
     content["citations"] = public(chips[:1])
+    for pair, right in zip(content["pairs"], MATCH_RIGHTS, strict=True):
+        pair["right"] = right
+    key["mapping"] = {"Provider": MATCH_RIGHTS[0], "Deployer": MATCH_RIGHTS[1]}
     key["mapping_by_index"] = {"0": 0, "1": 1}
     add("matching", "practice", "t1", content, key, chips[:1])
     content, key = fx("cloze")
-    key["blanks"] = ["Deployers", "training"]
+    key["blanks"] = list(CLOZE_BLANKS)
     add("cloze", "practice", "t1", content, key, chips[:1])
     content, key = fx("scenario_practice")
     content["items"] = [
@@ -200,11 +213,13 @@ def block_specs(passages: list[dict[str, str]], prefix: str) -> list[dict[str, A
         {"text": "Spell check", "handle": "P2"},
     ]
     content["citations"] = public(chips)
-    key["labels_by_index"] = {"0": "high-risk", "1": "minimal"}
+    key["labels"] = {"CV screening": TIERS[0], "Spell check": TIERS[1]}
+    key["labels_by_index"] = {"0": TIERS[0], "1": TIERS[1]}
     key["passages_by_index"] = {"0": "P1", "1": "P2"}
     add("scenario_practice", "practice", "t1", content, key, chips)
     content, key = fx("spot_the_error")
     key["passage"] = "P1"
+    key["true_sentence"] = f"{SPOT_TRUE}LESSON"
     add("spot_the_error", "practice", "t1", content, key, chips[:1])
     add(
         "spot_the_error",
@@ -216,7 +231,7 @@ def block_specs(passages: list[dict[str, str]], prefix: str) -> list[dict[str, A
             "planted_index": -1,
             "kind": "negation",
             "passage": "P1",
-            "true_sentence": "",
+            "true_sentence": f"{SPOT_TRUE}CLEAN",
             "fully_correct": True,
             "note": SENTINELS[6],
         },
@@ -226,14 +241,19 @@ def block_specs(passages: list[dict[str, str]], prefix: str) -> list[dict[str, A
     # the module test topic: choice + matching + spot
     content, key = fx("choice")
     content["citations"] = public(chips[:1])
+    content["options"][0] = CHOICE_OPTION
     key["correct"] = [0]
     add("choice", "test", "t2", content, key, chips[:1], node=f"{prefix}-mt-choice")
     content, key = fx("matching")
     content["citations"] = public(chips[:1])
+    for pair, right in zip(content["pairs"], MATCH_RIGHTS, strict=True):
+        pair["right"] = right
+    key["mapping"] = {"Provider": MATCH_RIGHTS[0], "Deployer": MATCH_RIGHTS[1]}
     key["mapping_by_index"] = {"0": 0, "1": 1}
     add("matching", "test", "t2", content, key, chips[:1], node=f"{prefix}-mt-matching")
     content, key = fx("spot_the_error")
     key["passage"] = "P1"
+    key["true_sentence"] = f"{SPOT_TRUE}TEST"
     add("spot_the_error", "test", "t2", content, key, chips[:1], node=f"{prefix}-mt-spot")
     return specs
 
@@ -387,6 +407,14 @@ class World:
             await session.execute(sa.text("SELECT 1 FROM roles WHERE name = 't06g-author'"))
         ).first() is None:
             await create_role(session, name="t06g-author", permission_codes=["course.edit"])
+        await session.execute(
+            sa.text(
+                "INSERT INTO role_permissions (role_id, permission_code)"
+                " SELECT r.id, c FROM roles r, unnest(CAST(:codes AS text[])) c"
+                " WHERE r.name = 't06g-author' ON CONFLICT DO NOTHING"
+            ),
+            {"codes": ["invite.create", "invite.revoke"]},
+        )
         for owner in (self.w["user_id"], self.other["user_id"]):
             await assign_role(session, owner, "t06g-author")
         await session.commit()
