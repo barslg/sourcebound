@@ -13,15 +13,22 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 def _set_session_cookie(response: Response, ctx: RequestContext, token: str) -> None:
-    """Attach the backend session cookie: HttpOnly, Lax, Secure from config."""
-    response.set_cookie(
-        ctx.settings.session_cookie_name,
-        token,
-        httponly=True,
-        samesite="lax",
-        secure=ctx.settings.session_secure_cookie,
-        max_age=ctx.settings.session_ttl_s,
-        path="/",
+    """Attach the backend session cookie: HttpOnly, Lax, Secure outside local."""
+    from app.auth.session import set_session_cookie
+
+    secret = (
+        ctx.settings.session_secret_key.get_secret_value()
+        if ctx.settings.session_secret_key
+        else None
+    )
+    set_session_cookie(
+        response,
+        app_env=ctx.settings.app_env,
+        cookie_name=ctx.settings.session_cookie_name,
+        secret=secret,
+        token=token,
+        ttl_s=ctx.settings.session_ttl_s,
+        secure_configured=ctx.settings.session_secure_cookie,
     )
 
 
@@ -43,28 +50,33 @@ async def login(
     return redirect
 
 
-@router.get("/callback", response_model=dto.LoginDoneResponse)
+@router.get("/callback")
 async def callback(
     request: Request,
-    response: Response,
     state: str,
     code: str,
     provider: str = "google",
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
-) -> dto.LoginDoneResponse:
-    """Finish a login: create the backend session and apply a pending invite."""
+) -> RedirectResponse:
+    """Finish a login, then redirect the browser to the frontend return path."""
     payload, token = await controller.finish_login(
         ctx, provider_name=provider, state=state, code=code, request=request
     )
-    _set_session_cookie(response, ctx, token)
-    return payload
+    target = payload.next_url or "/"
+    redirect = RedirectResponse(target, status_code=303)
+    _set_session_cookie(redirect, ctx, token)
+    return redirect
 
 
 @router.post("/logout")
 async def logout(response: Response, ctx: RequestContext = Depends(get_ctx)) -> dict[str, bool]:  # noqa: B008 - FastAPI dependency injection idiom
     """Destroy the backend session and clear its cookie."""
+    from app.auth.session import cookie_name_for
+
     await controller.logout(ctx)
-    response.delete_cookie(ctx.settings.session_cookie_name, path="/")
+    response.delete_cookie(
+        cookie_name_for(ctx.settings.app_env, ctx.settings.session_cookie_name), path="/"
+    )
     return {"ok": True}
 
 

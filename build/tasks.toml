@@ -43,7 +43,7 @@ prompt = "build/tasks/T05.md"
 model = "muse-spark-1.3"
 effort = "high"
 max_steps = 700
-depends = ["T03", "T02b", "T03b", "T03c"]
+depends = ["T03", "T02b", "T03b", "T03c", "T03d"]
 
 [[task]]
 id = "T07"
@@ -85,6 +85,15 @@ depends = ["T03a"]
 id = "T03c"
 title = "author API completeness: course list, plan GET, estimate, sources list/reject, run cancel, held blocks and fix actions, publish, invites/notifications/permissions lists"
 prompt = "build/tasks/T03c.md"
+model = "muse-spark-1.3"
+effort = "high"
+max_steps = 350
+depends = ["T02b"]
+
+[[task]]
+id = "T03d"
+title = "second-pass fixes for T03b: no replay of rejected replies, pin the checked IP (DNS rebinding), stranded runs resume, real FTS ranking stored, bad handle holds the block, real call paths"
+prompt = "build/tasks/T03d.md"
 model = "muse-spark-1.3"
 effort = "high"
 max_steps = 350

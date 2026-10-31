@@ -59,7 +59,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://muse:muse@db:5432/muse
     env_file:
       - .env
-    command: ["procrastinate", "--app", "app.tasks.worker.app", "worker"]
+    command: ["procrastinate", "--app", "app.tasks.jobs.app", "worker"]
 
 volumes:
   pgdata:

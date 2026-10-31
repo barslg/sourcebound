@@ -21,9 +21,18 @@ def psycopg_dsn(url: str) -> str:
 
 
 def create_worker_app() -> App:
-    """Build the Procrastinate app from settings without connecting."""
+    """Build the Procrastinate app from settings without connecting.
+
+    import_paths pulls in app.tasks.jobs, so the worker process that
+    loads this app always registers the operation tasks (no TaskNotFound).
+    """
     settings = get_settings()
-    return App(connector=PsycopgConnector(conninfo=psycopg_dsn(settings.database_url)))
+    return App(
+        connector=PsycopgConnector(conninfo=psycopg_dsn(settings.database_url)),
+        import_paths=["app.tasks.jobs"],
+    )
 
 
 app = create_worker_app()
+
+from app.tasks.jobs import run_operation_job as run_operation_job  # noqa: E402,F401

@@ -33,24 +33,43 @@ async def submit_echo(
     actor: Principal,
     payload: dict[str, Any],
     defer: Callable[[UUID], Awaitable[None]] | None,
+    idempotency_key: str | None = None,
 ) -> UUID:
-    """Validate, authorise, persist, and enqueue an echo operation."""
+    """Validate, authorise, persist, and enqueue an echo operation.
+
+    A repeated submit with the same idempotency key returns the first
+    operation instead of starting a duplicate.
+    """
     require(actor, "operation.run")
     message = payload.get("message", "")
     if not isinstance(message, str) or not message.strip():
         raise ValidationError("payload.message must be a non-empty string")
     if len(message) > 10000:
         raise ValidationError("payload.message is too long")
+    if idempotency_key:
+        existing = (
+            await session.execute(
+                sa.text(
+                    "SELECT id FROM operations WHERE actor_id = :actor"
+                    " AND idempotency_key = :key LIMIT 1"
+                ),
+                {"actor": str(actor.user_id), "key": idempotency_key},
+            )
+        ).first()
+        if existing is not None:
+            return UUID(str(existing[0]))
     row = (
         await session.execute(
             sa.text(
-                "INSERT INTO operations (kind, status, params, progress, actor_id)"
-                " VALUES (:kind, 'queued', CAST(:params AS jsonb), 0, :actor) RETURNING id"
+                "INSERT INTO operations (kind, status, params, progress, actor_id, idempotency_key)"
+                " VALUES (:kind, 'queued', CAST(:params AS jsonb), 0, :actor, :key)"
+                " RETURNING id"
             ),
             {
                 "kind": OPERATION_KIND_ECHO,
                 "params": json.dumps({"message": message}),
                 "actor": str(actor.user_id),
+                "key": idempotency_key,
             },
         )
     ).one()
@@ -86,8 +105,13 @@ async def get_operation(
         raise NotFoundError("operation not found")
     values = tuple(row)
     owner = str(values[6]) if values[6] is not None else None
-    if not actor.is_superadmin and owner != str(actor.user_id) and not actor.has("operation.view"):
-        raise NotFoundError("operation not found")
+    if not actor.is_superadmin and owner != str(actor.user_id):
+        from app.errors import ForbiddenError
+
+        try:
+            require(actor, "operation.view")
+        except ForbiddenError as exc:
+            raise NotFoundError("operation not found") from exc
     return {
         "operation_id": str(values[0]),
         "kind": values[1],

@@ -17,7 +17,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from t02_helpers import make_session_factory, truncate_all, unique_email
 from t02_issuer import register_code, run_issuer, stored_verifier_slot
 
-require_postgres(test_database_url())
+
+@pytest.fixture(autouse=True)
+def _needs_postgres() -> None:
+    require_postgres(test_database_url())
 
 
 def _register_code(subject: str, audience: str, nonce: str, hd: str = "") -> str:

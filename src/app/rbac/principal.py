@@ -1,4 +1,10 @@
-"""Principal: the frozen identity snapshot every check reads."""
+"""Principal: the frozen identity snapshot every check reads.
+
+Principals are loaded fresh from the database on every call: there is
+no in-process cache, so the API and the worker can never act on stale
+or banned rights. Scope is kept per role grant; the union stays for
+overlap checks.
+"""
 
 from __future__ import annotations
 
@@ -8,21 +14,13 @@ from uuid import UUID
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-_VERSION = 0
-_CACHE: dict[str, tuple[int, Principal]] = {}
 
+@dataclass(frozen=True)
+class RoleGrant:
+    """One role grant: the role name plus the tags it is scoped to."""
 
-def current_version() -> int:
-    """The global principal-cache version key."""
-    return _VERSION
-
-
-def bump_version() -> int:
-    """Invalidate every cached principal; call after roles/users/invites change."""
-    global _VERSION
-    _CACHE.clear()
-    _VERSION += 1
-    return _VERSION
+    role: str
+    scope_tags: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -35,6 +33,7 @@ class Principal:
     permissions: frozenset[str]
     scope_tags: tuple[str, ...]
     is_superadmin: bool
+    grants: tuple[RoleGrant, ...] = ()
 
     def has(self, code: str) -> bool:
         """Superadmin implies every code; otherwise membership decides."""
@@ -42,19 +41,25 @@ class Principal:
 
 
 async def load_principal(session: AsyncSession, user_id: UUID) -> Principal:
-    """Build (and cache for the current version) the principal for a user."""
-    key = str(user_id)
-    cached = _CACHE.get(key)
-    if cached is not None and cached[0] == _VERSION:
-        return cached[1]
+    """Build the principal for a user, always from the live database rows.
+
+    Banned and legacy-holder accounts have no usable principal: the
+    worker and the request path refuse them alike.
+    """
+    from app.errors import AuthError
+
     user = (
         await session.execute(
-            sa.text("SELECT email, is_superadmin FROM users WHERE id = :user"),
+            sa.text(
+                "SELECT email, is_superadmin, banned_at, is_legacy FROM users WHERE id = :user"
+            ),
             {"user": str(user_id)},
         )
     ).first()
     if user is None:
         raise LookupError(f"unknown user {user_id}")
+    if user[2] is not None or bool(user[3]):
+        raise AuthError("this account cannot sign in")
     role_rows = (
         await session.execute(
             sa.text(
@@ -76,15 +81,17 @@ async def load_principal(session: AsyncSession, user_id: UUID) -> Principal:
         )
     ).all()
     tags: set[str] = set()
-    for _, scope_tags in role_rows:
-        tags.update(scope_tags or [])
-    principal = Principal(
+    grants: list[RoleGrant] = []
+    for name, scope_tags in role_rows:
+        grant_tags = tuple(sorted(scope_tags or []))
+        tags.update(grant_tags)
+        grants.append(RoleGrant(role=str(name), scope_tags=grant_tags))
+    return Principal(
         user_id=user_id,
         email=str(user[0]),
         roles=tuple(sorted(str(name) for name, _ in role_rows)),
         permissions=frozenset(str(code) for (code,) in code_rows),
         scope_tags=tuple(sorted(tags)),
         is_superadmin=bool(user[1]),
+        grants=tuple(sorted(grants, key=lambda grant: grant.role)),
     )
-    _CACHE[key] = (_VERSION, principal)
-    return principal

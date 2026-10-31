@@ -2,8 +2,9 @@
 
 An invite lives on a course or on a course group (a tag), carries an
 optional seat count and an optional expiry, and is created by a
-permission holder. Accepting while signed in grants the student role
-scoped to those courses; the seat count holds under concurrency: two
+permission holder. Only the token hash is stored; the raw token is
+shown once. Accepting while signed in grants the student role scoped
+to those courses; the seat count holds under concurrency: two
 simultaneous accepts on a one-seat invite leave exactly one winner.
 """
 
@@ -64,11 +65,11 @@ async def _setup_catalogue(session: AsyncSession) -> None:
 
 
 async def test_create_and_revoke_invite(session: AsyncSession) -> None:
-    from app.services.invites import create_invite, revoke_invite
+    from app.services.invites import create_invite, hash_invite_token, revoke_invite
 
     await _setup_catalogue(session)
     creator = await _user(session)
-    token = await create_invite(
+    raw = await create_invite(
         session,
         actor=_actor(creator),
         course_tags=["course-a"],
@@ -76,12 +77,20 @@ async def test_create_and_revoke_invite(session: AsyncSession) -> None:
         expires_at=datetime.now(UTC) + timedelta(days=1),
     )
     await session.commit()
-    assert token
-    await revoke_invite(session, actor=_actor(creator), token=token)
+    assert raw
+    stored = (
+        await session.execute(
+            sa.text("SELECT token_hash FROM invites WHERE token_hash = :h"),
+            {"h": hash_invite_token(raw)},
+        )
+    ).scalar_one()
+    assert stored == hash_invite_token(raw)
+    await revoke_invite(session, actor=_actor(creator), token_hash=hash_invite_token(raw))
     await session.commit()
     revoked = (
         await session.execute(
-            sa.text("SELECT revoked_at FROM invites WHERE token = :t"), {"t": str(token)}
+            sa.text("SELECT revoked_at FROM invites WHERE token_hash = :h"),
+            {"h": hash_invite_token(raw)},
         )
     ).scalar_one()
     assert revoked is not None
@@ -90,21 +99,20 @@ async def test_create_and_revoke_invite(session: AsyncSession) -> None:
 async def test_accept_while_signed_in_grants_scoped_student_role(
     session: AsyncSession,
 ) -> None:
-    from app.services.invites import accept_invite, create_invite
+    from app.services.invites import accept_invite, create_invite, hash_invite_token
 
     await _setup_catalogue(session)
     creator = await _user(session)
     student = await _user(session)
-    token = await create_invite(
+    raw = await create_invite(
         session, actor=_actor(creator), course_tags=["course-a", "course-b"], max_uses=None
     )
     await session.commit()
-    scopes = await accept_invite(session, user_id=student, token=token)
+    scopes = await accept_invite(session, user_id=student, token_hash=hash_invite_token(raw))
     await session.commit()
     assert sorted(scopes) == ["course-a", "course-b"]
-    from app.rbac.principal import bump_version, load_principal
+    from app.rbac.principal import load_principal
 
-    bump_version()
     principal = await load_principal(session, student)
     assert "student" in principal.roles
     assert sorted(principal.scope_tags) == ["course-a", "course-b"]
@@ -112,7 +120,7 @@ async def test_accept_while_signed_in_grants_scoped_student_role(
 
 async def test_two_simultaneous_accepts_on_one_seat_leave_one_winner() -> None:
     from app.errors import ConflictError
-    from app.services.invites import accept_invite, create_invite
+    from app.services.invites import accept_invite, create_invite, hash_invite_token
 
     factory = make_session_factory()
     async with factory() as setup:
@@ -121,16 +129,17 @@ async def test_two_simultaneous_accepts_on_one_seat_leave_one_winner() -> None:
         creator = await _user(setup)
         first = await _user(setup)
         second = await _user(setup)
-        token = await create_invite(
+        raw = await create_invite(
             session=setup, actor=_actor(creator), course_tags=["course-a"], max_uses=1
         )
         await setup.commit()
+        hashed = hash_invite_token(raw)
 
     async def _accept(user_id: uuid.UUID) -> bool:
         async with factory() as sess:
             try:
                 async with sess.begin():
-                    await accept_invite(sess, user_id=user_id, token=token)
+                    await accept_invite(sess, user_id=user_id, token_hash=hashed)
                 return True
             except ConflictError:
                 return False
@@ -140,7 +149,7 @@ async def test_two_simultaneous_accepts_on_one_seat_leave_one_winner() -> None:
     async with factory() as check:
         used = (
             await check.execute(
-                sa.text("SELECT used_count FROM invites WHERE token = :t"), {"t": str(token)}
+                sa.text("SELECT used_count FROM invites WHERE token_hash = :h"), {"h": hashed}
             )
         ).scalar_one()
         assert used == 1
@@ -148,9 +157,9 @@ async def test_two_simultaneous_accepts_on_one_seat_leave_one_winner() -> None:
             await check.execute(
                 sa.text(
                     "SELECT count(*) FROM invite_uses WHERE invite_id ="
-                    " (SELECT id FROM invites WHERE token = :t)"
+                    " (SELECT id FROM invites WHERE token_hash = :h)"
                 ),
-                {"t": str(token)},
+                {"h": hashed},
             )
         ).scalar_one()
         assert uses == 1
@@ -158,7 +167,7 @@ async def test_two_simultaneous_accepts_on_one_seat_leave_one_winner() -> None:
 
 async def test_expired_and_revoked_invites_refused(session: AsyncSession) -> None:
     from app.errors import ConflictError
-    from app.services.invites import accept_invite, create_invite
+    from app.services.invites import accept_invite, create_invite, hash_invite_token
 
     await _setup_catalogue(session)
     creator = await _user(session)
@@ -171,7 +180,7 @@ async def test_expired_and_revoked_invites_refused(session: AsyncSession) -> Non
     )
     await session.commit()
     with pytest.raises(ConflictError):
-        await accept_invite(session, user_id=student, token=expired)
+        await accept_invite(session, user_id=student, token_hash=hash_invite_token(expired))
     await session.rollback()
 
 

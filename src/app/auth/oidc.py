@@ -25,13 +25,24 @@ from app.errors import AuthError
 
 @dataclass(frozen=True)
 class Identity:
-    """Verified identity: provider, subject, email, name, avatar."""
+    """Verified identity: provider, subject, email, name, avatar, verification."""
 
     provider: str
     subject: str
     email: str
     name: str
     avatar: str
+    email_verified: bool = False
+
+
+def _issuer_candidates(issuer: str) -> list[str]:
+    """Both Google issuer forms: with and without the URL scheme."""
+    bare = issuer
+    for scheme in ("https://", "http://"):
+        if bare.startswith(scheme):
+            bare = bare[len(scheme) :]
+    forms = {issuer, bare}
+    return sorted(forms)
 
 
 class Provider(Protocol):
@@ -151,13 +162,17 @@ class GoogleProvider:
                 id_token,
                 key=cast(Any, public_key),
                 algorithms=["RS256"],
-                issuer=self._issuer,
+                issuer=_issuer_candidates(self._issuer),
                 audience=self._client_id,
+                leeway=60,
                 options={"require": ["exp", "iss", "aud", "sub", "nonce"]},
             )
         except Exception as exc:
             raise AuthError("invalid identity token") from exc
         if claims.get("nonce") != nonce:
+            raise AuthError("invalid identity token")
+        azp = claims.get("azp")
+        if azp is not None and str(azp) != self._client_id:
             raise AuthError("invalid identity token")
         domain = str(claims.get("hd", "") or "").lower()
         if self._allowed_domains and domain not in self._allowed_domains:
@@ -171,6 +186,7 @@ class GoogleProvider:
             email=email,
             name=str(claims.get("name", "") or ""),
             avatar=str(claims.get("picture", "") or ""),
+            email_verified=bool(claims.get("email_verified", False)),
         )
 
     @staticmethod

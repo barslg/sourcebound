@@ -7,8 +7,17 @@ from uuid import UUID
 import sqlalchemy as sa
 
 from app.auth.ctx import RequestContext, require_auth
+from app.errors import NotFoundError
 from app.rbac.require import require
 from app.schemas import t02 as dto
+
+
+def parse_uuid_or_404(raw: str, *, what: str = "object") -> UUID:
+    """Parse a path UUID; malformed values answer 404, never 500."""
+    try:
+        return UUID(raw)
+    except ValueError as exc:
+        raise NotFoundError(f"{what} not found") from exc
 
 
 async def list_users(ctx: RequestContext) -> list[dto.UserResponse]:
@@ -16,13 +25,18 @@ async def list_users(ctx: RequestContext) -> list[dto.UserResponse]:
 
     actor = require_auth(ctx)
     require(actor, "user.list")
-    return [dto.UserResponse(**row) for row in await list_use_case(ctx.db)]
+    return [dto.UserResponse(**row) for row in await list_use_case(ctx.db, actor=actor)]
 
 
 async def ban_user(ctx: RequestContext, *, user_id: str, reason: str) -> None:
     from app.services.users import ban_user as ban_use_case
 
-    await ban_use_case(ctx.db, actor=require_auth(ctx), user_id=UUID(user_id), reason=reason)
+    await ban_use_case(
+        ctx.db,
+        actor=require_auth(ctx),
+        user_id=parse_uuid_or_404(user_id, what="user"),
+        reason=reason,
+    )
 
 
 async def delete_user(
@@ -33,8 +47,8 @@ async def delete_user(
     await delete_use_case(
         ctx.db,
         actor=require_auth(ctx),
-        user_id=UUID(user_id),
-        heir_id=UUID(heir_id) if heir_id else None,
+        user_id=parse_uuid_or_404(user_id, what="user"),
+        heir_id=parse_uuid_or_404(heir_id, what="heir") if heir_id else None,
         legacy=legacy,
     )
 
@@ -87,7 +101,7 @@ async def assign_role(ctx: RequestContext, *, name: str, body: dto.AssignRequest
 
     await assign_use_case(
         ctx.db,
-        UUID(body.user_id),
+        parse_uuid_or_404(body.user_id, what="user"),
         name,
         scope_tags=body.scope_tags,
         actor=require_auth(ctx),
@@ -97,54 +111,84 @@ async def assign_role(ctx: RequestContext, *, name: str, body: dto.AssignRequest
 async def revoke_role(ctx: RequestContext, *, name: str, body: dto.RevokeRequest) -> None:
     from app.rbac.roles import revoke_role as revoke_use_case
 
-    await revoke_use_case(ctx.db, UUID(body.user_id), name, actor=require_auth(ctx))
+    await revoke_use_case(
+        ctx.db, parse_uuid_or_404(body.user_id, what="user"), name, actor=require_auth(ctx)
+    )
 
 
 async def create_invite(ctx: RequestContext, *, body: dto.InviteRequest) -> dto.InviteResponse:
     from app.services.invites import create_invite as create_use_case
+    from app.services.invites import hash_invite_token
 
     actor = require_auth(ctx)
-    token = await create_use_case(
+    raw_token = await create_use_case(
         ctx.db,
         actor=actor,
         course_tags=body.course_tags,
         max_uses=body.max_uses,
         expires_at=body.expires_at,
-        granted_role=body.granted_role,
     )
     row = (
         await ctx.db.execute(
             sa.text(
-                "SELECT token, course_tags, max_uses, used_count, expires_at, revoked_at"
-                " FROM invites WHERE token = :token"
+                "SELECT course_tags, max_uses, used_count, expires_at, revoked_at"
+                " FROM invites WHERE token_hash = :hash"
             ),
-            {"token": str(token)},
+            {"hash": hash_invite_token(raw_token)},
         )
     ).one()
     return dto.InviteResponse(
-        token=str(row[0]),
-        course_tags=list(row[1] or []),
-        max_uses=row[2],
-        used_count=int(row[3]),
-        expires_at=row[4].isoformat() if row[4] else None,
-        revoked_at=row[5].isoformat() if row[5] else None,
+        token=raw_token,
+        course_tags=list(row[0] or []),
+        max_uses=row[1],
+        used_count=int(row[2]),
+        expires_at=row[3].isoformat() if row[3] else None,
+        revoked_at=row[4].isoformat() if row[4] else None,
     )
 
 
+async def list_invites(ctx: RequestContext) -> list[dto.InviteListItem]:
+    from app.services.invites import list_invites as list_use_case
+
+    return [
+        dto.InviteListItem(**row) for row in await list_use_case(ctx.db, actor=require_auth(ctx))
+    ]
+
+
 async def revoke_invite(ctx: RequestContext, *, token: str) -> None:
+    from app.services.invites import hash_invite_token
     from app.services.invites import revoke_invite as revoke_use_case
 
-    await revoke_use_case(ctx.db, actor=require_auth(ctx), token=UUID(token))
+    await revoke_use_case(ctx.db, actor=require_auth(ctx), token_hash=hash_invite_token(token))
 
 
 async def accept_invite(ctx: RequestContext, *, token: str) -> list[str]:
     from app.services.invites import accept_invite as accept_use_case
+    from app.services.invites import hash_invite_token
 
     actor = require_auth(ctx)
-    return await accept_use_case(ctx.db, user_id=actor.user_id, token=UUID(token))
+    return await accept_use_case(ctx.db, user_id=actor.user_id, token_hash=hash_invite_token(token))
 
 
-async def submit_echo(ctx: RequestContext, *, message: str) -> str:
+async def stash_pending_invite(ctx: RequestContext, *, token: str) -> tuple[str, str | None]:
+    """Stash an invite hash on an anonymous session; return (login_url, fresh_token)."""
+    from app.auth.session import create_session, session_id_for_token, set_pending_invite
+    from app.services.invites import hash_invite_token
+
+    digest = hash_invite_token(token)
+    fresh_token: str | None = None
+    session_id = ctx.login_session.id if ctx.login_session else None
+    if session_id is None:
+        fresh_token, _ = await create_session(ctx.db, None, ttl_s=ctx.settings.session_ttl_s)
+        session_id = await session_id_for_token(ctx.db, fresh_token)
+    assert session_id is not None
+    await set_pending_invite(ctx.db, session_id, digest)
+    return f"/api/v1/auth/login?provider=google&next=/api/v1/invites/{token}/accept", fresh_token
+
+
+async def submit_echo(
+    ctx: RequestContext, *, message: str, idempotency_key: str | None = None
+) -> str:
     from app.services.operations import submit_echo as submit_use_case
     from app.tasks.jobs import enqueue_operation
 
@@ -155,7 +199,11 @@ async def submit_echo(ctx: RequestContext, *, message: str) -> str:
         await enqueue_operation(operation_id, database_url)
 
     operation_id = await submit_use_case(
-        ctx.db, actor=actor, payload={"message": message}, defer=_defer
+        ctx.db,
+        actor=actor,
+        payload={"message": message},
+        defer=_defer,
+        idempotency_key=idempotency_key,
     )
     return str(operation_id)
 
@@ -163,5 +211,43 @@ async def submit_echo(ctx: RequestContext, *, message: str) -> str:
 async def get_operation(ctx: RequestContext, *, operation_id: str) -> dto.OperationResponse:
     from app.services.operations import get_operation as get_use_case
 
-    found = await get_use_case(ctx.db, actor=require_auth(ctx), operation_id=UUID(operation_id))
+    found = await get_use_case(
+        ctx.db,
+        actor=require_auth(ctx),
+        operation_id=parse_uuid_or_404(operation_id, what="operation"),
+    )
     return dto.OperationResponse(**found)
+
+
+async def revoke_user_role(ctx: RequestContext, *, user_id: str, name: str) -> None:
+    from app.rbac.roles import revoke_role as revoke_use_case
+
+    await revoke_use_case(
+        ctx.db, parse_uuid_or_404(user_id, what="user"), name, actor=require_auth(ctx)
+    )
+
+
+async def list_permissions(ctx: RequestContext) -> list[dto.PermissionResponse]:
+    from app.rbac.catalogue import CATALOGUE
+
+    require(require_auth(ctx), "role.edit")
+    return [dto.PermissionResponse(**entry.__dict__) for entry in CATALOGUE]
+
+
+async def list_notifications(ctx: RequestContext) -> list[dto.NotificationResponse]:
+    from app.services.notifications import list_notifications as list_use_case
+
+    return [
+        dto.NotificationResponse(**row)
+        for row in await list_use_case(ctx.db, actor=require_auth(ctx))
+    ]
+
+
+async def mark_notification_read(ctx: RequestContext, *, notification_id: str) -> None:
+    from app.services.notifications import mark_notification_read as mark_use_case
+
+    await mark_use_case(
+        ctx.db,
+        actor=require_auth(ctx),
+        notification_id=parse_uuid_or_404(notification_id, what="notification"),
+    )

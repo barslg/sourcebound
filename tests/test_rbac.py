@@ -196,9 +196,10 @@ async def test_object_outside_scope_answers_404(session: AsyncSession) -> None:
         require_scope(principal, ["course-b"])
 
 
-async def test_principal_cache_bumped_on_role_change(session: AsyncSession) -> None:
+async def test_principal_reflects_role_change_immediately(session: AsyncSession) -> None:
+    """No principal cache: a fresh load sees the grant without any bump."""
     from app.rbac.catalogue import sync_catalogue
-    from app.rbac.principal import bump_version, load_principal
+    from app.rbac.principal import load_principal
     from app.rbac.roles import assign_role, create_role
 
     await sync_catalogue(session)
@@ -208,7 +209,6 @@ async def test_principal_cache_bumped_on_role_change(session: AsyncSession) -> N
     assert "section.courses" not in before.permissions
     await assign_role(session, user_id, "student", scope_tags=["course-a"], actor=None)
     await session.commit()
-    bump_version()
     after = await load_principal(session, user_id)
     assert "section.courses" in after.permissions
     assert after.scope_tags == ("course-a",)

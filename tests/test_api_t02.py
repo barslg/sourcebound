@@ -74,8 +74,10 @@ async def _client_for(app: object) -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=transport, base_url="http://test")
 
 
-async def _login(client: httpx.AsyncClient, session: AsyncSession, subject: str) -> None:
-    """Complete a full OIDC login through the HTTP routes for one subject."""
+async def _login(
+    client: httpx.AsyncClient, session: AsyncSession, subject: str, *, next: str = "/"
+) -> str:
+    """Complete a full OIDC login; the callback redirects to the frontend path."""
     start = await client.get("/api/v1/auth/login", params={"provider": "google"})
     assert start.status_code == 307
     state = parse_qs(urlparse(start.headers["location"]).query)["state"][0]
@@ -87,8 +89,11 @@ async def _login(client: httpx.AsyncClient, session: AsyncSession, subject: str)
     ).one()
     code = register_code(subject, "test-client-id", stored[0])
     stored_verifier_slot(code)["code_verifier"] = stored[1]
-    done = await client.get("/api/v1/auth/callback", params={"state": state, "code": code})
-    assert done.status_code == 200, done.text
+    done = await client.get(
+        "/api/v1/auth/callback", params={"state": state, "code": code}, follow_redirects=False
+    )
+    assert done.status_code == 303, done.text
+    return done.headers["location"]
 
 
 async def _csrf(client: httpx.AsyncClient) -> str:
@@ -142,7 +147,6 @@ async def test_unsafe_method_without_csrf_is_refused(
 async def test_role_antiescalation_over_http(session: AsyncSession, issuer_url: str) -> None:
     from app.main import create_app
     from app.rbac.catalogue import sync_catalogue
-    from app.rbac.principal import bump_version
     from app.rbac.roles import assign_role, create_role
 
     await sync_catalogue(session)
@@ -163,7 +167,6 @@ async def test_role_antiescalation_over_http(session: AsyncSession, issuer_url: 
         await create_role(session, name="manager", permission_codes=["role.edit"], actor=None)
         await assign_role(session, manager_id, "manager", scope_tags=[], actor=None)
         await session.commit()
-        bump_version()
         token = await _csrf(client)
         headers = {"X-CSRF-Token": token}
         # Nobody grants what they lack.
@@ -193,7 +196,6 @@ async def test_operation_of_another_user_answers_404(
 ) -> None:
     from app.main import create_app
     from app.rbac.catalogue import sync_catalogue
-    from app.rbac.principal import bump_version
     from app.rbac.roles import assign_role, create_role
 
     await sync_catalogue(session)
@@ -214,7 +216,6 @@ async def test_operation_of_another_user_answers_404(
         await create_role(session, name="operator", permission_codes=["operation.run"], actor=None)
         await assign_role(session, owner_id, "operator", scope_tags=[], actor=None)
         await session.commit()
-        bump_version()
         token = await _csrf(first)
         created = await first.post(
             "/api/v1/operations/echo",
@@ -267,7 +268,7 @@ async def test_signed_out_invite_flow_applies_after_login(
     app = create_app(_test_settings(issuer_url))  # type: ignore[arg-type]
     _override_session(app, make_session_factory())
     async with await _client_for(app) as client:
-        accept = await client.get(f"/api/v1/invites/{token}/accept", follow_redirects=False)
+        accept = await client.post(f"/api/v1/invites/{token}/accept", follow_redirects=False)
         assert accept.status_code == 307
         assert "/api/v1/auth/login" in accept.headers["location"]
         start = await client.get(accept.headers["location"])
@@ -281,11 +282,13 @@ async def test_signed_out_invite_flow_applies_after_login(
         ).one()
         code = register_code("invited-student", "test-client-id", stored[0])
         stored_verifier_slot(code)["code_verifier"] = stored[1]
-        done = await client.get("/api/v1/auth/callback", params={"state": state, "code": code})
-        assert done.status_code == 200, done.text
-        assert done.json()["applied_invite_scopes"] == ["course-z"]
+        done = await client.get(
+            "/api/v1/auth/callback", params={"state": state, "code": code}, follow_redirects=False
+        )
+        assert done.status_code == 303, done.text
         me = await client.get("/api/v1/auth/me")
         assert "student" in me.json()["roles"]
+        assert "course-z" in me.json()["scope_tags"]
 
 
 async def test_sse_ping_and_unsubscribe() -> None:
@@ -307,13 +310,11 @@ async def test_sse_ping_and_unsubscribe() -> None:
 
 
 async def _promote_superadmin(session: AsyncSession, email: str) -> None:
-    from app.rbac.principal import bump_version
 
     await session.execute(
         sa.text("UPDATE users SET is_superadmin = true WHERE email = :e"), {"e": email}
     )
     await session.commit()
-    bump_version()
 
 
 async def test_admin_users_flow_over_http(session: AsyncSession, issuer_url: str) -> None:
@@ -386,7 +387,7 @@ async def test_invite_create_revoke_over_http(session: AsyncSession, issuer_url:
         invite_token = created.json()["token"]
         revoked = await admin.post(f"/api/v1/invites/{invite_token}/revoke", headers=headers)
         assert revoked.status_code == 200
-        answer = await admin.get(f"/api/v1/invites/{invite_token}/accept")
+        answer = await admin.post(f"/api/v1/invites/{invite_token}/accept", headers=headers)
         assert answer.status_code == 409
 
 
@@ -487,8 +488,10 @@ def test_sse_stream_delivers_operation_event(issuer_url: str) -> None:
         nonce, verifier = portal.call(_nonce)
         code = register_code("sse-user", "test-client-id", nonce)
         stored_verifier_slot(code)["code_verifier"] = verifier
-        done = client.get("/api/v1/auth/callback", params={"state": state, "code": code})
-        assert done.status_code == 200, done.text
+        done = client.get(
+            "/api/v1/auth/callback", params={"state": state, "code": code}, follow_redirects=False
+        )
+        assert done.status_code == 303, done.text
 
         async def _user_id() -> uuid.UUID:
             factory = make_session_factory()

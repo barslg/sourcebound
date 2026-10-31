@@ -51,7 +51,16 @@ _JWKS = {
 _CODES: dict[str, dict[str, str]] = {}
 
 
-def register_code(subject: str, audience: str, nonce: str, hd: str = "") -> str:
+def register_code(
+    subject: str,
+    audience: str,
+    nonce: str,
+    hd: str = "",
+    email: str | None = None,
+    email_verified: bool = True,
+    azp: str | None = None,
+    lifetime_s: int = 300,
+) -> str:
     """Stage a one-time code the fake token endpoint will redeem."""
     code = f"code-{uuid.uuid4().hex}"
     _CODES[code] = {
@@ -60,6 +69,10 @@ def register_code(subject: str, audience: str, nonce: str, hd: str = "") -> str:
         "nonce": nonce,
         "code_verifier": "verifier-to-fill",
         "hd": hd,
+        "email": email if email is not None else f"{subject}@example.com",
+        "email_verified": "1" if email_verified else "",
+        "azp": azp or "",
+        "lifetime_s": str(lifetime_s),
     }
     return code
 
@@ -69,7 +82,17 @@ def stored_verifier_slot(code: str) -> dict[str, str]:
     return _CODES[code]
 
 
-def _mint_id_token(issuer: str, audience: str, nonce: str, subject: str, hd: str) -> str:
+def _mint_id_token(
+    issuer: str,
+    audience: str,
+    nonce: str,
+    subject: str,
+    hd: str,
+    email: str = "",
+    email_verified: bool = True,
+    azp: str = "",
+    lifetime_s: int = 300,
+) -> str:
     import jwt
 
     now = int(time.time())
@@ -77,15 +100,18 @@ def _mint_id_token(issuer: str, audience: str, nonce: str, subject: str, hd: str
         "iss": issuer,
         "aud": audience,
         "sub": subject,
-        "email": f"{subject}@example.com",
+        "email": email or f"{subject}@example.com",
+        "email_verified": email_verified,
         "name": "Test User",
         "picture": "https://example.com/avatar.png",
         "nonce": nonce,
         "iat": now,
-        "exp": now + 300,
+        "exp": now + lifetime_s,
     }
     if hd:
         claims["hd"] = hd
+    if azp:
+        claims["azp"] = azp
     return jwt.encode(claims, _PRIVATE_PEM, algorithm="RS256", headers={"kid": "test-key"})
 
 
@@ -134,7 +160,15 @@ class _IssuerHandler(BaseHTTPRequestHandler):
             return
         base = f"http://127.0.0.1:{self.server.server_port}"  # type: ignore[attr-defined]
         id_token = _mint_id_token(
-            base, stored["audience"], stored["nonce"], stored["subject"], stored.get("hd", "")
+            base,
+            stored["audience"],
+            stored["nonce"],
+            stored["subject"],
+            stored.get("hd", ""),
+            stored.get("email", ""),
+            bool(stored.get("email_verified", "")),
+            stored.get("azp", ""),
+            int(stored.get("lifetime_s", "300")),
         )
         self._send_json(
             {"access_token": "fake-access", "token_type": "Bearer", "id_token": id_token}

@@ -87,8 +87,9 @@ async def test_delete_cascades_personal_data(session: AsyncSession) -> None:
     )
     await session.execute(
         sa.text(
-            "INSERT INTO sessions (token_hash, user_id, csrf_token, expires_at)"
-            " VALUES ('h', :u, 'c', now() + interval '1 day')"
+            "INSERT INTO sessions (token_hash, user_id, csrf_token, expires_at,"
+            " absolute_expires_at)"
+            " VALUES ('h', :u, 'c', now() + interval '1 day', now() + interval '30 days')"
         ),
         {"u": str(user_id)},
     )
@@ -117,7 +118,7 @@ async def test_delete_with_owner_rows_requires_heir_or_legacy(session: AsyncSess
     heir = await _user(session)
     await session.execute(
         sa.text(
-            "INSERT INTO invites (scope, created_by) VALUES ('course-a', :u)",
+            "INSERT INTO invites (scope, created_by, token_hash) VALUES ('course-a', :u, 'hash-a')",
         ),
         {"u": str(owner)},
     )
@@ -142,7 +143,8 @@ async def test_legacy_holder_keeps_materials_but_cannot_sign_in(
 
     owner = await _user(session)
     await session.execute(
-        sa.text("INSERT INTO invites (scope, created_by) VALUES ('c', :u)"), {"u": str(owner)}
+        sa.text("INSERT INTO invites (scope, created_by, token_hash) VALUES ('c', :u, 'hash-c')"),
+        {"u": str(owner)},
     )
     await session.commit()
     await delete_user(session, actor=await _admin(session), user_id=owner, legacy=True)
