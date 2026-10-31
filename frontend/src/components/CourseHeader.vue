@@ -9,7 +9,7 @@ import ActionButton from '@/components/ActionButton.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import StatusChip from '@/components/StatusChip.vue'
 import ResourceState from '@/components/ResourceState.vue'
-import { nextAction, stages } from '@/composables/needsNow'
+import { factsOfRow, nextAction, stages } from '@/composables/needsNow'
 import type { PlanTree } from '@/composables/planTree'
 import { useResource } from '@/composables/useResource'
 import { lacking } from '@/composables/reasons'
@@ -34,25 +34,15 @@ const plan = useResource<PlanTree>(`plan:${id}`, (signal) => request<PlanTree>(c
 const facts = computed(() => {
   const c = course.data.value
   if (!c) return null
-  const list = sources.data.value ?? []
-  const pending = list.filter((s) => s.approval === 'pending')
+  const pending = (sources.data.value ?? []).filter((s) => s.approval === 'pending')
   const heldList = held.data.value?.blocks ?? []
   const blocks = (plan.data.value?.modules ?? []).flatMap((m) => m.topics.flatMap((x) => x.blocks))
   const questions = validation.data.value?.blocking_questions ?? []
   return {
-    courseId: id,
-    status: c.status,
-    profile: c.profile !== null,
-    plan: blocks.length > 0,
-    openQuestions: questions.length,
-    published: c.status === 'published',
+    ...factsOfRow({ ...c, has_profile: c.profile !== null, has_plan: blocks.length > 0, open_questions: questions.length }),
     firstQuestionKey: questions[0]?.key ?? null,
-    pendingSources: pending.length,
     firstPendingId: pending[0]?.id ?? null,
-    held: heldList.length,
     firstHeldId: heldList[0]?.id ?? null,
-    generated: blocks.some((b) => b.status !== 'draft'),
-    sourceCount: list.length,
   }
 })
 const action = computed(() => (facts.value ? nextAction(facts.value) : null))
@@ -61,7 +51,7 @@ const strip = computed(() => {
   if (!f) return []
   return stages(f, f.sourceCount).map((s) => {
     const to = `${pathFor(STAGE_TO_ROUTE[s.id] as string, { id })}${s.id === 'generate' ? '#generate' : ''}`
-    const count = s.id === 'sources' ? (f.pendingSources > 0 ? `${f.sourceCount} · ${t('course.pendingCount', { n: f.pendingSources })}` : String(f.sourceCount)) : s.id === 'fix' ? String(f.held) : s.id === 'plan' && f.openQuestions > 0 ? t('course.questionCount', f.openQuestions) : ''
+    const count = s.id === 'sources' ? (f.pendingSources > 0 ? `${f.sourceCount} · ${t('course.pendingCount', { n: f.pendingSources })}` : String(f.sourceCount)) : s.id === 'fix' ? String(f.held + f.draft) : s.id === 'plan' && f.openQuestions > 0 ? t('course.questionCount', f.openQuestions) : ''
     return { ...s, to, count }
   })
 })

@@ -81,7 +81,7 @@ describe('route registry: every row is complete in en, nb and uk', () => {
   })
   it('takes every permission code from the backend catalogue (read from src/app/rbac/catalogue.py)', () => {
     expect(existsSync(CATALOGUE), 'catalogue file').toBe(true)
-    const codes = new Set([...readFileSync(CATALOGUE, 'utf8').matchAll(/PermissionDef\("([a-z]+\.[a-z]+)"/g)].map((m) => m[1]))
+    const codes = new Set([...readFileSync(CATALOGUE, 'utf8').matchAll(/PermissionDef\(\s*"([a-z]+\.[a-z]+)"/g)].map((m) => m[1]))
     expect(codes.size).toBeGreaterThan(20)
     const used = ROWS.flatMap((r) => (r.access.kind === 'perm' ? [r.access.code] : []))
     expect(used.length).toBeGreaterThan(5)
@@ -103,11 +103,11 @@ describe('route registry: every row is complete in en, nb and uk', () => {
 describe('route registry: navigation and breadcrumbs read from it', () => {
   it('lists in the main nav only routes that need a section permission', () => {
     const main = navEntries('main')
-    expect(main.map((r) => r.name)).toEqual(['courses', 'users', 'invites', 'roles'])
+    expect(main.map((r) => r.name)).toEqual(['courses', 'users', 'invites', 'roles', 'learn'])
     for (const r of main) expect(r.access.kind, r.name).toBe('perm')
   })
   it('maps every course stage to a registered course route and the course nav section to those routes', () => {
-    const facts: StageFacts = { status: 'draft', profile: true, plan: true, openQuestions: 0, published: false, courseId: 'c', firstQuestionKey: null, pendingSources: 0, firstPendingId: null, held: 0, firstHeldId: null, generated: true }
+    const facts: StageFacts = { status: 'draft', profile: true, plan: true, openQuestions: 0, published: false, courseId: 'c', firstQuestionKey: null, sourceCount: 1, draft: 0, pendingSources: 0, firstPendingId: null, held: 0, firstHeldId: null, generated: true }
     const ids = stages(facts, 1).map((s) => s.id)
     expect(ids.filter((id) => !STAGE_TO_ROUTE[id])).toEqual([])
     const targets = new Set(Object.values(STAGE_TO_ROUTE))

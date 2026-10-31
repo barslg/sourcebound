@@ -40,8 +40,10 @@ export const coursePlanSubmit = (id: string): string => `${coursePlan(id)}/submi
 export const courseGenerate = (id: string): string => `${courseItem(id)}/generate/submit`
 export const sourceApprove = (id: string): string => `${ENDPOINTS.sources}/${enc(id)}/approve`
 export const runItem = (id: string): string => `${API}/runs/${enc(id)}`
+export const courseRuns = (id: string): string => `${courseItem(id)}/runs`
 export const runResume = (id: string): string => `${runItem(id)}/resume`
 
+export const learnCourses = `${API}/learn/courses`
 export const humanQueue = `${API}/human-queue`
 export const humanQueueResolve = (id: string): string => `${humanQueue}/${enc(id)}/resolve`
 export const courseSources = (id: string): string => `${courseItem(id)}/sources`

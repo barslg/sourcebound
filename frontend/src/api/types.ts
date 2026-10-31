@@ -26,6 +26,7 @@ export interface Role {
   scope_tags: string[]
 }
 export interface Invite {
+  id: string
   token: string
   course_tags: string[]
   max_uses: number | null
@@ -42,6 +43,7 @@ export interface Operation {
   error: string | null
 }
 export interface AcceptResult { scopes: string[] }
+export interface RunListItem { id: string; status: string; kind: string | null; created_at: string; stop_marker: string | null; cost_so_far: string }
 
 export interface Constraint {
   key: string
@@ -67,10 +69,14 @@ export interface CourseDoc {
   topic_count: number
   block_count: number
   translations: TranslationRow[]
+  held_count: number
+  draft_count: number
+  pending_sources: number
+  source_count: number
   profile: { methodology_codes: string[]; bloom_level: string; audience: string; dreyfus_start: string } | null
   constraints: Constraint[]
 }
-export interface CourseRow { id: string; title: string; language: string; status: string; scope_tags: string[] }
+export interface CourseRow { id: string; title: string; language: string; status: string; scope_tags: string[]; has_profile: boolean; has_plan: boolean; open_questions: number; held_count: number; draft_count: number; pending_sources: number; source_count: number }
 export interface Validation { blocking_questions: Array<{ key: string; kind: string; question: string | null }>; can_generate: boolean }
 export interface SourceRow { id: string; title: string; media: string; licence: string; as_of: string | null; approval: string; progress: number; ingest_status?: string; ingest_message?: string | null }
 export interface HeldBlock { id: string; topic_title: string; brief: string; hold_reason: string; passage: string; address: string }
@@ -80,3 +86,4 @@ export interface InviteListItem { id: string; course_tags: string[]; max_uses: n
 export interface NotificationRow { id: string; kind: string; payload: Record<string, unknown>; read: boolean; created_at: string | null }
 export interface QueueItem { id: string; kind: string; url: string; reason: string; payload: { course_id?: string }; created_at: string | null }
 export interface Permission { code: string; category: string; label: string; description: string }
+export interface LearnCourse { id: string; title: string; language: string; audience: string; progress: { blocks_total: number; blocks_attempted: number; completion: number; status: string } }

@@ -10,7 +10,8 @@
     "label": "Main navigation",
     "skip": "Skip to content",
     "invites": "Invites",
-    "thisCourse": "This course"
+    "thisCourse": "This course",
+    "learn": "My learning"
   },
   "common": {
     "loading": "Loading",
@@ -79,7 +80,8 @@
     "scopes": "You now have access to the course you were invited to.",
     "noScopes": "The invitation was accepted.",
     "open": "Open the app",
-    "help": "You were invited to a course. Sign in to accept it."
+    "help": "You were invited to a course. Accept the invitation to open it.",
+    "noLanding": "Your account has no page to open yet. Ask the person who invited you."
   },
   "bell": {
     "title": "Notifications",
@@ -210,7 +212,8 @@
     "first": "Create your first course",
     "help": "Every course you author, with the next step it needs.",
     "languageHint": "The language learners read the course in.",
-    "typeTitle": "Type a title first."
+    "typeTitle": "Type a title first.",
+    "held": "{count} held"
   },
   "invites": {
     "title": "Invite links",
@@ -255,12 +258,15 @@
     "publish": "review and publish",
     "nothing": "nothing, it is published",
     "sources": "approve the waiting sources",
-    "fix": "fix the held blocks"
+    "fix": "fix the held blocks",
+    "addSources": "add and approve a source",
+    "unread": "wait for the blocks to be read, or generate again"
   },
   "course": {
     "status": {
       "draft": "Draft",
-      "published": "Published"
+      "published": "Published",
+      "generated": "Generated"
     },
     "needsNow": "Needs now: {what}",
     "tabSources": "Sources",
@@ -294,7 +300,8 @@
     "why": {
       "plan": "no plan yet",
       "questions": "open questions",
-      "held": "held blocks"
+      "held": "held blocks",
+      "unread": "blocks not read yet"
     },
     "factLanguage": "Language: {name}",
     "factAudience": "For: {audience}",
@@ -503,7 +510,18 @@
     "topicsHelp": "Where each topic stands.",
     "cancelTitle": "Cancel this run?",
     "cancelBody": "Blocks already written are kept. You can resume the run later.",
-    "backToSources": "Back to sources"
+    "backToSources": "Back to sources",
+    "stepNamed": "Step {n}: {role} - {subject}",
+    "role": {
+      "researcher": "Researcher",
+      "architect": "Planner",
+      "reader": "Reader check",
+      "block_teach": "Teaching block",
+      "block_example": "Example block",
+      "block_practice": "Practice block",
+      "block_test": "Test block",
+      "block_check": "Check block"
+    }
   },
   "fix": {
     "title": "What to fix",
@@ -711,5 +729,33 @@
     "en": "English",
     "nb": "Norsk bokmål",
     "uk": "Українська"
+  },
+  "learn": {
+    "title": "My learning",
+    "help": "The courses you are enrolled in, with your progress.",
+    "empty": "You are not enrolled in a published course yet.",
+    "progress": "{done} of {total} blocks tried",
+    "status": {
+      "not_started": "Not started",
+      "in_progress": "In progress",
+      "complete": "Complete",
+      "mastered": "Mastered"
+    }
+  },
+  "runs": {
+    "title": "Runs",
+    "help": "Every generation, translation and rewrite run of this course, newest first.",
+    "empty": "No run yet. Generate the course from the Plan page.",
+    "started": "Started",
+    "status": "Status",
+    "cost": "Cost",
+    "kind": {
+      "label": "Kind",
+      "generate": "Generation",
+      "generation": "Generation",
+      "plan": "Plan",
+      "translation": "Translation"
+    },
+    "link": "Runs"
   }
 }

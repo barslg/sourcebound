@@ -3,6 +3,8 @@ import { humanize, pluralUk, reasonKey, usd } from '../../src/composables/labels
 import { nextAction, stages, type StageFacts } from '../../src/composables/needsNow'
 
 const base: StageFacts = {
+  sourceCount: 1,
+  draft: 0,
   courseId: 'c1', status: 'draft', profile: true, plan: true, openQuestions: 0, published: false,
   firstQuestionKey: null, pendingSources: 0, firstPendingId: null, held: 0, firstHeldId: null, generated: false,
 }

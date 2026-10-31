@@ -1,18 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { needsNow, type CourseFacts } from '../../src/composables/needsNow'
+import { factsOfRow, nextAction, type CourseCounters } from '../../src/composables/needsNow'
 import { applyOps, moveTarget, toNodes, type PlanTree } from '../../src/composables/planTree'
 import { stepWord, stoppedLine, type RunStep } from '../../src/composables/runView'
 
-const base: CourseFacts = { status: 'draft', profile: false, plan: false, openQuestions: 0, published: false }
+const row: CourseCounters = { id: 'c1', status: 'draft', has_profile: false, has_plan: false, open_questions: 0, held_count: 0, draft_count: 0, pending_sources: 0, source_count: 0 }
+const key = (patch: Partial<CourseCounters>) => nextAction(factsOfRow({ ...row, ...patch })).key
 
-describe('needsNow', () => {
-  it('names one next action in order', () => {
-    expect(needsNow(base)).toBe('needs.profile')
-    expect(needsNow({ ...base, profile: true })).toBe('needs.plan')
-    expect(needsNow({ ...base, profile: true, plan: true, openQuestions: 2 })).toBe('needs.questions')
-    expect(needsNow({ ...base, profile: true, plan: true })).toBe('needs.generate')
-    expect(needsNow({ ...base, profile: true, plan: true, status: 'generated' })).toBe('needs.publish')
-    expect(needsNow({ ...base, published: true, status: 'published' })).toBe('needs.nothing')
+describe('nextAction', () => {
+  it('names one next action: sources, profile, plan, questions, generate, fix, publish', () => {
+    expect(key({})).toBe('needs.addSources')
+    expect(key({ source_count: 1, pending_sources: 1 })).toBe('needs.sources')
+    expect(key({ source_count: 1 })).toBe('needs.profile')
+    expect(key({ source_count: 1, has_profile: true })).toBe('needs.plan')
+    expect(key({ source_count: 1, has_profile: true, has_plan: true, open_questions: 2 })).toBe('needs.questions')
+    expect(key({ source_count: 1, has_profile: true, has_plan: true })).toBe('needs.generate')
+    const gen = { source_count: 1, has_profile: true, has_plan: true, status: 'generated' }
+    expect(key({ ...gen, held_count: 2 })).toBe('needs.fix')
+    expect(key({ ...gen, draft_count: 1 })).toBe('needs.unread')
+    expect(key(gen)).toBe('needs.publish')
+    expect(key({ ...gen, status: 'published' })).toBe('needs.nothing')
   })
 })
 

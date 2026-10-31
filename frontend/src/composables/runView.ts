@@ -50,3 +50,19 @@ export function moneyOf(value: string | null | undefined): string | null {
   const n = Number(value)
   return Number.isFinite(n) ? n.toFixed(2) : null
 }
+
+export interface StepName { role: string; subject: string }
+
+export function stepName(
+  stepKey: string,
+  plan: { modules: Array<{ topics: Array<{ title: string; plan_node_id: string; blocks: Array<{ plan_node_id: string; brief: string }> }> }> } | null,
+): StepName {
+  const at = stepKey.indexOf(':')
+  const role = at < 0 ? stepKey : stepKey.slice(0, at)
+  const node = at < 0 ? '' : stepKey.slice(at + 1)
+  const topics = (plan?.modules ?? []).flatMap((m) => m.topics)
+  const block = topics.flatMap((t) => t.blocks.map((b) => ({ topic: t.title, ...b }))).find((b) => b.plan_node_id === node)
+  if (block) return { role, subject: `${block.topic}: ${block.brief}`.slice(0, 120) }
+  const topic = topics.find((t) => t.plan_node_id === node)
+  return { role, subject: topic ? topic.title : '' }
+}

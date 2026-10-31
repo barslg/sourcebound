@@ -3,7 +3,7 @@ import type { SectionEntry } from './guard'
 
 export type PageState = 'loading' | 'empty' | 'error' | 'denied' | 'queued'
 export type ObjectKind = 'course' | 'user' | 'role' | 'invite' | 'run' | 'none'
-export type NavIconId = 'courses' | 'users' | 'invites' | 'roles'
+export type NavIconId = 'courses' | 'users' | 'invites' | 'roles' | 'learn'
 export type Access = { kind: 'public' } | { kind: 'signedIn' } | { kind: 'perm'; code: string }
 
 export interface NavEntry { section: 'main' | 'course'; icon: NavIconId | null; labelKey: string | null }
@@ -58,7 +58,7 @@ const stage = <const I extends 'sources' | 'plan' | 'fix' | 'publish'>(id: I, st
     primaryAction,
   })
 
-const courses: Access = { kind: 'perm', code: 'section.courses' }
+const courses: Access = { kind: 'perm', code: 'course.edit' }
 
 export const REGISTRY = [
   row({ name: 'signin', path: '/signin', titleKey: 'signin.title', purposeKey: 'app.tagline', access: { kind: 'public' }, bare: true, primaryAction: 'signin' }),
@@ -71,10 +71,12 @@ export const REGISTRY = [
   stage('fix', [...LIST, 'queued'], 'rewrite', courses),
   row({ name: 'course-preview', path: '/courses/:id/preview', titleKey: 'preview.title', purposeKey: 'preview.help', parent: 'course-publish', access: { kind: 'perm', code: 'learner.view' }, object: 'course', states: ONE }),
   stage('publish', [...ONE, 'queued'], 'publish', courses),
-  row({ name: 'run', path: '/runs/:runId', titleKey: 'run.title', purposeKey: 'run.help', parent: 'course-plan', access: { kind: 'perm', code: 'section.runs' }, object: 'run', states: ONE, primaryAction: 'resume', entry: 'operation' }),
+  row({ name: 'course-runs', path: '/courses/:id/runs', titleKey: 'runs.title', purposeKey: 'runs.help', parent: 'course-plan', access: { kind: 'perm', code: 'run.start' }, object: 'course', heading: 'page', states: LIST }),
+  row({ name: 'run', path: '/runs/:runId', titleKey: 'run.title', purposeKey: 'run.help', parent: 'course-plan', access: { kind: 'perm', code: 'run.start' }, object: 'run', states: ONE, primaryAction: 'resume', entry: 'operation' }),
   row({ name: 'users', path: '/users', titleKey: 'users.title', purposeKey: 'users.help', access: { kind: 'perm', code: 'user.list' }, nav: { section: 'main', icon: 'users', labelKey: 'nav.users' }, states: LIST }),
   row({ name: 'invites', path: '/invites', titleKey: 'invites.title', purposeKey: 'invites.intro', access: { kind: 'perm', code: 'invite.create' }, nav: { section: 'main', icon: 'invites', labelKey: 'nav.invites' }, states: LIST, primaryAction: 'create' }),
   row({ name: 'roles', path: '/roles', titleKey: 'roles.title', purposeKey: 'roles.help', access: { kind: 'perm', code: 'role.edit' }, nav: { section: 'main', icon: 'roles', labelKey: 'nav.roles' }, states: LIST, primaryAction: 'create' }),
+  row({ name: 'learn', path: '/learn', titleKey: 'learn.title', purposeKey: 'learn.help', access: { kind: 'perm', code: 'learn.read' }, nav: { section: 'main', icon: 'learn', labelKey: 'nav.learn' }, states: LIST }),
   row({ name: 'not-found', path: '/:rest(.*)*', titleKey: 'notFound.title', purposeKey: 'notFound.help', access: { kind: 'signedIn' }, bare: false, entry: 'external' }),
 ] as const satisfies readonly RouteRow[]
 

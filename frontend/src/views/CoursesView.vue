@@ -13,15 +13,14 @@ import FormField from '@/components/FormField.vue'
 import StatusChip from '@/components/StatusChip.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ResourceState from '@/components/ResourceState.vue'
-import { nextAction } from '@/composables/needsNow'
+import { factsOfRow, nextAction } from '@/composables/needsNow'
 import { notify } from '@/composables/notify'
 import { lacking } from '@/composables/reasons'
 import { dropCached, useResource } from '@/composables/useResource'
 
-interface ListRow extends CourseRow { has_profile?: boolean; has_plan?: boolean; open_questions?: number }
 const { t } = useI18n()
 const router = useRouter()
-const courses = useResource<ListRow[]>('courses', (signal) => request<ListRow[]>(ENDPOINTS.courses, { signal }))
+const courses = useResource<CourseRow[]>('courses', (signal) => request<CourseRow[]>(ENDPOINTS.courses, { signal }))
 
 const open = ref(false)
 const title = ref('')
@@ -30,10 +29,7 @@ const busy = ref(false)
 const formError = ref<string | null>(null)
 const languages = [{ code: 'en', label: 'English' }, { code: 'nb', label: 'Norsk bokmål' }, { code: 'uk', label: 'Українська' }]
 const total = computed(() => (courses.data.value ?? []).length)
-const action = (c: ListRow) => nextAction({
-  courseId: c.id, status: c.status, profile: c.has_profile ?? false, plan: c.has_plan ?? false, openQuestions: c.open_questions ?? 0,
-  published: c.status === 'published', firstQuestionKey: null, pendingSources: 0, firstPendingId: null, held: 0, firstHeldId: null, generated: false,
-})
+const action = (c: CourseRow) => nextAction(factsOfRow(c))
 
 async function create(): Promise<void> {
   busy.value = true
@@ -64,6 +60,7 @@ async function create(): Promise<void> {
       <li v-for="c in courses.data.value" :key="c.id" class="bell-item row" data-testid="course-item">
         <router-link :to="`/courses/${c.id}/plan`">{{ c.title }}</router-link>
         <StatusChip :tone="c.status === 'published' ? 'ok' : c.status === 'generated' ? 'info' : 'neutral'" :label="t(`course.status.${c.status}`)" />
+        <span v-if="c.held_count > 0" class="muted" data-testid="held-count">{{ t('courses.held', { count: t('count.block', c.held_count) }) }}</span>
         <span class="muted" data-testid="needs-now">
           {{ t('course.needsNowLabel') }}
           <router-link v-if="action(c).to" :to="action(c).to as string" data-testid="needs-link">{{ t(action(c).key) }}</router-link>

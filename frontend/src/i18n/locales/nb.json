@@ -10,7 +10,8 @@
     "label": "Hovednavigasjon",
     "skip": "Hopp til innholdet",
     "invites": "Invitasjoner",
-    "thisCourse": "Dette kurset"
+    "thisCourse": "Dette kurset",
+    "learn": "Min læring"
   },
   "common": {
     "loading": "Laster",
@@ -79,7 +80,8 @@
     "scopes": "Du har nå tilgang til kurset du ble invitert til.",
     "noScopes": "Invitasjonen er godtatt.",
     "open": "Åpne appen",
-    "help": "Du er invitert til et kurs. Logg inn for å godta."
+    "help": "Du er invitert til et kurs. Godta invitasjonen for å åpne det.",
+    "noLanding": "Kontoen din har ingen side å åpne ennå. Spør den som inviterte deg."
   },
   "bell": {
     "title": "Varsler",
@@ -210,7 +212,8 @@
     "first": "Opprett ditt første kurs",
     "help": "Alle kurs du lager, med neste steg hvert av dem trenger.",
     "languageHint": "Språket deltakerne leser kurset på.",
-    "typeTitle": "Skriv en tittel først."
+    "typeTitle": "Skriv en tittel først.",
+    "held": "{count} holdt tilbake"
   },
   "invites": {
     "title": "Invitasjonslenker",
@@ -255,12 +258,15 @@
     "publish": "gjennomgå og publisere",
     "nothing": "ingenting, kurset er publisert",
     "sources": "godkjenn kildene som venter",
-    "fix": "rett blokkene som er holdt tilbake"
+    "fix": "rett blokkene som er holdt tilbake",
+    "addSources": "legg til og godkjenn en kilde",
+    "unread": "vent til blokkene er lest, eller generer på nytt"
   },
   "course": {
     "status": {
       "draft": "Utkast",
-      "published": "Publisert"
+      "published": "Publisert",
+      "generated": "Generert"
     },
     "needsNow": "Trenger nå: {what}",
     "tabSources": "Kilder",
@@ -294,7 +300,8 @@
     "why": {
       "plan": "ingen plan ennå",
       "questions": "åpne spørsmål",
-      "held": "blokker holdt tilbake"
+      "held": "blokker holdt tilbake",
+      "unread": "blokker som ikke er lest ennå"
     },
     "factLanguage": "Språk: {name}",
     "factAudience": "For: {audience}",
@@ -503,7 +510,18 @@
     "topicsHelp": "Hvor hvert tema står.",
     "cancelTitle": "Avbryte denne kjøringen?",
     "cancelBody": "Blokker som allerede er skrevet, beholdes. Du kan gjenoppta kjøringen senere.",
-    "backToSources": "Tilbake til kilder"
+    "backToSources": "Tilbake til kilder",
+    "stepNamed": "Steg {n}: {role} - {subject}",
+    "role": {
+      "researcher": "Researcher",
+      "architect": "Planlegger",
+      "reader": "Lesesjekk",
+      "block_teach": "Undervisningsblokk",
+      "block_example": "Eksempelblokk",
+      "block_practice": "Øvingsblokk",
+      "block_test": "Testblokk",
+      "block_check": "Kontrollblokk"
+    }
   },
   "fix": {
     "title": "Hva som må rettes",
@@ -711,5 +729,33 @@
     "en": "English",
     "nb": "Norsk bokmål",
     "uk": "Українська"
+  },
+  "learn": {
+    "title": "Min læring",
+    "help": "Kursene du er påmeldt, med fremgangen din.",
+    "empty": "Du er ikke påmeldt et publisert kurs ennå.",
+    "progress": "{done} av {total} blokker prøvd",
+    "status": {
+      "not_started": "Ikke startet",
+      "in_progress": "Underveis",
+      "complete": "Fullført",
+      "mastered": "Mestret"
+    }
+  },
+  "runs": {
+    "title": "Kjøringer",
+    "help": "Alle genererings-, oversettings- og omskrivingskjøringer for dette kurset, nyeste først.",
+    "empty": "Ingen kjøring ennå. Generer kurset fra planen.",
+    "started": "Startet",
+    "status": "Status",
+    "cost": "Kostnad",
+    "kind": {
+      "label": "Type",
+      "generate": "Generering",
+      "generation": "Generering",
+      "plan": "Plan",
+      "translation": "Oversetting"
+    },
+    "link": "Kjøringer"
   }
 }

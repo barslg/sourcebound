@@ -3,8 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { request } from '@/api/client'
-import { courseHeld, courseItem, runCancel, runItem, runResume } from '@/api/endpoints'
-import type { CourseDoc, HeldDoc } from '@/api/types'
+import { courseEstimate, courseHeld, courseItem, coursePlan, runCancel, runItem, runResume } from '@/api/endpoints'
+import type { CourseDoc, Estimate, HeldDoc } from '@/api/types'
 import ActionButton from '@/components/ActionButton.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import StatusChip from '@/components/StatusChip.vue'
@@ -14,10 +14,11 @@ import Section from '@/components/Section.vue'
 import { usd } from '@/composables/labels'
 import { firstReason, lacking } from '@/composables/reasons'
 import { notify, notifyError } from '@/composables/notify'
-import { stepWord, stoppedLine, topicWord, type RunDoc } from '@/composables/runView'
+import type { PlanTree } from '@/composables/planTree'
+import { stepName, stepWord, stoppedLine, topicWord, type RunDoc } from '@/composables/runView'
 import { useResource } from '@/composables/useResource'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const route = useRoute()
 const runId = computed(() => String(route.params.runId))
 const run = useResource<RunDoc>(`run:${runId.value}`, (signal) => request<RunDoc>(runItem(runId.value), { signal }))
@@ -25,6 +26,8 @@ const doc = computed(() => run.data.value)
 const courseId = computed(() => doc.value?.course_id ?? null)
 const course = ref<CourseDoc | null>(null)
 const held = ref<HeldDoc | null>(null)
+const plan = ref<PlanTree | null>(null)
+const estimate = ref<Estimate | null>(null)
 const working = ref<'resume' | 'cancel' | null>(null)
 const confirmCancel = ref(false)
 let timer: ReturnType<typeof setInterval> | null = null
@@ -44,6 +47,8 @@ async function loadCourse(): Promise<void> {
   try {
     course.value = await request<CourseDoc>(courseItem(courseId.value))
     held.value = await request<HeldDoc>(courseHeld(courseId.value))
+    plan.value = await request<PlanTree>(coursePlan(courseId.value))
+    estimate.value = await request<Estimate>(courseEstimate(courseId.value))
   } catch {
     course.value = course.value ?? null
   }
@@ -53,6 +58,11 @@ onMounted(() => {
   timer = setInterval(() => { if (doc.value && doc.value.status !== 'done') void run.reload(true).then(loadCourse) }, 3000)
 })
 onBeforeUnmount(() => { if (timer) clearInterval(timer) })
+
+function roleName(key: string): string {
+  const role = stepName(key, null).role
+  return te(`run.role.${role}`) ? t(`run.role.${role}`) : role
+}
 
 async function act(kind: 'resume' | 'cancel'): Promise<void> {
   working.value = kind
@@ -80,7 +90,7 @@ async function act(kind: 'resume' | 'cancel'): Promise<void> {
         <router-link v-if="course" :to="`/courses/${course.id}/plan`" data-testid="run-course">{{ t('run.backToCourse', { name: course.title }) }}</router-link>
       </div>
       <Section :title="t('run.costTitle')" :help="t('plan.forecastNote')" />
-      <p data-testid="run-cost">{{ t('run.cost', { spent: usd(doc?.cost_so_far) ?? t('run.spentUnknown'), forecast: usd(doc?.estimate?.cost_usd) ?? t('run.noForecast') }) }}</p>
+      <p data-testid="run-cost">{{ t('run.cost', { spent: usd(doc?.cost_so_far) ?? t('run.spentUnknown'), forecast: usd(doc?.estimate?.cost_usd ?? estimate?.cost_usd) ?? t('run.noForecast') }) }}</p>
       <Section :title="t('run.topics')" :help="t('run.topicsHelp')" />
       <p v-if="(doc?.topics ?? []).length === 0" class="muted">{{ t('run.noTopics') }}</p>
       <ul class="plain-list" data-testid="run-topics">
@@ -98,7 +108,7 @@ async function act(kind: 'resume' | 'cancel'): Promise<void> {
       <Section :title="t('run.steps')" :help="t('run.stepsHelp')" />
       <ul class="plain-list">
         <li v-for="(s, i) in doc?.steps ?? []" :key="s.step_key" class="bell-item row" data-testid="run-step">
-          <span>{{ t('run.stepN', { n: i + 1 }) }}</span>
+          <span data-testid="run-step-name">{{ t('run.stepNamed', { n: i + 1, role: roleName(s.step_key), subject: stepName(s.step_key, plan).subject }) }}</span>
           <StatusChip :tone="stepWord(s) === 'held' || stepWord(s) === 'stopped' ? 'warn' : stepWord(s) === 'ready' ? 'ok' : 'info'" :label="t(`run.word.${stepWord(s)}`, stepWord(s))" />
           <span v-if="s.error" class="mono danger-text">{{ s.error }}</span>
         </li>

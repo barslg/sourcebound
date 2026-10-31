@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { BookOpen, Circle, CircleCheck, CircleDot, Lock, Share2, Shield, Users } from 'lucide-vue-next'
+import { BookOpen, GraduationCap, Circle, CircleCheck, CircleDot, Lock, Share2, Shield, Users } from 'lucide-vue-next'
 import Select from 'primevue/select'
 import ActionButton from '@/components/ActionButton.vue'
 import BellMenu from '@/components/BellMenu.vue'
@@ -23,7 +23,7 @@ const { theme, toggle } = useTheme()
 const { sheet } = useShortcuts()
 const STATE_ICON = { done: CircleCheck, needs: CircleDot, blocked: Lock, later: Circle } as const
 
-const NAV_ICONS = { courses: BookOpen, users: Users, invites: Share2, roles: Shield } as const
+const NAV_ICONS = { courses: BookOpen, users: Users, invites: Share2, roles: Shield, learn: GraduationCap } as const
 const nav = computed(() =>
   navEntries('main')
     .filter((r) => allows(r, { signedIn: session.signedIn, isSuperadmin: session.isSuperadmin, permissions: session.permissions }))
