@@ -358,3 +358,43 @@ async def seed_world(
         "clean_spot": clean_spot,
         "test_blocks": [b for b in blocks.values() if b["topic"] == "t2"],
     }
+
+
+class World:
+    async def build(self, session: AsyncSession) -> World:
+        from app.rbac.catalogue import sync_catalogue
+        from app.rbac.roles import assign_role, create_role
+
+        self.s = session
+        self.w = await seed_world(session, prefix="t06g")
+        self.other = await seed_world(session, prefix="t06h")
+        await session.execute(
+            sa.text("DELETE FROM course_sources WHERE course_id = :c"),
+            {"c": str(self.other["course_id"])},
+        )
+        self.course = str(self.w["course_id"])
+        self.student = await make_user(session, "g-student")
+        await enrol(session, owner_id=self.w["user_id"], user_id=self.student, tag=self.course)
+        self.other_student = await make_user(session, "g-other")
+        await enrol(
+            session,
+            owner_id=self.other["user_id"],
+            user_id=self.other_student,
+            tag=str(self.other["course_id"]),
+        )
+        await sync_catalogue(session)
+        if (
+            await session.execute(sa.text("SELECT 1 FROM roles WHERE name = 't06g-author'"))
+        ).first() is None:
+            await create_role(session, name="t06g-author", permission_codes=["course.edit"])
+        for owner in (self.w["user_id"], self.other["user_id"]):
+            await assign_role(session, owner, "t06g-author")
+        await session.commit()
+        self.cookies: dict[str, tuple[dict[str, str], str] | None] = {
+            "anon": None,
+            "student": await cookie_for(session, self.student),
+            "other_student": await cookie_for(session, self.other_student),
+            "owner": await cookie_for(session, self.w["user_id"]),
+            "other_owner": await cookie_for(session, self.other["user_id"]),
+        }
+        return self

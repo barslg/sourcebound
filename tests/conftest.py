@@ -184,3 +184,11 @@ def _session_http_guard() -> Iterator[None]:
         yield
     finally:
         uninstall()
+
+
+@pytest.fixture()
+async def world(t03_session: object) -> object:
+    """Published course with seven block types, two schools of learners and authors."""
+    from t06_helpers import World
+
+    return await World().build(t03_session)  # type: ignore[arg-type]
