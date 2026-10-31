@@ -19,6 +19,7 @@ export interface RunDoc {
   dag_digest: string
   estimate: { cost_usd?: string; seconds?: number; blocks?: number; calls?: number; note?: string } | null
   stop_marker: string | null
+  stop_code?: string | null
   course_id: string | null
   cost_so_far: string | null
   topics: RunTopic[]

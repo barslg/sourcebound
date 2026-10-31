@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Button from 'primevue/button'
-import ProgressSpinner from 'primevue/progressspinner'
 import type { ApiError } from '@/api/client'
+import ActionButton from '@/components/ActionButton.vue'
 
 const props = defineProps<{ loading: boolean; error: ApiError | null; empty: boolean; emptyText?: string }>()
 const emit = defineEmits<{ retry: [] }>()
@@ -13,8 +12,10 @@ const denied = computed(() => props.error !== null && props.error.status === 403
 
 <template>
   <div v-if="loading" class="state" role="status" aria-live="polite" data-view="loading">
-    <ProgressSpinner stroke-width="4" aria-hidden="true" />
-    <p class="muted">{{ t('common.loading') }}</p>
+    <span class="sr-only">{{ t('common.loading') }}</span>
+    <div class="skeleton-line skeleton-w60" aria-hidden="true" />
+    <div class="skeleton-line" aria-hidden="true" />
+    <div class="skeleton-line skeleton-w80" aria-hidden="true" />
   </div>
   <div v-else-if="denied" class="state state-denied" role="alert" data-view="denied">
     <h2>{{ t('common.deniedTitle') }}</h2>
@@ -24,7 +25,7 @@ const denied = computed(() => props.error !== null && props.error.status === 403
   <div v-else-if="error" class="state state-error" role="alert" data-view="error">
     <h2>{{ t('common.errorTitle') }}</h2>
     <p class="mono">{{ error.message }}</p>
-    <Button :label="t('common.retry')" severity="secondary" @click="emit('retry')" />
+    <ActionButton action="retry" @click="emit('retry')" />
   </div>
   <div v-else-if="empty" class="state" data-view="empty">
     <p class="muted">{{ emptyText ?? t('common.emptyPage') }}</p>

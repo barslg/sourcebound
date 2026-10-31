@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import Breadcrumbs from '@/components/Breadcrumbs.vue'
+import { useDocTitle } from '@/composables/useDocTitle'
 
-defineProps<{ title: string; help: string; crumbs?: Array<{ label: string; to?: string }> }>()
+const props = defineProps<{ title: string; help: string; crumbs?: Array<{ label: string; to?: string }>; docTitle?: string }>()
+useDocTitle(() => props.docTitle ?? `${props.title} · Sourcebound`)
 </script>
 
 <template>

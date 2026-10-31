@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import PrimeVue from 'primevue/config'
 import ToastService from 'primevue/toastservice'
+import Tooltip from 'primevue/tooltip'
 import Aura from '@primeuix/themes/aura'
 import { definePreset } from '@primeuix/themes'
 import App from './App.vue'
@@ -35,6 +36,7 @@ app.use(pinia)
 app.use(i18n)
 app.use(PrimeVue, { theme: { preset, options: { darkModeSelector: '[data-theme="dark"]', cssLayer: false } } })
 app.use(ToastService)
+app.directive('tooltip', Tooltip)
 
 const session = useSessionStore()
 const operations = useOperationsStore()

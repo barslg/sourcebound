@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Button from 'primevue/button'
+import ActionButton from '@/components/ActionButton.vue'
+import StatusChip from '@/components/StatusChip.vue'
 import Popover from 'primevue/popover'
 import ProgressBar from 'primevue/progressbar'
 import { useOperationsStore } from '@/stores/operations'
@@ -28,19 +29,9 @@ const runOf = (result: Record<string, unknown> | null): string | null => (result
 </script>
 
 <template>
-  <Button
-    icon="pi pi-bell"
-    severity="secondary"
-    text
-    :aria-label="t('bell.open')"
-    data-testid="bell"
-    @click="toggle"
-  >
-    <template #icon>
-      <i class="pi pi-bell" aria-hidden="true" />
-      <span v-if="ops.unreadCount > 0" class="bell-count" data-testid="bell-count">{{ ops.unreadCount }}</span>
-    </template>
-  </Button>
+  <ActionButton action="notifications" icon-only :label="t('bell.open')" data-testid="bell" @click="toggle">
+    <template #after><span v-if="ops.unreadCount > 0" class="bell-count" data-testid="bell-count">{{ ops.unreadCount }}</span></template>
+  </ActionButton>
   <Popover ref="panel">
     <div class="bell-panel" role="region" :aria-label="t('bell.title')">
       <h2 class="page-title">{{ t('bell.title') }}</h2>
@@ -51,7 +42,7 @@ const runOf = (result: Record<string, unknown> | null): string | null => (result
         <li v-for="op in ops.list" :key="op.operation_id" class="bell-item" data-testid="bell-item">
           <div class="row">
             <span>{{ kindLabel(op.kind) }}</span>
-            <span class="chip row-end">{{ statusLabel(op.status) }}</span>
+            <StatusChip class="row-end" :tone="op.status === 'failed' ? 'danger' : op.status === 'done' ? 'ok' : 'info'" :label="statusLabel(op.status)" />
           </div>
           <ProgressBar :value="Math.round(op.progress * 100)" :show-value="false" :aria-label="t('bell.progress', { percent: Math.round(op.progress * 100) })" />
           <p v-if="op.error" class="mono danger-text">{{ t('bell.error', { message: op.error }) }}</p>
@@ -63,7 +54,7 @@ const runOf = (result: Record<string, unknown> | null): string | null => (result
         <ul class="plain-list" data-testid="bell-notifications">
           <li v-for="n in ops.notifications" :key="n.id" class="bell-item row" data-testid="bell-notification">
             <span>{{ t(notificationLabel(n.kind)) }}</span>
-            <span v-if="!n.read" class="chip row-end">{{ t('bell.unread', { count: 1 }) }}</span>
+            <StatusChip v-if="!n.read" class="row-end" tone="info" :label="t('bell.unread', { count: 1 })" />
           </li>
         </ul>
       </template>

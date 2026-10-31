@@ -1,7 +1,7 @@
 import { onMounted, ref } from 'vue'
 import { request } from '@/api/client'
-import { courseItem, ENDPOINTS } from '@/api/endpoints'
-import type { CourseDoc, CourseRow } from '@/api/types'
+import { ENDPOINTS } from '@/api/endpoints'
+import type { CourseRow } from '@/api/types'
 
 export interface IndexedCourse { id: string; title: string; tags: string[] }
 
@@ -12,8 +12,7 @@ export function useCourseIndex() {
   async function load(): Promise<void> {
     try {
       const rows = await request<CourseRow[]>(ENDPOINTS.courses)
-      const docs = await Promise.all(rows.map((r) => request<CourseDoc>(courseItem(r.id))))
-      courses.value = docs.map((d) => ({ id: d.id, title: d.title, tags: d.scope_tags }))
+      courses.value = rows.map((r) => ({ id: r.id, title: r.title, tags: r.scope_tags }))
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause)
     } finally {

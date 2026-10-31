@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { request } from '@/api/client'
 import { courseHeld, courseItem, coursePlan, coursePlanValidate, courseSources } from '@/api/endpoints'
@@ -9,6 +9,7 @@ import ResourceState from '@/components/ResourceState.vue'
 import { nextAction, stages } from '@/composables/needsNow'
 import type { PlanTree } from '@/composables/planTree'
 import { useResource } from '@/composables/useResource'
+import { useCourseContext } from '@/stores/courseContext'
 
 const props = defineProps<{ courseId: string; page: 'sources' | 'plan' | 'fix' | 'publish' }>()
 const { t } = useI18n()
@@ -53,6 +54,9 @@ const strip = computed(() => {
     return { ...s, to, count }
   })
 })
+const context = useCourseContext()
+watchEffect(() => { if (course.data.value) context.set(id, course.data.value.title, strip.value) })
+onBeforeUnmount(() => context.clear())
 const crumbs = computed(() => [{ label: t('nav.courses'), to: '/courses' }, { label: course.data.value?.title ?? '' }])
 async function reload(): Promise<void> {
   await Promise.all([course.reload(true), validation.reload(true), sources.reload(true), held.reload(true), plan.reload(true)])
@@ -63,7 +67,7 @@ defineExpose({ reload })
 <template>
   <ResourceState :loading="course.loading.value" :error="course.error.value" :empty="false" @retry="course.reload()">
     <div class="stack course-head" data-testid="course-head">
-      <PageHeader :title="course.data.value?.title ?? ''" :help="t(`course.help.${props.page}`)" :crumbs="crumbs" />
+      <PageHeader :title="course.data.value?.title ?? ''" :help="t(`course.help.${props.page}`)" :crumbs="crumbs" :doc-title="`${t(`course.stage.${props.page}`)} · ${course.data.value?.title ?? ''} · Sourcebound`" />
       <ol class="stage-strip" :aria-label="t('course.stages')">
         <li v-for="s in strip" :key="s.id">
           <router-link class="stage" :class="[`stage-${s.state}`, { 'stage-current': s.id === props.page }]" :to="s.to" :data-testid="`tab-${s.id}`">

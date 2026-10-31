@@ -1,41 +1,39 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { request } from '@/api/client'
-import { courseItem } from '@/api/endpoints'
-import type { CourseDoc } from '@/api/types'
-import Button from 'primevue/button'
+import { Circle, CircleCheck, CircleDot, Lock } from 'lucide-vue-next'
 import Select from 'primevue/select'
+import ActionButton from '@/components/ActionButton.vue'
 import BellMenu from '@/components/BellMenu.vue'
+import ShortcutSheet from '@/components/ShortcutSheet.vue'
 import { LOCALES, setLocale, type AppLocale } from '@/i18n'
 import { routes } from '@/router'
 import { useSessionStore } from '@/stores/session'
+import { useCourseContext } from '@/stores/courseContext'
+import { useShortcuts } from '@/composables/useShortcuts'
 import { useTheme } from '@/composables/useTheme'
 
 const { t, locale } = useI18n()
 const session = useSessionStore()
 const router = useRouter()
-const { theme, toggle } = useTheme()
 const route = useRoute()
-const courseId = computed(() => (typeof route.params.id === 'string' ? route.params.id : null))
-const courseTitle = ref('')
-watch(courseId, async (id) => {
-  courseTitle.value = ''
-  if (!id) return
-  try { courseTitle.value = (await request<CourseDoc>(courseItem(id))).title } catch { courseTitle.value = t('nav.thisCourse') }
-}, { immediate: true })
+const ctx = useCourseContext()
+const { theme, toggle } = useTheme()
+const { sheet } = useShortcuts()
+const STATE_ICON = { done: CircleCheck, needs: CircleDot, blocked: Lock, later: Circle } as const
 
 const nav = computed(() =>
   routes
     .filter((r) => r.meta?.navKey && r.meta.perm && session.can(r.meta.perm))
-    .map((r) => ({ path: r.path, label: t(r.meta?.navKey as string), icon: r.meta?.icon ?? 'pi pi-circle' })),
+    .map((r) => ({ path: r.path, label: t(r.meta?.navKey as string), icon: r.meta?.icon ?? Circle })),
 )
 const localeOptions = computed(() => LOCALES.map((code) => ({ code, label: t(`locale.${code}`) })))
 const current = computed({
   get: () => (LOCALES as readonly string[]).includes(locale.value) ? (locale.value as AppLocale) : 'en',
   set: (v: AppLocale) => setLocale(v),
 })
+const inCourse = computed(() => ctx.courseId !== null && typeof route.params.id === 'string')
 
 async function signOut(): Promise<void> {
   await session.logout()
@@ -51,23 +49,31 @@ async function signOut(): Promise<void> {
       <router-link v-if="session.can('user.list')" class="muted row-end" data-testid="whoami" :to="`/users?q=${encodeURIComponent(session.me?.email ?? '')}`">{{ t('shell.signedInAs', { name: session.me?.display_name || session.me?.email || '' }) }}</router-link>
       <span v-else class="muted row-end" data-testid="whoami">{{ t('shell.signedInAs', { name: session.me?.display_name || session.me?.email || '' }) }}</span>
       <Select v-model="current" :options="localeOptions" option-label="label" option-value="code" :aria-label="t('shell.language')" data-testid="locale" />
-      <Button :label="theme === 'dark' ? t('shell.toLight') : t('shell.toDark')" severity="secondary" text data-testid="theme" @click="toggle" />
+      <ActionButton action="theme" icon-only :label="theme === 'dark' ? t('shell.toLight') : t('shell.toDark')" data-testid="theme" @click="toggle" />
       <BellMenu />
-      <Button :label="t('shell.signOut')" severity="secondary" text data-testid="signout" @click="signOut" />
+      <ActionButton action="signout" :label="t('shell.signOut')" data-testid="signout" @click="signOut" />
     </header>
     <nav class="shell-nav" :aria-label="t('nav.label')">
       <ul>
         <li v-for="item in nav" :key="item.path">
-          <router-link class="nav-link" :to="item.path"><i :class="item.icon" aria-hidden="true" /> {{ item.label }}</router-link>
+          <router-link class="nav-link" :to="item.path"><component :is="item.icon" :size="20" :stroke-width="2" aria-hidden="true" />{{ item.label }}</router-link>
         </li>
       </ul>
-      <template v-if="courseId">
-        <h2 class="nav-heading">{{ t('nav.thisCourse') }}</h2>
+      <template v-if="inCourse">
+        <p class="nav-heading">{{ t('nav.thisCourse') }}</p>
         <ul>
-          <li><router-link class="nav-link" :to="`/courses/${courseId}/plan`" data-testid="nav-course"><i class="pi pi-bookmark" aria-hidden="true" /> {{ courseTitle }}</router-link></li>
+          <li><router-link class="nav-link" :to="`/courses/${ctx.courseId}/plan`" data-testid="nav-course"><component :is="CircleDot" :size="20" :stroke-width="2" aria-hidden="true" />{{ ctx.title }}</router-link></li>
+          <li v-for="s in ctx.stages" :key="s.id">
+            <router-link class="nav-stage" :to="s.to" :aria-current-value="s.id === 'generate' ? 'false' : 'page'" data-testid="nav-stage"><component :is="STATE_ICON[s.state]" :size="16" :stroke-width="2" aria-hidden="true" />{{ t(`course.stage.${s.id}`) }}<span class="sr-only"> {{ t(`course.state.${s.state}`) }}</span></router-link>
+          </li>
         </ul>
       </template>
     </nav>
     <main id="main" class="shell-main"><slot /></main>
+    <footer class="shell-foot">
+      <span>{{ t('shortcuts.footer') }}</span>
+      <ActionButton action="shortcuts" size="small" class="row-end" @click="sheet = true" />
+    </footer>
+    <ShortcutSheet v-model:visible="sheet" />
   </div>
 </template>
