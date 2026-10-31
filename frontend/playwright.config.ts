@@ -5,7 +5,10 @@ const previewPort = process.env.E2E_PREVIEW_PORT ?? '4173'
 const base = process.env.E2E_BASE_URL ?? 'postgresql+asyncpg://muse:muse@localhost:5434/postgres'
 const oidcPort = process.env.E2E_OIDC_PORT ?? '9020'
 const e2eDb = base.replace(/\/[^/?]*(\?.*)?$/, '/muse_e2e')
+const modelPort = process.env.E2E_MODEL_PORT ?? '9030'
 const backendEnv = {
+  MODEL_API_BASE_URL: `http://127.0.0.1:${modelPort}`,
+  MODEL_API_KEY: 'fake-key-for-the-mock-model-server',
   DATABASE_URL: e2eDb,
   APP_ENV: 'local',
   SUPERADMIN_EMAILS: 'admin@example.com',
@@ -28,6 +31,13 @@ export default defineConfig({
   use: { baseURL: `http://127.0.0.1:${previewPort}`, trace: 'off', locale: 'en-US' },
   projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
   webServer: [
+    {
+      command: `uv run python frontend/e2e/tools/mock_model.py ${modelPort} tmp/mock-model.log`,
+      cwd: '..',
+      port: Number(modelPort),
+      reuseExistingServer: false,
+      timeout: 60000,
+    },
     {
       command: `uv run python frontend/e2e/oidc_stub.py ${oidcPort}`,
       cwd: '..',

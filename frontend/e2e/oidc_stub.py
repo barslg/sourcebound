@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests"))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "tools"))
 from t02_issuer import _JWKS, _mint_id_token  # noqa: E402
 
 CLIENT_ID = "stub-client"
