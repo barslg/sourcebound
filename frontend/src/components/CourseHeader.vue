@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { request } from '@/api/client'
 import { courseHeld, courseItem, coursePlan, coursePlanValidate, courseSources } from '@/api/endpoints'
 import type { CourseDoc, HeldDoc, SourceRow, Validation } from '@/api/types'
@@ -14,11 +14,14 @@ import type { PlanTree } from '@/composables/planTree'
 import { useResource } from '@/composables/useResource'
 import { lacking } from '@/composables/reasons'
 import { translationLabel, translationState, translationTone } from '@/composables/translationView'
+import { pathFor, STAGE_TO_ROUTE } from '@/router/registry'
 import { useCourseContext } from '@/stores/courseContext'
 
-const props = defineProps<{ courseId: string; page: 'sources' | 'plan' | 'fix' | 'publish' }>()
+const props = defineProps<{ courseId: string }>()
 const { t, te } = useI18n()
 const router = useRouter()
+const route = useRoute()
+const page = computed(() => String(route.name).replace(/^course-/, ''))
 const previewDenied = lacking('learner.view')
 const id = props.courseId
 const languageName = (code: string): string => (te(`language.${code}`) ? t(`language.${code}`) : code)
@@ -57,7 +60,7 @@ const strip = computed(() => {
   const f = facts.value
   if (!f) return []
   return stages(f, f.sourceCount).map((s) => {
-    const to = s.id === 'generate' ? `/courses/${id}/plan#generate` : `/courses/${id}/${s.id}`
+    const to = `${pathFor(STAGE_TO_ROUTE[s.id] as string, { id })}${s.id === 'generate' ? '#generate' : ''}`
     const count = s.id === 'sources' ? (f.pendingSources > 0 ? `${f.sourceCount} · ${t('course.pendingCount', { n: f.pendingSources })}` : String(f.sourceCount)) : s.id === 'fix' ? String(f.held) : s.id === 'plan' && f.openQuestions > 0 ? t('course.questionCount', f.openQuestions) : ''
     return { ...s, to, count }
   })
@@ -65,7 +68,6 @@ const strip = computed(() => {
 const context = useCourseContext()
 watchEffect(() => { if (course.data.value) context.set(id, course.data.value.title, strip.value) })
 onBeforeUnmount(() => context.clear())
-const crumbs = computed(() => [{ label: t('nav.courses'), to: '/courses' }, { label: course.data.value?.title ?? '' }])
 async function reload(): Promise<void> {
   await Promise.all([course.reload(true), validation.reload(true), sources.reload(true), held.reload(true), plan.reload(true)])
 }
@@ -75,7 +77,7 @@ defineExpose({ reload })
 <template>
   <ResourceState :loading="course.loading.value" :error="course.error.value" :empty="false" @retry="course.reload()">
     <div class="stack course-head" data-testid="course-head">
-      <PageHeader :title="course.data.value?.title ?? ''" :help="t(`course.help.${props.page}`)" :crumbs="crumbs" :doc-title="`${t(`course.stage.${props.page}`)} · ${course.data.value?.title ?? ''} · Sourcebound`" />
+      <PageHeader :course="course.data.value" />
       <p v-if="course.data.value" class="course-facts muted" data-testid="course-facts">
         <span>{{ t('course.factLanguage', { name: languageName(course.data.value.language) }) }}</span>
         <span v-if="course.data.value.profile">{{ t('course.factAudience', { audience: course.data.value.profile.audience }) }}</span>
@@ -89,7 +91,7 @@ defineExpose({ reload })
       </div>
       <ol class="stage-strip" :aria-label="t('course.stages')">
         <li v-for="s in strip" :key="s.id">
-          <router-link class="stage" :class="[`stage-${s.state}`, { 'stage-current': s.id === props.page }]" :to="s.to" :data-testid="`tab-${s.id}`">
+          <router-link class="stage" :class="[`stage-${s.state}`, { 'stage-current': s.id === page }]" :to="s.to" :data-testid="`tab-${s.id}`">
             <strong>{{ t(`course.stage.${s.id}`) }}</strong>
             <span v-if="s.count" class="count">{{ s.count }}</span>
             <span class="count">{{ s.state === 'blocked' && s.why ? t('course.blockedBy', { why: t(`course.why.${s.why}`) }) : t(`course.state.${s.state}`) }}</span>

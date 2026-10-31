@@ -38,11 +38,6 @@ async function load(): Promise<void> {
 }
 watch(language, () => { void load() }, { immediate: true })
 
-const crumbs = computed(() => [
-  { label: t('nav.courses'), to: '/courses' },
-  ...(course.data.value ? [{ label: course.data.value.title, to: `/courses/${courseId.value}/publish` }] : []),
-  { label: t('preview.title') },
-])
 const TEXT_KEYS = ['text', 'body', 'stem', 'prompt', 'question', 'title']
 function textOf(block: LearnerBlock): string {
   for (const key of TEXT_KEYS) {
@@ -54,7 +49,7 @@ function textOf(block: LearnerBlock): string {
 </script>
 
 <template>
-  <PageHeader :title="t('preview.title')" :help="t('preview.help')" :crumbs="crumbs" :doc-title="`${t('preview.title')} · ${course.data.value?.title ?? ''} · Sourcebound`" />
+  <PageHeader :course="course.data.value" />
   <div class="stack">
     <FormField id="p-lang" :label="t('preview.language')" :help="t('preview.languageHint')">
       <select id="p-lang" v-model="language" class="native-select" data-testid="preview-language">

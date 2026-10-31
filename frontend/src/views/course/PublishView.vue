@@ -64,7 +64,7 @@ async function publish(): Promise<void> {
 </script>
 
 <template>
-  <CourseHeader ref="header" :course-id="courseId" page="publish">
+  <CourseHeader ref="header" :course-id="courseId">
     <template #default="{ course, validation, heldCount }">
       <section class="stack">
         <Section id="summary" :title="t('publish.summary')" :help="t('publish.summaryHelp')" />

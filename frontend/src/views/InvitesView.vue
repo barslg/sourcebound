@@ -83,7 +83,7 @@ async function copy(token: string): Promise<void> {
 </script>
 
 <template>
-  <PageHeader :title="t('invites.title')" :help="t('invites.intro')" />
+  <PageHeader />
   <form id="invite-form" class="stack" @submit.prevent="create">
     <ScopePicker id="inv-course" v-model="picked" by="course" @update:tags="pickedTags = $event" />
     <FormField id="inv-max" :label="t('invites.maxUses')" :help="t('invites.maxUsesHint')">

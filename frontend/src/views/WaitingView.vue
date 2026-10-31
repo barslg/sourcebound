@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import ActionButton from '@/components/ActionButton.vue'
-import { useDocTitle } from '@/composables/useDocTitle'
+import { useRouteMeta } from '@/composables/useRouteMeta'
 import { useSessionStore } from '@/stores/session'
 
 const { t } = useI18n()
@@ -11,7 +11,7 @@ const session = useSessionStore()
 const router = useRouter()
 const checking = ref(false)
 const still = ref(false)
-useDocTitle(() => `${t('waiting.title')} · Sourcebound`)
+const meta = useRouteMeta()
 
 async function check(): Promise<void> {
   checking.value = true
@@ -31,8 +31,8 @@ async function signOut(): Promise<void> {
 <template>
   <main class="centered stack">
     <section class="state">
-      <h1 class="page-title">{{ t('waiting.title') }}</h1>
-      <p data-testid="page-help">{{ t('waiting.body') }}</p>
+      <h1 class="page-title">{{ meta.title.value }}</h1>
+      <p data-testid="page-help">{{ meta.purpose.value }}</p>
       <p v-if="session.me" class="mono">{{ session.me.email }}</p>
       <p v-if="still" role="status" class="muted">{{ t('waiting.stillWaiting') }}</p>
       <div class="row">

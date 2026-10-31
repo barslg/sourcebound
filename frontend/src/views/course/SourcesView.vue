@@ -123,7 +123,7 @@ async function resolve(item: QueueItem, action: 'approve' | 'dismiss'): Promise<
 </script>
 
 <template>
-  <CourseHeader ref="header" :course-id="courseId" page="sources">
+  <CourseHeader ref="header" :course-id="courseId">
     <div class="row">
       <ActionButton class="row-end" action="create" :label="t('sources.add')" :reason="lacking('source.upload')" data-testid="source-add" @click="drawer = true" />
     </div>

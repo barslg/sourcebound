@@ -38,7 +38,6 @@ const line = computed(() => {
   if (d.status === 'done') return t('run.lineDone')
   return active.value >= 0 ? t('run.lineStep', { step: active.value + 1, total: d.steps.length }) : t('run.lineWaiting')
 })
-const crumbs = computed(() => [{ label: t('nav.courses'), to: '/courses' }, ...(course.value ? [{ label: course.value.title, to: `/courses/${course.value.id}/plan` }] : []), { label: t('run.title') }])
 
 async function loadCourse(): Promise<void> {
   if (!courseId.value) return
@@ -71,7 +70,7 @@ async function act(kind: 'resume' | 'cancel'): Promise<void> {
 </script>
 
 <template>
-  <PageHeader :title="t('run.title')" :help="t('run.help')" :crumbs="crumbs" />
+  <PageHeader :course="course" />
   <ResourceState :loading="run.loading.value" :error="run.error.value" :empty="doc === null" :empty-text="t('run.empty')" @retry="run.reload()">
     <div class="stack" data-testid="run">
       <div class="row">

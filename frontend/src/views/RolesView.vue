@@ -111,7 +111,7 @@ const title = computed(() =>
 </script>
 
 <template>
-  <PageHeader :title="t('roles.title')" :help="t('roles.help')">
+  <PageHeader>
     <template #actions><ActionButton action="create" :label="t('roles.new')" :reason="lacking('role.edit')" data-testid="role-new" @click="open('create', null)" /></template>
   </PageHeader>
   <ResourceState

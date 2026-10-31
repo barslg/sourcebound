@@ -6,7 +6,7 @@ import { ApiError, request } from '@/api/client'
 import { inviteAccept, loginUrl } from '@/api/endpoints'
 import type { AcceptResult } from '@/api/types'
 import ActionButton from '@/components/ActionButton.vue'
-import { useDocTitle } from '@/composables/useDocTitle'
+import { useRouteMeta } from '@/composables/useRouteMeta'
 import ResourceState from '@/components/ResourceState.vue'
 import { useSessionStore } from '@/stores/session'
 
@@ -14,7 +14,7 @@ const { t } = useI18n()
 const route = useRoute()
 const session = useSessionStore()
 const token = String(route.params.token)
-useDocTitle(() => `${t('invite.title')} · Sourcebound`)
+const meta = useRouteMeta()
 const acceptHref = inviteAccept(token)
 const signinHref = loginUrl(`/invite/${encodeURIComponent(token)}`)
 const loading = ref(false)
@@ -39,8 +39,8 @@ onMounted(() => { if (session.signedIn) void accept() })
 
 <template>
   <main class="centered stack">
-    <h1 class="page-title">{{ t('invite.title') }}</h1>
-    <p class="muted" data-testid="page-help">{{ t('invite.help') }}</p>
+    <h1 class="page-title">{{ meta.title.value }}</h1>
+    <p class="muted" data-testid="page-help">{{ meta.purpose.value }}</p>
     <section v-if="!session.signedIn" class="state" data-view="signin">
       <p>{{ t('invite.signinBody') }}</p>
       <ActionButton as="a" action="signin" :href="signinHref" :label="t('invite.signin')" data-testid="invite-signin" />

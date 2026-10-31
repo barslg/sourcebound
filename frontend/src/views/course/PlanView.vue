@@ -202,7 +202,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <CourseHeader ref="header" :course-id="courseId" page="plan">
+  <CourseHeader ref="header" :course-id="courseId">
     <template #default="{ course, validation }">
       <div class="row">
         <StatusChip v-if="dirty" tone="warn" :label="t('plan.unsaved')" data-testid="unsaved" />

@@ -64,7 +64,7 @@ function startEdit(block: HeldBlock): void {
 </script>
 
 <template>
-  <CourseHeader ref="header" :course-id="courseId" page="fix">
+  <CourseHeader ref="header" :course-id="courseId">
     <div id="held-list" class="stack">
       <Section :title="t('fix.title')" :help="t('fix.help')" />
       <ResourceState :loading="held.loading.value" :error="held.error.value" :empty="(held.data.value?.blocks ?? []).length === 0" :empty-text="generated ? t('fix.empty') : t('fix.notGenerated')" @retry="held.reload()">

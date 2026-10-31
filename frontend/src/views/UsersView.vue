@@ -141,7 +141,7 @@ function menuFor(u: UserRow): RowMenuItem[] {
 </script>
 
 <template>
-  <PageHeader :title="t('users.title')" :help="t('users.help')">
+  <PageHeader>
     <template #actions><router-link to="/invites" data-testid="users-invites">{{ t('users.invitePeople') }}</router-link></template>
   </PageHeader>
   <ResourceState

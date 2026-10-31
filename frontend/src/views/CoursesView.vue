@@ -54,7 +54,7 @@ async function create(): Promise<void> {
 </script>
 
 <template>
-  <PageHeader :title="t('courses.title')" :help="t('courses.help')">
+  <PageHeader>
     <template #actions><ActionButton action="create" :label="t('courses.new')" :reason="lacking('course.create')" data-testid="course-new" @click="open = true" /></template>
   </PageHeader>
   <ResourceState :loading="courses.loading.value" :error="courses.error.value" :empty="total === 0" :empty-text="t('courses.empty')" @retry="courses.reload()">

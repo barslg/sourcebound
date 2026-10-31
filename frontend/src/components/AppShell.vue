@@ -2,13 +2,13 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { Circle, CircleCheck, CircleDot, Lock } from 'lucide-vue-next'
+import { BookOpen, Circle, CircleCheck, CircleDot, Lock, Share2, Shield, Users } from 'lucide-vue-next'
 import Select from 'primevue/select'
 import ActionButton from '@/components/ActionButton.vue'
 import BellMenu from '@/components/BellMenu.vue'
 import ShortcutSheet from '@/components/ShortcutSheet.vue'
 import { LOCALES, setLocale, type AppLocale } from '@/i18n'
-import { routes } from '@/router'
+import { navEntries, pathFor, allows } from '@/router/registry'
 import { useSessionStore } from '@/stores/session'
 import { useCourseContext } from '@/stores/courseContext'
 import { useShortcuts } from '@/composables/useShortcuts'
@@ -23,10 +23,11 @@ const { theme, toggle } = useTheme()
 const { sheet } = useShortcuts()
 const STATE_ICON = { done: CircleCheck, needs: CircleDot, blocked: Lock, later: Circle } as const
 
+const NAV_ICONS = { courses: BookOpen, users: Users, invites: Share2, roles: Shield } as const
 const nav = computed(() =>
-  routes
-    .filter((r) => r.meta?.navKey && r.meta.perm && session.can(r.meta.perm))
-    .map((r) => ({ path: r.path, label: t(r.meta?.navKey as string), icon: r.meta?.icon ?? Circle })),
+  navEntries('main')
+    .filter((r) => allows(r, { signedIn: session.signedIn, isSuperadmin: session.isSuperadmin, permissions: session.permissions }))
+    .map((r) => ({ path: pathFor(r.name), label: t(r.nav?.labelKey as string), icon: NAV_ICONS[r.nav?.icon ?? 'courses'] })),
 )
 const localeOptions = computed(() => LOCALES.map((code) => ({ code, label: t(`locale.${code}`) })))
 const current = computed({
