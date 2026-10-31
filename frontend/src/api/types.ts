@@ -64,7 +64,9 @@ export interface CourseDoc {
 }
 export interface CourseRow { id: string; title: string; language: string; status: string }
 export interface Validation { blocking_questions: Array<{ key: string; kind: string; question: string | null }>; can_generate: boolean }
-export interface SourceRow { id: string; title: string; media: string; licence: string; as_of: string | null; approval: string; progress?: number }
-export interface HeldBlock { id: string; topic_title: string; brief: string; hold_reason: string; passage: string | null; address: string | null }
+export interface SourceRow { id: string; title: string; media: string; licence: string; as_of: string | null; approval: string; progress: number }
+export interface HeldBlock { id: string; topic_title: string; brief: string; hold_reason: string; passage: string; address: string }
 export interface HeldDoc { blocks: HeldBlock[]; batch_quote_usd: string | null }
 export interface Estimate { blocks: number; calls: number; tokens: number; cost_usd: string; seconds: number; note: string }
+export interface InviteListItem { id: string; course_tags: string[]; max_uses: number | null; used_count: number; expires_at: string | null; revoked_at: string | null }
+export interface NotificationRow { id: string; kind: string; payload: Record<string, unknown>; read: boolean; created_at: string | null }

@@ -12,7 +12,7 @@ import type { CourseDoc, Estimate } from '@/api/types'
 import CourseHeader from '@/components/CourseHeader.vue'
 import ResourceState from '@/components/ResourceState.vue'
 import { notify } from '@/composables/notify'
-import { applyOps, findTopic, moveTarget, titleOf, toNodes, type PlanOp, type PlanTree } from '@/composables/planTree'
+import { applyOps, findTopic, moveTarget, sourceHandles, titleOf, toNodes, toWire, type PlanOp, type PlanTree } from '@/composables/planTree'
 import { parseTags } from '@/composables/tags'
 import { dropCached, useResource } from '@/composables/useResource'
 import { useOperationsStore } from '@/stores/operations'
@@ -49,6 +49,10 @@ const confirmDelete = ref(false)
 const leaveAsk = ref<((ok: boolean) => void) | null>(null)
 const generating = ref(false)
 const generateOp = ref<string | null>(null)
+
+const treePt = {
+  nodeToggleButton: ({ context }: { context: { node?: { label?: string } } }) => ({ 'aria-label': t('plan.treeToggle', { name: context?.node?.label ?? '' }) }),
+}
 
 function select(key: string | null): void {
   selectedKey.value = key
@@ -92,7 +96,7 @@ async function save(course: CourseDoc, keepMine = false): Promise<void> {
   saving.value = true
   saveError.value = null
   try {
-    const next = await request<PlanTree>(coursePlan(courseId.value), { method: 'PATCH', body: { operations: ops.value, base_version: keepMine ? undefined : course.row_version } })
+    const next = await request<PlanTree>(coursePlan(courseId.value), { method: 'PATCH', body: { operations: toWire(plan.data.value ?? { modules: [] }, ops.value), base_version: keepMine ? undefined : course.row_version } })
     plan.data.value = next
     plan.error.value = null
     ops.value = []
@@ -178,7 +182,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnUnload))
       <div class="plan-grid">
         <section class="stack" :aria-label="t('plan.treeLabel')">
           <ResourceState :loading="plan.loading.value" :error="plan.error.value" :empty="nodes.length === 0" :empty-text="t('plan.empty')" @retry="plan.reload()">
-            <Tree v-model:selection-keys="selectionKeys" :value="nodes" selection-mode="single" draggable-nodes droppable-nodes draggable-scope="plan" droppable-scope="plan" data-testid="plan-tree" @node-select="(n) => select(String(n.key))" @node-drop="onDrop" />
+            <Tree v-model:selection-keys="selectionKeys" :value="nodes" selection-mode="single" draggable-nodes droppable-nodes draggable-scope="plan" droppable-scope="plan" :pt="treePt" data-testid="plan-tree" @node-select="(n) => select(String(n.key))" @node-drop="onDrop" />
           </ResourceState>
         </section>
         <section class="stack" :aria-label="t('plan.topicLabel')" data-testid="plan-centre">
@@ -202,7 +206,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnUnload))
                 <li v-for="b in topic.blocks" :key="b.id" class="bell-item stack" data-testid="plan-block">
                   <div class="row">
 <strong>{{ t(`plan.role.${b.role}`) }}</strong><span class="chip mono">{{ b.block_type }}</span>
-                    <span v-for="h in (b as { source_handles?: string[] }).source_handles ?? []" :key="h" class="chip mono">{{ h }}</span>
+                    <span v-for="h in sourceHandles(b)" :key="h" class="chip mono">{{ h }}</span>
 </div>
                   <span>{{ b.brief }}</span>
                 </li>

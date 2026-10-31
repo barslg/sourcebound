@@ -1,4 +1,8 @@
-export interface PlanBlock { id: string; plan_node_id: string; role: string; block_type: string; brief: string; status: string; hold_reason: string | null }
+export interface PlanBlock { id: string; plan_node_id: string; role: string; block_type: string; brief: string; status: string; hold_reason: string | null; source_refs?: Array<{ handle: string }> }
+export function sourceHandles(block: PlanBlock): string[] {
+  return (block.source_refs ?? []).map((r) => r.handle)
+}
+
 export interface PlanTopic { id: string; kind: string; title: string; objectives: string[]; through_line_note: string; plan_node_id: string; blocks: PlanBlock[] }
 export interface PlanModule { id: string; title: string; purpose: string; entry_knowledge: string; exit_knowledge: string; topics: PlanTopic[] }
 export interface PlanTree { modules: PlanModule[] }
@@ -79,4 +83,28 @@ export function applyOps(tree: PlanTree, ops: PlanOp[]): PlanTree {
     else if (op.op === 'move_topic') modules = modules.map((m) => ({ ...m, topics: reorder(m.topics, op.id, op.ordinal) }))
   }
   return { modules }
+}
+
+function siblingsOf(tree: PlanTree, op: MoveOp): Array<{ id: string }> {
+  if (op.op === 'move_module') return tree.modules
+  return tree.modules.find((m) => m.topics.some((t) => t.id === op.id))?.topics ?? []
+}
+
+export function toWire(base: PlanTree, ops: PlanOp[]): PlanOp[] {
+  const out: PlanOp[] = []
+  let current = base
+  for (const op of ops) {
+    const next = applyOps(current, [op])
+    if (op.op === 'move_module' || op.op === 'move_topic') {
+      const before = siblingsOf(current, op).map((x) => x.id)
+      const after = siblingsOf(next, op).map((x) => x.id)
+      after.forEach((id, ordinal) => {
+        if (before.indexOf(id) !== ordinal) out.push({ op: op.op, id, ordinal })
+      })
+    } else {
+      out.push(op)
+    }
+    current = next
+  }
+  return out
 }

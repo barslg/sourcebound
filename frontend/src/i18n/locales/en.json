@@ -86,7 +86,9 @@
     "open": "Open notifications",
     "unread": "{count} new",
     "progress": "{percent} percent",
-    "error": "Error: {message}"
+    "error": "Error: {message}",
+    "earlier": "From the server",
+    "markFailed": "Could not mark as read: {message}"
   },
   "op": {
     "queuedToast": "Queued. You will find it in the bell.",
@@ -177,11 +179,14 @@
     "usesUnlimited": "Used {used}",
     "revoke": "Revoke",
     "revokedChip": "Revoked",
-    "empty": "No invites created in this session. The backend does not list earlier invites yet.",
+    "empty": "No invites yet.",
     "copy": "Copy link",
     "copied": "Link copied.",
     "expiresOn": "Expires {date}",
-    "noExpiry": "No expiry"
+    "noExpiry": "No expiry",
+    "earlier": "Existing invites",
+    "linkOnce": "The link of an invite is shown only when it is created.",
+    "createdNow": "New link"
   },
   "needs": {
     "profile": "set the course profile",
@@ -236,7 +241,16 @@
     "libraryEmpty": "No approved sources yet.",
     "noLicence": "licence not stated",
     "asOfOn": "as of {date}",
-    "progress": "Processing progress"
+    "progress": "Processing progress",
+    "passages": {
+      "some": "{n} passages read",
+      "none": "No passages read yet"
+    },
+    "state": {
+      "approved": "Approved",
+      "held": "Rejected",
+      "pending": "Waiting for you"
+    }
   },
   "plan": {
     "unsaved": "Unsaved changes",
@@ -287,7 +301,8 @@
     "audienceHint": "Optional, for example: new nurses",
     "queries": "What to look for in the sources",
     "queriesHint": "One search per line, for example: hand hygiene steps",
-    "buildButton": "Build plan"
+    "buildButton": "Build plan",
+    "treeToggle": "Show or hide the topics of {name}"
   },
   "run": {
     "title": "Generation run",
@@ -316,7 +331,9 @@
     "resumed": "Run resumed.",
     "cancel": "Cancel run",
     "cancelled": "Run cancelled.",
-    "resumeHint": "Resume continues from the last good step; nothing paid is paid again."
+    "resumeHint": "Resume continues from the last good step; nothing paid is paid again.",
+    "topics": "Topics",
+    "noTopics": "This course has no topics yet."
   },
   "fix": {
     "title": "What to fix",
@@ -328,7 +345,8 @@
     "done": {
       "rewrite": "Rewrite queued.",
       "accept": "Block accepted.",
-      "edit": "Block saved."
+      "edit": "Block saved.",
+      "batch": "Rewrite of all held blocks queued."
     },
     "batch": "Rewrite {count} held blocks, about ${price}",
     "noPassage": "The source passage is not available."
@@ -343,5 +361,11 @@
     "confirm": "Publish",
     "done": "Course published.",
     "published": "Published version {version}."
+  },
+  "notification": {
+    "kind": {
+      "operation_done": "Operation finished",
+      "other": "Notification"
+    }
   }
 }

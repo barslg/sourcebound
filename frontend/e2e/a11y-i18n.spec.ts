@@ -7,7 +7,7 @@ for (const theme of ['light', 'dark'] as const) {
   test(`axe finds no serious or critical violation in the ${theme} theme`, async ({ page, context }) => {
     await context.addInitScript((value) => localStorage.setItem('sourcebound.theme', value), theme)
     await signInAs(context, 'admin')
-    for (const path of ['/users', '/roles', '/courses', `/courses/${ids().course}/plan`, `/courses/${ids().course}/sources`, `/courses/${ids().course}/publish`, `/runs/${ids().run}`]) {
+    for (const path of ['/users', '/roles', '/courses', `/courses/${ids().course}/plan`, `/courses/${ids().course}/sources`, `/courses/${ids().course}/publish`, `/courses/${ids().sources}/sources`, `/courses/${ids().fix}/fix`, `/runs/${ids().run}`, `/runs/${ids().live_run}`]) {
       await page.goto(path)
       await expect(page.locator('main')).toBeVisible()
       await page.waitForLoadState('networkidle')
@@ -31,6 +31,11 @@ test('pseudo-locale brackets every interface string and no page has emoji or arr
   await signInAs(context, 'admin')
   await page.goto('/roles?lang=pseudo')
   await expect(page.getByTestId('roles-table')).toBeVisible()
+  await page.goto(`/courses/${ids().fix}/fix?lang=pseudo`)
+  await expect(page.getByTestId('held-row').first()).toBeVisible()
+  for (const text of await page.locator('main h2, main button').allInnerTexts()) {
+    if (text.trim()) expect(text.trim(), text).toMatch(/\[.*\]/s)
+  }
   await page.goto(`/runs/${ids().run}?lang=pseudo`)
   await expect(page.getByTestId('run')).toBeVisible()
   for (const text of await page.locator('main h1, main button, main .hint').allInnerTexts()) {

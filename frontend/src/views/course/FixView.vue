@@ -40,6 +40,7 @@ async function rewriteAll(): Promise<void> {
   working.value = 'batch'
   try {
     await request(courseRewriteHeld(courseId.value), { method: 'POST' })
+    notify('success', t('fix.done.batch'))
     await held.reload(true)
   } catch (cause) {
     notify('error', cause instanceof ApiError ? cause.message : String(cause))
@@ -79,7 +80,7 @@ function startEdit(block: HeldBlock): void {
             </div>
           </div>
           <blockquote class="passage">
-            <p>{{ b.passage ?? t('fix.noPassage') }}</p>
+            <p>{{ b.passage || t('fix.noPassage') }}</p>
             <cite v-if="b.address" class="mono">{{ b.address }}</cite>
           </blockquote>
         </li>

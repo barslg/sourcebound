@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import Button from 'primevue/button'
@@ -7,9 +7,11 @@ import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import { ApiError, request } from '@/api/client'
 import { ENDPOINTS, inviteRevoke } from '@/api/endpoints'
-import type { Invite } from '@/api/types'
+import type { Invite, InviteListItem } from '@/api/types'
+import ResourceState from '@/components/ResourceState.vue'
 import { notify } from '@/composables/notify'
 import { parseTags } from '@/composables/tags'
+import { dropCached, useResource } from '@/composables/useResource'
 import { useSessionStore } from '@/stores/session'
 
 const props = defineProps<{ embedded?: boolean; presetTags?: string[] }>()
@@ -22,6 +24,8 @@ const expires = ref('')
 const busy = ref(false)
 const error = ref<string | null>(null)
 const created = ref<Invite[]>([])
+const existing = useResource<InviteListItem[]>('invites', (signal) => request<InviteListItem[]>(ENDPOINTS.invites, { signal }))
+const visible = computed(() => (existing.data.value ?? []).filter((i) => (props.presetTags ?? []).length === 0 || i.course_tags.some((tag) => (props.presetTags ?? []).includes(tag))))
 
 function linkOf(token: string): string {
   return new URL(router.resolve(`/invite/${encodeURIComponent(token)}`).href, window.location.origin).toString()
@@ -36,6 +40,8 @@ async function create(): Promise<void> {
     if (expires.value.trim()) body.expires_at = new Date(expires.value.trim()).toISOString()
     const invite = await request<Invite>(ENDPOINTS.invites, { method: 'POST', body })
     created.value = [invite, ...created.value]
+    dropCached('invites')
+    void existing.reload(true)
     notify('success', t('invites.created'))
     tagsText.value = (props.presetTags ?? []).join(', ')
   } catch (cause) {
@@ -49,6 +55,8 @@ async function revoke(invite: Invite): Promise<void> {
   try {
     await request(inviteRevoke(invite.token), { method: 'POST' })
     created.value = created.value.map((i) => (i.token === invite.token ? { ...i, revoked_at: new Date().toISOString() } : i))
+    dropCached('invites')
+    void existing.reload(true)
     notify('success', t('invites.revoked'))
   } catch (cause) {
     notify('error', cause instanceof ApiError ? cause.message : String(cause))
@@ -94,7 +102,8 @@ async function copy(token: string): Promise<void> {
     </div>
   </form>
   <section class="stack">
-    <p v-if="created.length === 0" class="state muted" data-view="empty">{{ t('invites.empty') }}</p>
+    <h2>{{ t('invites.createdNow') }}</h2>
+    <p v-if="created.length === 0" class="muted" data-testid="invite-none-new">{{ t('invites.linkOnce') }}</p>
     <ul v-else class="bell-panel invite-list" data-testid="invite-list">
       <li v-for="invite in created" :key="invite.token" class="bell-item" data-testid="invite-item">
         <div class="row">
@@ -112,5 +121,15 @@ async function copy(token: string): Promise<void> {
         </div>
       </li>
     </ul>
+    <h2>{{ t('invites.earlier') }}</h2>
+    <ResourceState :loading="existing.loading.value" :error="existing.error.value" :empty="visible.length === 0" :empty-text="t('invites.empty')" @retry="existing.reload()">
+      <ul class="plain-list" data-testid="invite-existing">
+        <li v-for="invite in visible" :key="invite.id" class="bell-item row muted" data-testid="invite-existing-item">
+          <span>{{ invite.max_uses === null ? t('invites.usesUnlimited', { used: invite.used_count }) : t('invites.uses', { used: invite.used_count, max: invite.max_uses }) }}</span>
+          <span v-for="tag in invite.course_tags" :key="tag" class="chip mono">{{ tag }}</span>
+          <span v-if="invite.revoked_at" class="chip chip-warn">{{ t('invites.revokedChip') }}</span>
+        </li>
+      </ul>
+    </ResourceState>
   </section>
 </template>

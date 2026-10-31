@@ -23,7 +23,7 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
   webServer: [
     {
-      command: `uv run uvicorn app.main:app --port ${apiPort}`,
+      command: `uv run python -c "import app.tasks.worker, uvicorn; uvicorn.run('app.main:app', port=${apiPort})"`,
       cwd: '..',
       url: `http://127.0.0.1:${apiPort}/api/v1/health`,
       env: backendEnv,
@@ -31,7 +31,7 @@ export default defineConfig({
       timeout: 60000,
     },
     {
-      command: 'uv run procrastinate --app=app.tasks.jobs.app worker',
+      command: 'uv run procrastinate --app=app.tasks.worker.app worker',
       cwd: '..',
       env: backendEnv,
       wait: { stderr: /Starting worker/ },

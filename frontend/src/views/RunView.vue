@@ -7,7 +7,7 @@ import { ApiError, request } from '@/api/client'
 import { runCancel, runItem, runResume } from '@/api/endpoints'
 import ResourceState from '@/components/ResourceState.vue'
 import { notify } from '@/composables/notify'
-import { stepWord, stoppedLine, type RunDoc } from '@/composables/runView'
+import { moneyOf, stepWord, stoppedLine, topicWord, type RunDoc } from '@/composables/runView'
 import { useResource } from '@/composables/useResource'
 import { useSessionStore } from '@/stores/session'
 
@@ -55,8 +55,16 @@ async function act(kind: 'resume' | 'cancel'): Promise<void> {
         <span class="chip" data-testid="run-status">{{ t(`run.status.${doc?.status ?? 'running'}`) }}</span>
         <span data-testid="run-line">{{ line }}</span>
       </div>
-      <p data-testid="run-cost">{{ t('run.cost', { spent: t('run.spentUnknown'), forecast: doc?.estimate?.cost_usd ?? t('run.noForecast') }) }}</p>
+      <p data-testid="run-cost">{{ t('run.cost', { spent: moneyOf(doc?.cost_so_far) ?? t('run.spentUnknown'), forecast: moneyOf(doc?.estimate?.cost_usd) ?? t('run.noForecast') }) }}</p>
       <p class="hint">{{ t('plan.forecastNote') }}</p>
+      <h2>{{ t('run.topics') }}</h2>
+      <p v-if="(doc?.topics ?? []).length === 0" class="muted">{{ t('run.noTopics') }}</p>
+      <ul class="plain-list" data-testid="run-topics">
+        <li v-for="topic in doc?.topics ?? []" :key="topic.topic_id" class="bell-item row" data-testid="run-topic">
+          <span>{{ topic.title }}</span>
+          <span class="chip" :class="{ 'chip-warn': topicWord(topic.status) === 'held' }" :data-state="topicWord(topic.status)">{{ t(`run.word.${topicWord(topic.status)}`) }}</span>
+        </li>
+      </ul>
       <ul class="plain-list">
         <li v-for="s in doc?.steps ?? []" :key="s.step_key" class="bell-item row" data-testid="run-step">
           <span class="mono">{{ s.step_key }}</span>

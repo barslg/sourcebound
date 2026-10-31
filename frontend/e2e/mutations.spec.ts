@@ -89,14 +89,14 @@ test('every enabled action button opens a dialog and can be cancelled', async ({
 test('invites: create shows the link once, accept works for another account, revoke marks it', async ({ page, context, browser }) => {
   await signInAs(context, 'admin')
   await page.goto('/invites')
-  await expect(page.getByText('The backend does not list earlier invites yet.', { exact: false })).toBeVisible()
+  await expect(page.getByTestId('invite-none-new')).toBeVisible()
   await expect(page.getByTestId('invite-create')).toBeDisabled()
   await page.getByLabel('Course tags').fill('e2e-course')
   await page.getByTestId('invite-create').click()
   const item = page.getByTestId('invite-item').first()
   await expect(item).toBeVisible()
   const link = (await item.getByTestId('invite-link').innerText()).trim()
-  expect(link).toMatch(/\/invite\/[0-9a-f-]{36}$/)
+  expect(link).toMatch(/\/invite\/[0-9a-f]{64}$/)
   const other = await browser.newContext()
   await signInAs(other, 'inviteme')
   const guest = await other.newPage()
@@ -107,4 +107,17 @@ test('invites: create shows the link once, accept works for another account, rev
   await item.getByRole('button', { name: 'Revoke' }).click()
   await expect(page.getByText('Invite revoked.')).toBeVisible()
   await expect(item.getByText('Revoked')).toBeVisible()
+})
+
+test('invites: the list comes from the backend after a reload, without links', async ({ page, context }) => {
+  await signInAs(context, 'admin')
+  await page.goto('/invites')
+  await expect(page.getByTestId('invite-existing-item').first()).toBeVisible()
+  await expect(page.getByTestId('invite-existing-item').first()).toContainText('e2e-course')
+  await expect(page.getByTestId('invite-link')).toHaveCount(0)
+})
+
+test('invites: a signed-out visitor is sent to sign-in and returns to the invite page', async ({ page }) => {
+  await page.goto(`/invite/${'ab'.repeat(32)}`)
+  await expect(page.getByTestId('invite-signin')).toHaveAttribute('href', `/api/v1/auth/login?provider=google&next=%2Finvite%2F${'ab'.repeat(32)}`)
 })

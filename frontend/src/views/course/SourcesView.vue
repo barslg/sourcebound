@@ -12,6 +12,7 @@ import CourseHeader from '@/components/CourseHeader.vue'
 import ResourceState from '@/components/ResourceState.vue'
 import { notify } from '@/composables/notify'
 import { useResource } from '@/composables/useResource'
+import { sourceCount } from '@/composables/sourceView'
 import { useSessionStore } from '@/stores/session'
 
 const { t } = useI18n()
@@ -45,7 +46,7 @@ async function upload(): Promise<void> {
   try {
     const form = new FormData()
     form.append('file', file.value)
-    const query: Record<string, string> = { media: media.value }
+    const query: Record<string, string> = { media: media.value, course_id: courseId.value }
     if (licence.value.trim()) query.licence = licence.value.trim()
     if (asOf.value.trim()) query.as_of = asOf.value.trim()
     const made = await request<{ source_id: string }>(ENDPOINTS.sourceUpload, { method: 'POST', body: form, query })
@@ -153,8 +154,8 @@ async function decide(source: SourceRow, verdict: 'approve' | 'reject'): Promise
         <p v-if="library.length === 0" class="muted">{{ t('sources.libraryEmpty') }}</p>
         <ul class="plain-list" data-testid="source-list">
           <li v-for="s in library" :key="s.id" class="bell-item stack">
-            <div class="row"><strong>{{ s.title }}</strong><span class="chip">{{ s.media }}</span><span class="chip mono">{{ s.licence || t('sources.noLicence') }}</span><span v-if="s.as_of" class="muted">{{ t('sources.asOfOn', { date: s.as_of }) }}</span></div>
-            <progress v-if="s.progress !== undefined && s.progress < 100" :value="s.progress" max="100" :aria-label="t('sources.progress')"></progress>
+            <div class="row"><strong>{{ s.title }}</strong><span class="chip">{{ s.media }}</span><span class="chip mono">{{ s.licence || t('sources.noLicence') }}</span><span v-if="s.as_of" class="muted">{{ t('sources.asOfOn', { date: s.as_of }) }}</span><span class="chip" :class="{ 'chip-warn': s.approval === 'held' }" data-testid="source-state">{{ t(`sources.state.${s.approval}`, s.approval) }}</span></div>
+            <span class="muted" data-testid="source-passages">{{ t(sourceCount(s.progress).key, { n: s.progress }) }}</span>
           </li>
         </ul>
       </ResourceState>

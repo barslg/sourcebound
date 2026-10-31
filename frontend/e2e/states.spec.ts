@@ -33,15 +33,22 @@ test('a student is redirected from every author URL and sees no author nav entry
   await expect(nav.getByRole('link', { name: 'My courses' })).toBeVisible()
 })
 
-test('the course list shows the backend error while the list route does not exist', async ({ page, context }) => {
+test('the course list answers a learner with the denied state carrying the backend message', async ({ page, context }) => {
   await signInAs(context, 'student')
   const res = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/v1/courses')
   await page.goto('/courses')
-  const status = (await res).status()
-  expect(status).toBe(405)
-  const box = page.locator('[data-view="error"]')
+  expect((await res).status()).toBe(403)
+  const box = page.locator('[data-view="denied"]')
   await expect(box).toBeVisible()
-  await expect(box).toContainText('Method Not Allowed')
+  await expect(box).toContainText('You do not have permission for this action.')
+})
+
+test('the course list shows a retryable error when the request fails', async ({ page, context }) => {
+  await signInAs(context, 'admin')
+  await page.route('**/api/v1/courses', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'internal', message: 'internal error' }) }))
+  await page.goto('/courses')
+  const box = page.locator('[data-view="error"]')
+  await expect(box).toContainText('internal error')
   await expect(box.getByRole('button', { name: 'Try again' })).toBeVisible()
 })
 
@@ -67,4 +74,19 @@ test('a signed-in user without a bell item sees the muted empty line and no numb
   await page.getByTestId('bell').click()
   await expect(page.getByTestId('bell-empty')).toBeVisible()
   await expect(page.getByTestId('bell-count')).toHaveCount(0)
+})
+
+test('the bell lists notifications from the server after a reload and remembers what was read', async ({ page, context }) => {
+  await signInAs(context, 'student')
+  await page.goto('/courses')
+  await expect(page.getByTestId('bell-count')).toHaveText('1')
+  await page.getByTestId('bell').click()
+  await expect(page.getByTestId('bell-notification')).toHaveCount(1)
+  await expect(page.getByTestId('bell-notification')).toContainText('Operation finished')
+  await expect(page.getByTestId('bell-count')).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByTestId('bell-count')).toHaveCount(0)
+  await page.getByTestId('bell').click()
+  await expect(page.getByTestId('bell-notification')).toHaveCount(1)
+  await expect(page.getByTestId('bell-notification').getByText('1 new')).toHaveCount(0)
 })

@@ -15,6 +15,8 @@ export const ENDPOINTS = {
   sources: `${API}/sources`,
   sourceUpload: `${API}/sources/upload`,
   sourceFetch: `${API}/sources/fetch`,
+  notifications: `${API}/notifications`,
+  permissions: `${API}/permissions`,
 } as const
 
 export const userBan = (id: string): string => `${ENDPOINTS.users}/${encodeURIComponent(id)}/ban`
@@ -24,6 +26,7 @@ export const roleAssign = (name: string): string => `${roleItem(name)}/assign`
 export const roleRevoke = (name: string): string => `${roleItem(name)}/revoke`
 export const operationItem = (id: string): string => `${ENDPOINTS.operations}/${encodeURIComponent(id)}`
 export const inviteRevoke = (token: string): string => `${ENDPOINTS.invites}/${encodeURIComponent(token)}/revoke`
+export const notificationRead = (id: string): string => `${ENDPOINTS.notifications}/${encodeURIComponent(id)}/read`
 export const inviteAccept = (token: string): string => `${ENDPOINTS.invites}/${encodeURIComponent(token)}/accept`
 
 const enc = encodeURIComponent
@@ -56,12 +59,5 @@ export function loginUrl(next?: string): string {
 
 export const LIVE_ENDPOINTS: readonly string[] = [
   ENDPOINTS.csrf, ENDPOINTS.me, ENDPOINTS.logout, ENDPOINTS.users, ENDPOINTS.roles,
-  ENDPOINTS.invites, ENDPOINTS.operationEcho, ENDPOINTS.events, ENDPOINTS.sourceUpload, ENDPOINTS.sourceFetch,
-]
-
-export const MISSING_ROUTES: readonly string[] = [
-  'GET /api/v1/courses', 'GET /api/v1/courses/{id}/plan', 'GET /api/v1/courses/{id}/estimate',
-  'GET /api/v1/courses/{id}/sources', 'POST /api/v1/sources/{id}/reject', 'POST /api/v1/runs/{id}/cancel',
-  'GET /api/v1/courses/{id}/held', 'POST /api/v1/blocks/{id}/rewrite', 'POST /api/v1/blocks/{id}/accept',
-  'PATCH /api/v1/blocks/{id}', 'POST /api/v1/courses/{id}/held/rewrite', 'POST /api/v1/courses/{id}/publish',
+  ENDPOINTS.invites, ENDPOINTS.notifications, ENDPOINTS.courses, ENDPOINTS.operationEcho, ENDPOINTS.events, ENDPOINTS.sourceUpload, ENDPOINTS.sourceFetch,
 ]

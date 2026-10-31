@@ -6,7 +6,7 @@ const patterns = [
   /^\/api\/v1\/users\/[^/]+(\/ban)?$/, /^\/api\/v1\/roles\/[^/]+(\/assign|\/revoke)?$/,
   /^\/api\/v1\/courses\/[^/]+(\/(profile|plan|plan\/validate|plan\/submit|generate\/submit|sources|estimate|held|held\/rewrite|publish))?$/,
   /^\/api\/v1\/sources\/[^/]+\/(approve|reject)$/, /^\/api\/v1\/runs\/[^/]+(\/(resume|cancel))?$/, /^\/api\/v1\/blocks\/[^/]+(\/(rewrite|accept))?$/,
-  /^\/api\/v1\/operations\/[^/]+$/, /^\/api\/v1\/invites\/[^/]+\/(revoke|accept)$/,
+  /^\/api\/v1\/operations\/[^/]+$/, /^\/api\/v1\/invites\/[^/]+\/(revoke|accept)$/, /^\/api\/v1\/notifications\/[^/]+\/read$/,
 ]
 
 test('every request path comes from the endpoint table and unsafe ones carry CSRF', async ({ page, context }) => {
@@ -21,7 +21,7 @@ test('every request path comes from the endpoint table and unsafe ones carry CSR
   await expect(page.getByTestId('bell-item').first()).toBeVisible()
   await page.goto('/courses')
   await expect(page.locator('[data-view]')).toBeVisible()
-  for (const path of [`/courses/${ids().course}/plan`, `/courses/${ids().course}/sources`, `/courses/${ids().course}/fix`, `/runs/${ids().run}`]) {
+  for (const path of [`/courses/${ids().course}/plan`, `/courses/${ids().course}/sources`, `/courses/${ids().fix}/fix`, `/courses/${ids().fix}/publish`, `/runs/${ids().run}`]) {
     await page.goto(path)
     await expect(page.locator('main h1, main h2').first()).toBeVisible()
     await page.waitForLoadState('networkidle')
@@ -53,7 +53,7 @@ test('a test operation goes queued, toast, bell, then finishes over SSE', async 
   await signInAs(context, 'admin')
   await page.goto('/roles')
   await page.getByTestId('bell').click()
-  await expect(page.getByTestId('bell-empty')).toBeVisible()
+  await expect(page.getByTestId('bell-item')).toHaveCount(0)
   await page.getByTestId('bell-run').click()
   await expect(page.getByText('Queued. You will find it in the bell.')).toBeVisible()
   const item = page.getByTestId('bell-item').first()
