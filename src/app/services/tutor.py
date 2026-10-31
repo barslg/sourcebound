@@ -22,6 +22,14 @@ from app.services import learner
 
 NOT_IN_MATERIALS = "not_in_materials"
 QUOTES = "quotes"
+NOT_IN_MATERIALS_HINT = (
+    "The course materials do not answer this question. Reread the topic or ask your teacher."
+)
+
+
+def _not_in_materials() -> dict[str, Any]:
+    """The decided answer when nothing in the materials supports a reply: no passage, no guess."""
+    return {"mode": NOT_IN_MATERIALS, "quotes": [], "hint": NOT_IN_MATERIALS_HINT}
 
 
 async def ask(
@@ -57,7 +65,7 @@ async def ask(
         and await _is_content(session, item.passage_id)
     ][:max_passages]
     if not usable:
-        return {"mode": NOT_IN_MATERIALS, "quotes": []}
+        return _not_in_materials()
     handles = {f"P{i}": item for i, item in enumerate(usable, start=1)}
     prompt = tutor.build_prompt(
         question=text,
@@ -72,7 +80,7 @@ async def ask(
             prompt=prompt,
             schema=tutor.schema(),
             subject_user_id=principal.user_id,
-            check=lambda payload: tutor.check_output(payload, set(handles)),
+            check=tutor.check_output,
         )
     finally:
         closer = getattr(provider_factory, "aclose", None)
@@ -82,15 +90,21 @@ async def ask(
     kept: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
     for item in reply.get("quotes", []):
-        handle, quote = str(item["handle"]), str(item["quote"])
+        if not isinstance(item, dict):
+            continue
+        handle, quote = str(item.get("handle", "")), str(item.get("quote", "")).strip()
         passage = handles.get(handle)
-        if passage is None or quote not in passage.text or (handle, quote) in seen:
+        if (
+            passage is None
+            or not tutor.accept_quote(quote, passage.text)
+            or (handle, quote) in seen
+        ):
             continue
         seen.add((handle, quote))
         row = await _chip_row(session, passage.passage_id)
         kept.append({"quote": quote, "chip": learner.chip(handle, row, locale)})
     if not kept:
-        return {"mode": NOT_IN_MATERIALS, "quotes": []}
+        return _not_in_materials()
     return {"mode": QUOTES, "quotes": kept}
 
 
