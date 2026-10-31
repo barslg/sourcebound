@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { loginUrl } from '@/api/endpoints'
+import ActionButton from '@/components/ActionButton.vue'
+import { useDocTitle } from '@/composables/useDocTitle'
 
 const { t } = useI18n()
 const href = loginUrl()
+useDocTitle(() => `${t('signin.title')} · Sourcebound`)
 </script>
 
 <template>
@@ -13,7 +16,7 @@ const href = loginUrl()
     <section class="state">
       <h2>{{ t('signin.title') }}</h2>
       <p>{{ t('signin.body') }}</p>
-      <a class="p-button p-component" :href="href" data-testid="signin">{{ t('signin.button') }}</a>
+      <ActionButton as="a" action="signin" :href="href" :label="t('signin.button')" data-testid="signin" />
     </section>
   </main>
 </template>

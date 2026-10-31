@@ -2,14 +2,15 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import Button from 'primevue/button'
-import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import { ApiError, request } from '@/api/client'
 import { ENDPOINTS } from '@/api/endpoints'
 import type { CourseRow } from '@/api/types'
-import GuardedButton from '@/components/GuardedButton.vue'
+import ActionButton from '@/components/ActionButton.vue'
+import AppDialog from '@/components/AppDialog.vue'
+import FormField from '@/components/FormField.vue'
+import StatusChip from '@/components/StatusChip.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ResourceState from '@/components/ResourceState.vue'
 import { nextAction } from '@/composables/needsNow'
@@ -54,15 +55,15 @@ async function create(): Promise<void> {
 
 <template>
   <PageHeader :title="t('courses.title')" :help="t('courses.help')">
-    <template #actions><GuardedButton :label="t('courses.new')" :reason="lacking('course.create')" data-testid="course-new" @click="open = true" /></template>
+    <template #actions><ActionButton action="create" :label="t('courses.new')" :reason="lacking('course.create')" data-testid="course-new" @click="open = true" /></template>
   </PageHeader>
   <ResourceState :loading="courses.loading.value" :error="courses.error.value" :empty="total === 0" :empty-text="t('courses.empty')" @retry="courses.reload()">
-    <template #empty-actions><Button :label="t('courses.first')" data-testid="course-first" @click="open = true" /></template>
+    <template #empty-actions><ActionButton action="create" :label="t('courses.first')" data-testid="course-first" @click="open = true" /></template>
     <p class="muted" data-testid="course-count">{{ t('courses.count', { count: t('count.course', total) }) }}</p>
     <ul class="plain-list" data-testid="course-list">
       <li v-for="c in courses.data.value" :key="c.id" class="bell-item row" data-testid="course-item">
         <router-link :to="`/courses/${c.id}/plan`">{{ c.title }}</router-link>
-        <span class="chip">{{ t(`course.status.${c.status}`) }}</span>
+        <StatusChip :tone="c.status === 'published' ? 'ok' : c.status === 'generated' ? 'info' : 'neutral'" :label="t(`course.status.${c.status}`)" />
         <span class="muted" data-testid="needs-now">
           {{ t('course.needsNowLabel') }}
           <router-link v-if="action(c).to" :to="action(c).to as string" data-testid="needs-link">{{ t(action(c).key) }}</router-link>
@@ -71,23 +72,19 @@ async function create(): Promise<void> {
       </li>
     </ul>
   </ResourceState>
-  <Dialog v-model:visible="open" modal :header="t('courses.newTitle')" :style="{ width: 'min(480px, 92vw)' }">
+  <AppDialog v-model:visible="open" :header="t('courses.newTitle')">
     <form class="stack" @submit.prevent="create">
-      <div class="field">
-        <label for="c-title">{{ t('courses.titleLabel') }}</label>
+      <FormField id="c-title" :label="t('courses.titleLabel')" :help="t('courses.titleHint')" required :error="title.trim().length === 0 ? t('form.isRequired') : null">
         <InputText id="c-title" v-model="title" />
-        <span class="hint">{{ t('courses.titleHint') }}</span>
-      </div>
-      <div class="field">
-        <label for="c-lang">{{ t('courses.language') }}</label>
+      </FormField>
+      <FormField id="c-lang" :label="t('courses.language')" :help="t('courses.languageHint')">
         <Select v-model="language" input-id="c-lang" :options="languages" option-label="label" option-value="code" />
-        <span class="hint">{{ t('courses.languageHint') }}</span>
-      </div>
+      </FormField>
       <p v-if="formError" class="mono danger-text" role="alert" data-testid="form-error">{{ formError }}</p>
       <div class="row">
-        <GuardedButton type="submit" :label="t('courses.createButton')" :loading="busy" :reason="title.trim().length === 0 ? t('courses.typeTitle') : null" data-testid="dialog-submit" />
-        <Button type="button" :label="t('common.cancel')" severity="secondary" text @click="open = false" />
+        <ActionButton action="cancel" @click="open = false" />
+        <ActionButton type="submit" class="row-end" action="create" :label="t('courses.createButton')" :loading="busy" :reason="title.trim().length === 0 ? t('courses.typeTitle') : null" data-testid="dialog-submit" />
       </div>
     </form>
-  </Dialog>
+  </AppDialog>
 </template>

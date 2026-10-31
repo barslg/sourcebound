@@ -2,13 +2,12 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import Button from 'primevue/button'
-import Dialog from 'primevue/dialog'
 import { ApiError, request } from '@/api/client'
 import { coursePlan, coursePublish } from '@/api/endpoints'
 import CourseHeader from '@/components/CourseHeader.vue'
-import GuardedButton from '@/components/GuardedButton.vue'
-import SectionHeading from '@/components/SectionHeading.vue'
+import ActionButton from '@/components/ActionButton.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import Section from '@/components/Section.vue'
 import { firstReason, lacking } from '@/composables/reasons'
 import { notify } from '@/composables/notify'
 import type { PlanTree } from '@/composables/planTree'
@@ -45,7 +44,7 @@ async function publish(): Promise<void> {
   <CourseHeader ref="header" :course-id="courseId" page="publish">
     <template #default="{ course, validation, heldCount }">
       <section class="stack">
-        <SectionHeading id="summary" :title="t('publish.summary')" :help="t('publish.summaryHelp')" />
+        <Section id="summary" :title="t('publish.summary')" :help="t('publish.summaryHelp')" />
         <ul class="plain-list" data-testid="publish-summary">
           <li>{{ t('publish.reviewStatus', { status: t(`course.status.${course?.status ?? 'draft'}`) }) }}</li>
           <li>{{ t('publish.topics', { count: t('count.topic', topics) }) }}</li>
@@ -53,26 +52,21 @@ async function publish(): Promise<void> {
           <li>{{ t('publish.questions', { count: t('count.question', validation?.blocking_questions.length ?? 0) }) }}</li>
         </ul>
         <p v-if="course?.published_version_id" class="muted" data-testid="published-note">{{ t('publish.published') }}</p>
-        <SectionHeading id="publish" :title="t('publish.title')" :help="t('publish.help')" />
+        <Section id="publish" :title="t('publish.title')" :help="t('publish.help')" />
         <div class="row">
-          <GuardedButton :label="t('publish.button')" :reason="firstReason(lacking('course.publish'), heldCount > 0 && t('publish.heldFirst', { count: t('count.block', heldCount) }))" data-testid="publish-open" @click="review = true" />
+          <ActionButton action="publish" :label="t('publish.button')" :reason="firstReason(lacking('course.publish'), heldCount > 0 && t('publish.heldFirst', { count: t('count.block', heldCount) }))" data-testid="publish-open" @click="review = true" />
           <span id="publish-open" />
         </div>
-        <SectionHeading :title="t('publish.share')" :help="t('publish.shareHelp')" />
+        <Section :title="t('publish.share')" :help="t('publish.shareHelp')" />
         <router-link :to="`/invites?course=${courseId}`" data-testid="share-link">{{ t('publish.shareLink') }}</router-link>
       </section>
-      <Dialog v-model:visible="review" modal :header="t('publish.reviewTitle', { name: course?.title ?? '' })" :style="{ width: 'min(520px, 92vw)' }">
+      <ConfirmDialog v-model:visible="review" :title="t('publish.reviewTitle', { name: course?.title ?? '' })" action="publish" :label="t('publish.confirm')" :busy="busy" :error="error" :solid="false" @confirm="publish">
         <ul class="stack">
           <li>{{ t('publish.reviewStatus', { status: t(`course.status.${course?.status ?? 'draft'}`) }) }}</li>
           <li>{{ t('publish.questions', { count: t('count.question', validation?.blocking_questions.length ?? 0) }) }}</li>
           <li>{{ t('publish.reviewVisible') }}</li>
         </ul>
-        <p v-if="error" class="mono danger-text" role="alert" data-testid="form-error">{{ error }}</p>
-        <div class="row">
-          <Button :label="t('publish.confirm')" :loading="busy" :aria-busy="busy" data-testid="dialog-submit" @click="publish" />
-          <Button :label="t('common.cancel')" severity="secondary" text @click="review = false" />
-        </div>
-      </Dialog>
+      </ConfirmDialog>
     </template>
   </CourseHeader>
 </template>

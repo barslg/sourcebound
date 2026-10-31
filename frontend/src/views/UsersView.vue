@@ -1,29 +1,35 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
 import Column from 'primevue/column'
-import DataTable, { type DataTablePageEvent, type DataTableSortEvent } from 'primevue/datatable'
-import Dialog from 'primevue/dialog'
-import InputText from 'primevue/inputtext'
+import type { DataTablePageEvent, DataTableSortEvent } from 'primevue/datatable'
 import Select from 'primevue/select'
 import Textarea from 'primevue/textarea'
 import { ApiError, request } from '@/api/client'
-import { ENDPOINTS, roleAssign, userBan, userItem } from '@/api/endpoints'
+import { ENDPOINTS, roleAssign, userBan, userItem, userUnban } from '@/api/endpoints'
 import type { Role, UserRow } from '@/api/types'
-import GuardedButton from '@/components/GuardedButton.vue'
+import ActionButton from '@/components/ActionButton.vue'
+import AppDialog from '@/components/AppDialog.vue'
+import AppTable from '@/components/AppTable.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import FormField from '@/components/FormField.vue'
+import NoValue from '@/components/NoValue.vue'
+import RelTime from '@/components/RelTime.vue'
+import RowMenu, { type RowMenuItem } from '@/components/RowMenu.vue'
+import ScopePicker from '@/components/ScopePicker.vue'
+import SearchField from '@/components/SearchField.vue'
+import StatusChip from '@/components/StatusChip.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ResourceState from '@/components/ResourceState.vue'
 import { firstReason, lacking } from '@/composables/reasons'
 import { notify } from '@/composables/notify'
-import { parseTags } from '@/composables/tags'
 import { useResource } from '@/composables/useResource'
 import { useUrlParam } from '@/composables/useUrlState'
 import { useSessionStore } from '@/stores/session'
 
-const PAGE_SIZE = 10
-const { t, d } = useI18n()
+const PAGE_SIZE = 12
+const { t } = useI18n()
 const session = useSessionStore()
 const users = useResource<UserRow[]>('users', (signal) => request<UserRow[]>(ENDPOINTS.users, { signal }))
 const q = useUrlParam('q')
@@ -53,10 +59,10 @@ function onSearch(value: string | undefined): void {
 
 const busy = ref(false)
 const active = ref<UserRow | null>(null)
-const mode = ref<'assign' | 'ban' | 'delete' | null>(null)
+const mode = ref<'assign' | 'ban' | 'unban' | 'delete' | null>(null)
 const formError = ref<string | null>(null)
 const roleName = ref<string | null>(null)
-const scopeText = ref('')
+const scopeTags = ref<string[]>([])
 const reason = ref('')
 const heirId = ref<string | null>(null)
 const legacy = ref(false)
@@ -65,12 +71,12 @@ const roles = ref<Role[]>([])
 function nameOf(u: UserRow): string {
   return u.display_name || u.email
 }
-function open(next: 'assign' | 'ban' | 'delete', user: UserRow): void {
+function open(next: 'assign' | 'ban' | 'unban' | 'delete', user: UserRow): void {
   active.value = user
   mode.value = next
   formError.value = null
   roleName.value = null
-  scopeText.value = ''
+  scopeTags.value = []
   reason.value = ''
   heirId.value = null
   legacy.value = false
@@ -91,11 +97,14 @@ async function submit(): Promise<void> {
   formError.value = null
   try {
     if (mode.value === 'assign' && roleName.value) {
-      await request(roleAssign(roleName.value), { method: 'POST', body: { user_id: user.id, scope_tags: parseTags(scopeText.value) } })
+      await request(roleAssign(roleName.value), { method: 'POST', body: { user_id: user.id, scope_tags: scopeTags.value } })
       notify('success', t('users.assigned'))
     } else if (mode.value === 'ban') {
       await request(userBan(user.id), { method: 'POST', body: { reason: reason.value.trim() } })
       notify('success', t('users.banned_ok'))
+    } else if (mode.value === 'unban') {
+      await request(userUnban(user.id), { method: 'POST' })
+      notify('success', t('users.unbanned'))
     } else if (mode.value === 'delete') {
       await request(userItem(user.id), { method: 'DELETE', query: { heir_id: heirId.value ?? undefined, legacy: legacy.value ? true : undefined } })
       notify('success', t('users.deleted'))
@@ -112,12 +121,23 @@ const heirOptions = computed(() => (users.data.value ?? []).filter((u) => u.id !
 const canSubmit = computed(() =>
   mode.value === 'assign' ? roleName.value !== null : mode.value === 'ban' ? reason.value.trim().length > 0 : true,
 )
-const visible = computed({ get: () => mode.value !== null, set: (v: boolean) => { if (!v) close() } })
+const closeIf = (v: boolean): void => { if (!v) close() }
 const dialogTitle = computed(() => {
   const u = active.value
   if (!u) return ''
-  return t(mode.value === 'assign' ? 'users.assignTitle' : mode.value === 'ban' ? 'users.banTitle' : 'users.deleteTitle', { name: nameOf(u) })
+  return t(`users.${mode.value}Title`, { name: nameOf(u) })
 })
+
+
+function menuFor(u: UserRow): RowMenuItem[] {
+  const you = u.id === session.me?.id && t('users.itsYou')
+  return [
+    u.banned_at
+      ? { action: 'unban', label: t('action.unban'), reason: firstReason(lacking('user.ban')), run: () => open('unban', u) }
+      : { action: 'ban', label: t('users.ban'), reason: firstReason(lacking('user.ban'), you), run: () => open('ban', u) },
+    { action: 'delete', label: t('users.delete'), reason: firstReason(lacking('user.delete'), you), run: () => open('delete', u) },
+  ]
+}
 </script>
 
 <template>
@@ -132,15 +152,8 @@ const dialogTitle = computed(() => {
     @retry="users.reload()"
   >
     <div class="stack">
-      <InputText
-        :model-value="q"
-        type="search"
-        :placeholder="t('users.searchPlaceholder')"
-        :aria-label="t('common.search')"
-        data-testid="users-search"
-        @update:model-value="onSearch"
-      />
-      <DataTable
+      <SearchField :model-value="q" :placeholder="t('users.searchPlaceholder')" data-testid="users-search" @update:model-value="onSearch" />
+      <AppTable
         :value="rows"
         data-key="id"
         :paginator="rows.length > PAGE_SIZE"
@@ -154,90 +167,69 @@ const dialogTitle = computed(() => {
         @sort="onSort"
       >
         <template #empty><span class="muted">{{ t('common.noResults') }}</span></template>
-        <Column field="display_name" :header="t('users.name')" sortable />
+        <Column field="display_name" :header="t('users.name')" sortable>
+          <template #body="{ data }"><template v-if="(data as UserRow).display_name">{{ (data as UserRow).display_name }}</template><NoValue v-else /></template>
+        </Column>
         <Column field="email" :header="t('users.email')" sortable>
           <template #body="{ data }"><span class="mono">{{ (data as UserRow).email }}</span></template>
         </Column>
         <Column :header="t('users.roles')">
           <template #body="{ data }">
-            <span v-if="((data as UserRow).roles ?? []).length === 0" class="muted">{{ t('users.noRoles') }}</span>
+            <NoValue v-if="((data as UserRow).roles ?? []).length === 0" />
             <router-link v-for="g in (data as UserRow).roles ?? []" :key="g.name" class="chip" :to="`/roles#role-${g.name}`">{{ g.name }}<template v-if="g.scope_tags.length > 0"> ({{ g.scope_tags.join(', ') }})</template></router-link>
           </template>
         </Column>
         <Column :header="t('users.status')">
           <template #body="{ data }">
-            <span v-if="(data as UserRow).banned_at" class="chip chip-warn">{{ t('users.banned') }}</span>
-            <span v-else-if="(data as UserRow).is_legacy" class="chip">{{ t('users.legacy') }}</span>
-            <span v-else class="chip">{{ t('users.active') }}</span>
-            <span v-if="(data as UserRow).is_superadmin" class="chip">{{ t('users.superadmin') }}</span>
+            <StatusChip v-if="(data as UserRow).banned_at" tone="danger" :label="t('users.banned')" />
+            <StatusChip v-else-if="(data as UserRow).is_legacy" tone="neutral" :label="t('users.legacy')" />
+            <StatusChip v-else tone="ok" :label="t('users.active')" />
+            <StatusChip v-if="(data as UserRow).is_superadmin" tone="info" :label="t('users.superadmin')" />
           </template>
         </Column>
         <Column field="created_at" :header="t('users.created')" sortable>
-          <template #body="{ data }">{{ (data as UserRow).created_at ? d(new Date((data as UserRow).created_at as string), 'short') : t('common.never') }}</template>
+          <template #body="{ data }"><RelTime v-if="(data as UserRow).created_at" :value="(data as UserRow).created_at as string" /><NoValue v-else /></template>
         </Column>
-        <Column :header="t('common.actions')">
+        <Column :header="t('common.actions')" class="col-actions">
           <template #body="{ data }">
             <div class="row">
-              <GuardedButton :label="t('users.assign')" size="small" severity="secondary" :reason="lacking('role.assign')" @click="open('assign', data as UserRow)" />
-              <GuardedButton :label="t('users.ban')" size="small" severity="secondary" :reason="firstReason(lacking('user.ban'), (data as UserRow).banned_at && t('users.alreadyBanned'), (data as UserRow).id === session.me?.id && t('users.itsYou'))" @click="open('ban', data as UserRow)" />
-              <GuardedButton :label="t('users.delete')" size="small" severity="danger" outlined :reason="firstReason(lacking('user.delete'), (data as UserRow).id === session.me?.id && t('users.itsYou'))" @click="open('delete', data as UserRow)" />
+              <ActionButton action="assign" icon-only size="small" :label="t('users.assign')" :reason="lacking('role.assign')" @click="open('assign', data as UserRow)" />
+              <RowMenu :label="t('users.moreFor', { name: nameOf(data as UserRow) })" :items="menuFor(data as UserRow)" />
             </div>
           </template>
         </Column>
-      </DataTable>
+      </AppTable>
     </div>
   </ResourceState>
 
-  <Dialog v-model:visible="visible" modal :header="dialogTitle" :style="{ width: 'min(520px, 95vw)' }">
+  <AppDialog :visible="mode === 'assign'" :header="dialogTitle" @update:visible="closeIf">
     <form class="stack" @submit.prevent="submit">
-      <template v-if="mode === 'assign'">
-        <div class="field">
-          <label for="assign-role">{{ t('users.role') }}</label>
-          <Select v-model="roleName" input-id="assign-role" :options="roles" option-label="name" option-value="name" :placeholder="t('users.rolePlaceholder')" />
-          <span class="hint">{{ t('users.roleHint') }}</span>
-        </div>
-        <div class="field">
-          <label for="assign-scope">{{ t('users.scope') }}</label>
-          <InputText id="assign-scope" v-model="scopeText" />
-          <span class="hint">{{ t('common.tagsHint') }}</span>
-        </div>
-      </template>
-      <template v-else-if="mode === 'ban'">
-        <p>{{ t('users.banBody') }}</p>
-        <div class="field">
-          <label for="ban-reason">{{ t('users.banReason') }}</label>
-          <Textarea id="ban-reason" v-model="reason" rows="3" maxlength="1000" />
-          <span class="hint">{{ t('users.banReasonHint') }}</span>
-        </div>
-      </template>
-      <template v-else-if="mode === 'delete' && active">
-        <p>{{ t('users.deleteBody', { name: nameOf(active) }) }}</p>
-        <div class="field">
-          <label for="delete-heir">{{ t('users.heir') }}</label>
-          <Select v-model="heirId" input-id="delete-heir" :options="heirOptions" option-label="email" option-value="id" show-clear :placeholder="t('users.heirNone')" :disabled="legacy" />
-          <span class="hint">{{ t('users.heirHint') }}</span>
-        </div>
-        <div class="row">
-          <Checkbox v-model="legacy" input-id="delete-legacy" binary :disabled="heirId !== null" />
-          <label for="delete-legacy">{{ t('users.legacyOption') }}</label>
-        </div>
-        <div class="field">
-          <span class="hint">{{ t('users.legacyHint') }}</span>
-        </div>
-      </template>
+      <FormField id="assign-role" :label="t('users.role')" :help="t('users.roleHint')" required :error="roleName === null ? t('users.pickRole') : null">
+        <Select v-model="roleName" input-id="assign-role" :options="roles" option-label="name" option-value="name" :placeholder="t('users.rolePlaceholder')" />
+      </FormField>
+      <ScopePicker id="assign-scope" v-model="scopeTags" by="label" />
       <p v-if="formError" class="mono danger-text" role="alert" data-testid="form-error">{{ formError }}</p>
       <div class="row">
-        <Button type="button" :label="t('common.cancel')" severity="secondary" text @click="close" />
-        <GuardedButton
-          type="submit"
-          class="row-end"
-          :label="mode === 'delete' ? t('users.delete') : mode === 'ban' ? t('users.ban') : t('users.assign')"
-          :severity="mode === 'delete' ? 'danger' : undefined"
-          :loading="busy"
-          :reason="canSubmit ? null : mode === 'assign' ? t('users.pickRole') : t('users.typeReason')"
-          data-testid="dialog-submit"
-        />
+        <ActionButton action="cancel" @click="close" />
+        <ActionButton type="submit" class="row-end" action="assign" :label="t('users.assign')" :loading="busy" :reason="canSubmit ? null : t('users.pickRole')" data-testid="dialog-submit" />
       </div>
     </form>
-  </Dialog>
+  </AppDialog>
+
+  <ConfirmDialog :visible="mode === 'ban'" :title="dialogTitle" :body="t('users.banBody')" action="ban" :label="t('users.ban')" :busy="busy" :error="formError" :blocked-reason="canSubmit ? null : t('users.typeReason')" @update:visible="closeIf" @confirm="submit">
+    <FormField id="ban-reason" :label="t('users.banReason')" :help="t('users.banReasonHint')" required :error="reason.trim().length === 0 ? t('form.isRequired') : null">
+      <Textarea id="ban-reason" v-model="reason" rows="3" maxlength="1000" />
+    </FormField>
+  </ConfirmDialog>
+
+  <ConfirmDialog :visible="mode === 'unban'" :title="dialogTitle" :body="active ? t('users.unbanBody', { name: nameOf(active) }) : ''" action="unban" :label="t('action.unban')" :busy="busy" :error="formError" @update:visible="closeIf" @confirm="submit" />
+
+  <ConfirmDialog :visible="mode === 'delete'" :title="dialogTitle" :body="active ? t('users.deleteBody', { name: nameOf(active) }) : ''" action="delete" :label="t('users.delete')" :typed="active ? nameOf(active) : null" :busy="busy" :error="formError" @update:visible="closeIf" @confirm="submit">
+    <FormField id="delete-heir" :label="t('users.heir')" :help="t('users.heirHint')">
+      <Select v-model="heirId" input-id="delete-heir" :options="heirOptions" option-label="email" option-value="id" show-clear :placeholder="t('users.heirNone')" :disabled="legacy" />
+    </FormField>
+    <FormField id="delete-legacy" :label="t('users.legacyOption')" :help="t('users.legacyHint')">
+      <Checkbox v-model="legacy" input-id="delete-legacy" binary :disabled="heirId !== null" />
+    </FormField>
+  </ConfirmDialog>
 </template>

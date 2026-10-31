@@ -2,16 +2,16 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import Button from 'primevue/button'
-import { ApiError, request } from '@/api/client'
+import { request } from '@/api/client'
 import { blockAccept, blockItem, blockRewrite, courseHeld, coursePlan, courseRewriteHeld } from '@/api/endpoints'
 import type { HeldBlock, HeldDoc } from '@/api/types'
 import CourseHeader from '@/components/CourseHeader.vue'
-import GuardedButton from '@/components/GuardedButton.vue'
+import ActionButton from '@/components/ActionButton.vue'
+import FormField from '@/components/FormField.vue'
 import ResourceState from '@/components/ResourceState.vue'
-import SectionHeading from '@/components/SectionHeading.vue'
+import Section from '@/components/Section.vue'
 import { usd } from '@/composables/labels'
-import { notify } from '@/composables/notify'
+import { notify, notifyError } from '@/composables/notify'
 import type { PlanTree } from '@/composables/planTree'
 import { lacking } from '@/composables/reasons'
 import { useQueued } from '@/composables/useQueued'
@@ -39,7 +39,7 @@ async function act(block: HeldBlock, kind: 'rewrite' | 'accept' | 'edit'): Promi
     editing.value = null
     await Promise.all([held.reload(true), header.value?.reload()])
   } catch (cause) {
-    notify('error', cause instanceof ApiError ? cause.message : String(cause))
+    notifyError(cause, kind === 'rewrite' ? undefined : () => void act(block, kind))
   } finally {
     working.value = null
   }
@@ -51,7 +51,7 @@ async function rewriteAll(): Promise<void> {
     notify('success', t('fix.done.batch'))
     await held.reload(true)
   } catch (cause) {
-    notify('error', cause instanceof ApiError ? cause.message : String(cause))
+    notifyError(cause)
   } finally {
     working.value = null
   }
@@ -65,13 +65,13 @@ function startEdit(block: HeldBlock): void {
 <template>
   <CourseHeader ref="header" :course-id="courseId" page="fix">
     <div id="held-list" class="stack">
-      <SectionHeading :title="t('fix.title')" :help="t('fix.help')" />
+      <Section :title="t('fix.title')" :help="t('fix.help')" />
       <ResourceState :loading="held.loading.value" :error="held.error.value" :empty="(held.data.value?.blocks ?? []).length === 0" :empty-text="generated ? t('fix.empty') : t('fix.notGenerated')" @retry="held.reload()">
         <template #empty-actions>
           <router-link :to="generated ? `/courses/${courseId}/publish` : `/courses/${courseId}/plan#generate`">{{ generated ? t('fix.goPublish') : t('fix.goGenerate') }}</router-link>
         </template>
         <div v-if="held.data.value?.batch_quote_usd" class="row">
-          <GuardedButton :label="t('fix.batch', { count: held.data.value.blocks.length, price: usd(held.data.value.batch_quote_usd) })" :loading="working === 'batch'" :reason="lacking('course.generate')" data-testid="fix-batch" @click="rewriteAll" />
+          <ActionButton action="rewrite" :label="t('fix.batch', { count: held.data.value.blocks.length, price: usd(held.data.value.batch_quote_usd) })" :loading="working === 'batch'" :reason="lacking('course.generate')" data-testid="fix-batch" @click="rewriteAll" />
         </div>
         <p v-if="queue.queued.value" class="chip" data-testid="queued-line">{{ t('op.queuedToast') }}</p>
         <ul class="plain-list">
@@ -80,18 +80,18 @@ function startEdit(block: HeldBlock): void {
               <router-link :to="`/courses/${courseId}/plan`"><strong>{{ b.topic_title }}</strong></router-link>
               <span>{{ b.hold_reason }}</span>
               <template v-if="editing === b.id">
-                <label :for="`brief-${b.id}`">{{ t('fix.editLabel') }}</label>
-                <textarea :id="`brief-${b.id}`" v-model="draft" rows="3"></textarea>
-                <span class="hint">{{ t('fix.editHint') }}</span>
+                <FormField :id="`brief-${b.id}`" :label="t('fix.editLabel')" :help="t('fix.editHint')" required :error="draft.trim().length === 0 ? t('form.isRequired') : null">
+                  <textarea :id="`brief-${b.id}`" v-model="draft" rows="3"></textarea>
+                </FormField>
                 <div class="row">
-                  <Button :label="t('fix.saveBrief')" size="small" :loading="working === `edit:${b.id}`" :aria-busy="working === `edit:${b.id}`" @click="act(b, 'edit')" />
-                  <Button :label="t('common.cancel')" size="small" severity="secondary" text @click="editing = null" />
+                  <ActionButton action="save" size="small" :label="t('fix.saveBrief')" :loading="working === `edit:${b.id}`" :reason="draft.trim().length === 0 ? t('fix.typeBrief') : null" @click="act(b, 'edit')" />
+                  <ActionButton action="cancel" size="small" @click="editing = null" />
                 </div>
               </template>
               <div v-else class="row">
-                <GuardedButton :label="t('fix.rewrite')" size="small" :loading="working === `rewrite:${b.id}`" :reason="lacking('course.generate')" @click="act(b, 'rewrite')" />
-                <GuardedButton :label="t('fix.edit')" size="small" severity="secondary" :reason="lacking('course.edit')" @click="startEdit(b)" />
-                <GuardedButton :label="t('fix.accept')" size="small" severity="secondary" :loading="working === `accept:${b.id}`" :reason="lacking('course.edit')" @click="act(b, 'accept')" />
+                <ActionButton action="rewrite" :label="t('fix.rewrite')" size="small" :loading="working === `rewrite:${b.id}`" :reason="lacking('course.generate')" @click="act(b, 'rewrite')" />
+                <ActionButton action="edit" :label="t('fix.edit')" size="small" :reason="lacking('course.edit')" @click="startEdit(b)" />
+                <ActionButton action="accept" :label="t('fix.accept')" size="small" :loading="working === `accept:${b.id}`" :reason="lacking('course.edit')" @click="act(b, 'accept')" />
               </div>
             </div>
             <blockquote class="passage">

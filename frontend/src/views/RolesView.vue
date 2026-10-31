@@ -1,22 +1,25 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
 import Column from 'primevue/column'
-import DataTable from 'primevue/datatable'
-import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import { ApiError, request } from '@/api/client'
 import { ENDPOINTS, roleItem } from '@/api/endpoints'
 import type { Permission, Role, UserRow } from '@/api/types'
-import GuardedButton from '@/components/GuardedButton.vue'
+import ActionButton from '@/components/ActionButton.vue'
+import AppDialog from '@/components/AppDialog.vue'
+import AppTable from '@/components/AppTable.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import FormField from '@/components/FormField.vue'
+import NoValue from '@/components/NoValue.vue'
+import RowMenu from '@/components/RowMenu.vue'
+import ScopePicker from '@/components/ScopePicker.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ResourceState from '@/components/ResourceState.vue'
 import { humanize } from '@/composables/labels'
 import { firstReason, lacking } from '@/composables/reasons'
 import { notify } from '@/composables/notify'
-import { parseTags } from '@/composables/tags'
 import { useResource } from '@/composables/useResource'
 import { useSessionStore } from '@/stores/session'
 
@@ -48,13 +51,13 @@ const mode = ref<'edit' | 'create' | 'delete' | null>(null)
 const target = ref<Role | null>(null)
 const name = ref('')
 const codes = ref<string[]>([])
-const scopeText = ref('')
+const scopeTags = ref<string[]>([])
 const busy = ref(false)
 const formError = ref<string | null>(null)
 const askDiscard = ref(false)
 const initial = ref('')
 
-const snapshot = (): string => JSON.stringify([name.value, [...codes.value].sort(), parseTags(scopeText.value)])
+const snapshot = (): string => JSON.stringify([name.value, [...codes.value].sort(), [...scopeTags.value].sort()])
 const dirty = computed(() => mode.value !== 'delete' && mode.value !== null && snapshot() !== initial.value)
 
 function open(next: 'edit' | 'create' | 'delete', role: Role | null): void {
@@ -62,7 +65,7 @@ function open(next: 'edit' | 'create' | 'delete', role: Role | null): void {
   target.value = role
   name.value = role?.name ?? ''
   codes.value = [...(role?.permission_codes ?? [])]
-  scopeText.value = (role?.scope_tags ?? []).join(', ')
+  scopeTags.value = [...(role?.scope_tags ?? [])]
   formError.value = null
   askDiscard.value = false
   initial.value = snapshot()
@@ -76,17 +79,19 @@ function requestClose(): void {
   if (dirty.value && !askDiscard.value) askDiscard.value = true
   else close()
 }
-const visible = computed({ get: () => mode.value !== null, set: (v: boolean) => { if (!v) requestClose() } })
+const formVisible = computed(() => mode.value === 'create' || mode.value === 'edit')
+const closeIf = (v: boolean): void => { if (!v) requestClose() }
+const builtInReason = (r: Role): string | null => (r.name === BUILT_IN ? t('roles.builtIn') : null)
 
 async function submit(): Promise<void> {
   busy.value = true
   formError.value = null
   try {
     if (mode.value === 'create') {
-      await request(ENDPOINTS.roles, { method: 'POST', body: { name: name.value.trim(), permission_codes: codes.value, scope_tags: parseTags(scopeText.value) } })
+      await request(ENDPOINTS.roles, { method: 'POST', body: { name: name.value.trim(), permission_codes: codes.value, scope_tags: scopeTags.value } })
       notify('success', t('roles.created'))
     } else if (mode.value === 'edit' && target.value) {
-      await request(roleItem(target.value.name), { method: 'PUT', body: { permission_codes: codes.value, scope_tags: parseTags(scopeText.value) } })
+      await request(roleItem(target.value.name), { method: 'PUT', body: { permission_codes: codes.value, scope_tags: scopeTags.value } })
       notify('success', t('roles.updated'))
     } else if (mode.value === 'delete' && target.value) {
       await request(roleItem(target.value.name), { method: 'DELETE' })
@@ -107,7 +112,7 @@ const title = computed(() =>
 
 <template>
   <PageHeader :title="t('roles.title')" :help="t('roles.help')">
-    <template #actions><GuardedButton :label="t('roles.new')" :reason="lacking('role.edit')" data-testid="role-new" @click="open('create', null)" /></template>
+    <template #actions><ActionButton action="create" :label="t('roles.new')" :reason="lacking('role.edit')" data-testid="role-new" @click="open('create', null)" /></template>
   </PageHeader>
   <ResourceState
     :loading="roles.loading.value"
@@ -116,13 +121,13 @@ const title = computed(() =>
     :empty-text="t('roles.empty')"
     @retry="roles.reload()"
   >
-    <DataTable :value="roles.data.value ?? []" data-key="name" data-testid="roles-table">
+    <AppTable :value="roles.data.value ?? []" data-key="name" data-testid="roles-table">
       <template #empty><span class="muted">{{ t('roles.empty') }}</span></template>
       <Column field="name" :header="t('roles.name')"><template #body="{ data }"><span :id="`role-${(data as Role).name}`">{{ (data as Role).name }}</span></template></Column>
       <Column :header="t('roles.permissions')"><template #body="{ data }">{{ t('count.permission', (data as Role).permission_codes.length) }}</template></Column>
       <Column :header="t('roles.holders')">
         <template #body="{ data }">
-          <span v-if="holders((data as Role).name).length === 0" class="muted">{{ t('roles.noHolders') }}</span>
+          <NoValue v-if="holders((data as Role).name).length === 0" />
           <router-link v-for="u in holders((data as Role).name)" :key="u.id" class="chip" :to="`/users?q=${encodeURIComponent(u.email)}`">{{ u.display_name || u.email }}</router-link>
         </template>
       </Column>
@@ -132,61 +137,47 @@ const title = computed(() =>
           <span v-for="tag in (data as Role).scope_tags" :key="tag" class="chip mono">{{ tag }}</span>
         </template>
       </Column>
-      <Column :header="t('common.actions')">
+      <Column :header="t('common.actions')" class="col-actions">
         <template #body="{ data }">
           <div class="row">
-            <GuardedButton :label="t('roles.edit')" size="small" severity="secondary" :reason="firstReason(lacking('role.edit'), (data as Role).name === BUILT_IN && t('roles.builtIn'))" @click="open('edit', data as Role)" />
-            <GuardedButton :label="t('roles.deleteButton')" size="small" severity="danger" outlined :reason="firstReason(lacking('role.edit'), (data as Role).name === BUILT_IN && t('roles.builtIn'))" @click="open('delete', data as Role)" />
+            <ActionButton action="edit" icon-only size="small" :label="t('roles.edit')" :reason="firstReason(lacking('role.edit'), builtInReason(data as Role))" @click="open('edit', data as Role)" />
+            <RowMenu :label="t('roles.moreFor', { name: (data as Role).name })" :items="[{ action: 'delete', label: t('roles.deleteButton'), reason: firstReason(lacking('role.edit'), builtInReason(data as Role)), run: () => open('delete', data as Role) }]" />
           </div>
         </template>
       </Column>
-    </DataTable>
+    </AppTable>
   </ResourceState>
 
-  <Dialog v-model:visible="visible" modal :header="title" :style="{ width: 'min(720px, 95vw)' }">
+  <AppDialog :visible="formVisible" :header="title" size="lg" @update:visible="closeIf">
     <form class="stack" @submit.prevent="submit">
-      <p v-if="mode === 'delete'">{{ t('roles.deleteBody') }}</p>
-      <template v-else>
-        <div class="field">
-          <label for="role-name">{{ t('roles.name') }}</label>
-          <InputText id="role-name" v-model="name" :disabled="mode === 'edit'" />
-          <span class="hint">{{ t('roles.nameHint') }}</span>
-        </div>
-        <div class="perm-groups">
-          <fieldset v-for="[group, list] in catalogue" :key="group" class="perm-group">
-            <legend>{{ humanize(group) }}</legend>
-            <div v-for="code in list" :key="code" class="perm-check">
-              <Checkbox v-model="codes" :input-id="`perm-${code}`" :value="code" />
-              <label :for="`perm-${code}`">{{ labelOf(code).label }} <span class="hint">{{ labelOf(code).description }}</span></label>
-            </div>
-          </fieldset>
-        </div>
-        <div class="field">
-          <label for="role-scope">{{ t('roles.scope') }}</label>
-          <InputText id="role-scope" v-model="scopeText" />
-          <span class="hint">{{ t('roles.scopeHint') }}</span>
-        </div>
-      </template>
+      <FormField id="role-name" :label="t('roles.name')" :help="t('roles.nameHint')" required :error="name.trim().length === 0 ? t('roles.typeName') : null">
+        <InputText id="role-name" v-model="name" :disabled="mode === 'edit'" />
+      </FormField>
+      <div class="perm-groups">
+        <fieldset v-for="[group, list] in catalogue" :key="group" class="perm-group">
+          <legend>{{ humanize(group) }}</legend>
+          <div v-for="code in list" :key="code" class="perm-check">
+            <Checkbox v-model="codes" :input-id="`perm-${code}`" :value="code" />
+            <label :for="`perm-${code}`">{{ labelOf(code).label }} <span class="hint">{{ labelOf(code).description }}</span></label>
+          </div>
+        </fieldset>
+      </div>
+      <ScopePicker id="role-scope" v-model="scopeTags" by="label" />
       <div v-if="askDiscard" class="confirm-bar" role="alert" data-testid="discard-bar">
         <strong>{{ t('common.unsavedTitle') }}</strong> {{ t('common.unsavedBody') }}
         <div class="row">
-          <Button type="button" :label="t('common.keepEditing')" size="small" severity="secondary" @click="askDiscard = false" />
-          <Button type="button" :label="t('common.discard')" size="small" severity="danger" data-testid="discard" @click="close" />
+          <ActionButton action="keep-editing" size="small" @click="askDiscard = false" />
+          <ActionButton action="discard" size="small" solid data-testid="discard" @click="close" />
         </div>
       </div>
       <p v-if="formError" class="mono danger-text" role="alert" data-testid="form-error">{{ formError }}</p>
       <div class="row">
-        <Button type="button" :label="t('common.cancel')" severity="secondary" text @click="requestClose" />
-        <GuardedButton
-          type="submit"
-          class="row-end"
-          :label="mode === 'delete' ? t('roles.deleteButton') : mode === 'create' ? t('roles.createButton') : t('roles.saveButton')"
-          :severity="mode === 'delete' ? 'danger' : undefined"
-          :loading="busy"
-          :reason="mode !== 'delete' && name.trim().length === 0 ? t('roles.typeName') : null"
-          data-testid="dialog-submit"
-        />
+        <ActionButton action="cancel" @click="requestClose" />
+        <ActionButton v-if="mode === 'create'" type="submit" class="row-end" action="create" :label="t('roles.createButton')" :loading="busy" :reason="name.trim().length === 0 ? t('roles.typeName') : null" data-testid="dialog-submit" />
+        <ActionButton v-else type="submit" class="row-end" action="save" :label="t('roles.saveButton')" :loading="busy" data-testid="dialog-submit" />
       </div>
     </form>
-  </Dialog>
+  </AppDialog>
+
+  <ConfirmDialog :visible="mode === 'delete'" :title="title" :body="t('roles.deleteBody')" action="delete" :label="t('roles.deleteButton')" :typed="target?.name ?? null" :busy="busy" :error="formError" @update:visible="closeIf" @confirm="submit" />
 </template>

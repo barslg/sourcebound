@@ -2,24 +2,26 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { onBeforeRouteLeave, useRoute } from 'vue-router'
-import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
-import Dialog from 'primevue/dialog'
 import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
 import Tree, { type TreeNodeDropEvent } from 'primevue/tree'
 import { ApiError, request } from '@/api/client'
-import { courseEstimate, courseGenerate, coursePlan, coursePlanSubmit, courseProfile } from '@/api/endpoints'
-import type { CourseDoc, Estimate } from '@/api/types'
+import { courseEstimate, courseGenerate, coursePlan, coursePlanSubmit, courseProfile, courseSources } from '@/api/endpoints'
+import type { CourseDoc, Estimate, SourceRow } from '@/api/types'
 import CourseHeader from '@/components/CourseHeader.vue'
-import GuardedButton from '@/components/GuardedButton.vue'
-import SectionHeading from '@/components/SectionHeading.vue'
+import ActionButton from '@/components/ActionButton.vue'
+import AppDialog from '@/components/AppDialog.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import FormField from '@/components/FormField.vue'
+import Section from '@/components/Section.vue'
+import StatusChip from '@/components/StatusChip.vue'
 import { BLOOM_LEVELS, METHODOLOGY_CODES } from '@/composables/methodologies'
 import { firstReason, lacking } from '@/composables/reasons'
 import { humanize, usd } from '@/composables/labels'
 import { useQueued } from '@/composables/useQueued'
 import ResourceState from '@/components/ResourceState.vue'
-import { notify } from '@/composables/notify'
+import { notify, notifyError } from '@/composables/notify'
 import { applyOps, findTopic, moveTarget, sourceHandles, titleOf, toNodes, toWire, type PlanOp, type PlanTree } from '@/composables/planTree'
 import { dropCached, useResource } from '@/composables/useResource'
 import { useOperationsStore } from '@/stores/operations'
@@ -33,6 +35,8 @@ const header = ref<InstanceType<typeof CourseHeader> | null>(null)
 const plan = useResource<PlanTree>(`plan:${courseId.value}`, (signal) => request<PlanTree>(coursePlan(courseId.value), { signal }))
 const estimate = useResource<Estimate>(`estimate:${courseId.value}`, (signal) => request<Estimate>(courseEstimate(courseId.value), { signal }))
 
+const sourceRows = useResource<SourceRow[]>(`sources:${courseId.value}`, (signal) => request<SourceRow[]>(courseSources(courseId.value), { signal }))
+const noSources = computed(() => sourceRows.data.value !== null && !sourceRows.data.value.some((s) => s.approval === 'approved' && s.progress > 0))
 const ops = ref<PlanOp[]>([])
 const answers = ref<Record<string, string>>({})
 const tree = computed<PlanTree | null>(() => (plan.data.value ? applyOps(plan.data.value, ops.value) : null))
@@ -54,6 +58,10 @@ const confirmDelete = ref(false)
 const leaveAsk = ref<((ok: boolean) => void) | null>(null)
 const generating = ref(false)
 const generateOp = ref<string | null>(null)
+const narrow = ref(false)
+const tab = ref<'plan' | 'before'>('plan')
+let media: MediaQueryList | null = null
+function onMedia(e: MediaQueryListEvent | MediaQueryList): void { narrow.value = e.matches }
 
 const treePt = {
   nodeToggleButton: ({ context }: { context: { node?: { label?: string } } }) => ({ 'aria-label': t('plan.treeToggle', { name: context?.node?.label ?? '' }) }),
@@ -164,7 +172,7 @@ async function generate(): Promise<void> {
     generateOp.value = made.operation_id
     genQueue.track(made.operation_id)
   } catch (cause) {
-    notify('error', cause instanceof ApiError ? cause.message : String(cause))
+    notifyError(cause)
   } finally {
     generating.value = false
   }
@@ -180,59 +188,69 @@ onBeforeRouteLeave(() => {
   return new Promise<boolean>((done) => { leaveAsk.value = (ok) => { leaveAsk.value = null; done(ok) } })
 })
 function warnUnload(event: BeforeUnloadEvent): void { if (dirty.value) event.preventDefault() }
-onMounted(() => window.addEventListener('beforeunload', warnUnload))
-onBeforeUnmount(() => window.removeEventListener('beforeunload', warnUnload))
+onMounted(() => {
+  window.addEventListener('beforeunload', warnUnload)
+  media = window.matchMedia('(max-width: 1099px)')
+  onMedia(media)
+  media.addEventListener('change', onMedia)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', warnUnload)
+  media?.removeEventListener('change', onMedia)
+})
 </script>
 
 <template>
   <CourseHeader ref="header" :course-id="courseId" page="plan">
     <template #default="{ course, validation }">
       <div class="row">
-        <span v-if="dirty" class="chip chip-warn" data-testid="unsaved">{{ t('plan.unsaved') }}</span>
-        <GuardedButton class="row-end" :label="t('plan.save')" :loading="saving" :reason="firstReason(lacking('course.edit'), !dirty && t('plan.nothingToSave'))" data-testid="plan-save" @click="course && save(course)" />
+        <StatusChip v-if="dirty" tone="warn" :label="t('plan.unsaved')" data-testid="unsaved" />
+        <ActionButton class="row-end" action="save" :label="t('plan.save')" :loading="saving" :reason="firstReason(lacking('course.edit'), !dirty && t('plan.nothingToSave'))" data-testid="plan-save" @click="course && save(course)" />
       </div>
       <div v-if="conflict" class="confirm-bar stack" role="alert" data-testid="conflict">
         <p>{{ t('plan.conflict') }}</p>
         <div class="row">
-          <Button :label="t('plan.reloadTheirs')" severity="secondary" data-testid="reload-theirs" @click="reloadTheirs" />
-          <Button :label="t('plan.keepMine')" severity="secondary" data-testid="keep-mine" @click="course && save(course, true)" />
+          <ActionButton action="reload-theirs" :label="t('plan.reloadTheirs')" data-testid="reload-theirs" @click="reloadTheirs" />
+          <ActionButton action="keep-mine" :label="t('plan.keepMine')" data-testid="keep-mine" @click="course && save(course, true)" />
         </div>
       </div>
       <p v-else-if="saveError" class="mono danger-text" role="alert" data-testid="save-error">{{ saveError }}</p>
+      <div class="plan-tabs" role="tablist" :aria-label="t('plan.tabs')">
+        <button id="tab-plan" type="button" class="plan-tab" role="tab" :aria-selected="tab === 'plan'" aria-controls="plan-centre" @click="tab = 'plan'">{{ t('plan.tabPlan') }}</button>
+        <button id="tab-before" type="button" class="plan-tab" role="tab" :aria-selected="tab === 'before'" aria-controls="before-card" @click="tab = 'before'">{{ t('plan.before') }}</button>
+      </div>
       <div class="plan-grid">
         <section class="stack" :aria-label="t('plan.treeLabel')">
-          <SectionHeading :title="t('plan.treeLabel')" :help="t('plan.treeHelp')" />
+          <Section :title="t('plan.treeLabel')" :help="t('plan.treeHelp')" />
           <ResourceState :loading="plan.loading.value" :error="plan.error.value" :empty="nodes.length === 0" :empty-text="t('plan.empty')" @retry="plan.reload()">
             <template #empty-actions><router-link to="#build-plan">{{ t('plan.emptyAction') }}</router-link></template>
             <Tree v-model:selection-keys="selectionKeys" :value="nodes" selection-mode="single" draggable-nodes droppable-nodes draggable-scope="plan" droppable-scope="plan" :pt="treePt" data-testid="plan-tree" @node-select="(n) => select(String(n.key))" @node-drop="onDrop" />
           </ResourceState>
         </section>
-        <section class="stack" :aria-label="t('plan.topicLabel')" data-testid="plan-centre">
-          <SectionHeading :title="t('plan.topicLabel')" :help="t('plan.topicHelp')" />
+        <section v-show="!narrow || tab === 'plan'" id="plan-centre" class="stack" :aria-label="t('plan.topicLabel')" data-testid="plan-centre">
+          <Section :title="t('plan.topicLabel')" :help="t('plan.topicHelp')" />
           <p v-if="!selectedKey" class="muted">{{ t('plan.pick') }}</p>
           <template v-else>
-            <div class="field">
-              <label for="p-title">{{ t('plan.nodeTitle') }}</label>
+            <FormField id="p-title" :label="t('plan.nodeTitle')" :help="t('plan.nodeTitleHint')" required :error="renameText.trim() ? null : t('form.isRequired')">
               <InputText id="p-title" v-model="renameText" @keydown.enter.prevent="rename" />
-              <span class="hint">{{ t('plan.nodeTitleHint') }}</span>
-            </div>
+            </FormField>
             <div class="row">
-              <GuardedButton :label="t('plan.rename')" size="small" :reason="!renameText.trim() || renameText.trim() === selectedTitle ? t('plan.renameFirst') : null" data-testid="plan-rename" @click="rename" />
-              <GuardedButton :label="t('plan.moveUp')" size="small" severity="secondary" :reason="upReason" data-testid="plan-up" @click="shift(-1)" />
-              <GuardedButton :label="t('plan.moveDown')" size="small" severity="secondary" :reason="downReason" data-testid="plan-down" @click="shift(1)" />
-              <Button :label="t('plan.deleteButton')" size="small" severity="danger" outlined data-testid="plan-delete" @click="confirmDelete = true" />
+              <ActionButton action="rename" :label="t('plan.rename')" size="small" :reason="!renameText.trim() || renameText.trim() === selectedTitle ? t('plan.renameFirst') : null" data-testid="plan-rename" @click="rename" />
+              <ActionButton action="move-up" :label="t('plan.moveUp')" size="small" :reason="upReason" data-testid="plan-up" @click="shift(-1)" />
+              <ActionButton action="move-down" :label="t('plan.moveDown')" size="small" :reason="downReason" data-testid="plan-down" @click="shift(1)" />
+              <ActionButton action="delete" :label="t('plan.deleteButton')" size="small" data-testid="plan-delete" @click="confirmDelete = true" />
             </div>
             <template v-if="moduleOf">
-              <SectionHeading :title="t('plan.purpose')" :help="t('plan.purposeHelp')" />
+              <Section :title="t('plan.purpose')" :help="t('plan.purposeHelp')" />
               <p>{{ moduleOf.purpose }}</p>
               <ul class="plain-list">
                 <li v-for="x in moduleOf.topics" :key="x.id"><a href="#" @click.prevent="select(x.id)">{{ x.title }}</a> <span class="count">{{ t('count.block', x.blocks.length) }}</span></li>
               </ul>
             </template>
             <template v-if="topic">
-              <SectionHeading :title="t('plan.objectives')" :help="t('plan.objectivesHelp')" />
+              <Section :title="t('plan.objectives')" :help="t('plan.objectivesHelp')" />
               <ul><li v-for="o in topic.objectives" :key="o">{{ o }}</li></ul>
-              <SectionHeading :title="t('plan.blocks')" :help="t('plan.blocksHelp')" />
+              <Section :title="t('plan.blocks')" :help="t('plan.blocksHelp')" />
               <ul class="plain-list">
                 <li v-for="b in topic.blocks" :key="b.id" class="bell-item stack" data-testid="plan-block">
                   <div class="row">
@@ -245,67 +263,61 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnUnload))
             </template>
           </template>
           <template v-if="answeredRows(course).length > 0">
-            <SectionHeading :title="t('plan.answered')" :help="t('plan.answeredHelp')" />
+            <Section :title="t('plan.answered')" :help="t('plan.answeredHelp')" />
             <ul class="plain-list">
               <li v-for="r in answeredRows(course)" :key="r.label" class="bell-item" data-testid="constraint-row"><strong>{{ r.label }}</strong> <span>{{ r.value }}</span></li>
             </ul>
           </template>
         </section>
-        <aside class="stack" :aria-label="t('plan.before')" data-testid="before-card">
-          <SectionHeading id="questions" :title="t('plan.before')" :help="t('plan.beforeHelp')" />
+        <aside v-show="!narrow || tab === 'before'" id="before-card" class="stack" :aria-label="t('plan.before')" data-testid="before-card">
+          <Section id="questions" :title="t('plan.before')" :help="t('plan.beforeHelp')" />
           <ResourceState :loading="false" :error="null" :empty="(validation?.blocking_questions ?? []).length === 0" :empty-text="t('plan.noQuestions')">
             <ul class="plain-list">
               <li v-for="q in validation?.blocking_questions ?? []" :id="`question-${q.key}`" :key="q.key" class="bell-item stack" data-testid="question">
-                <label :for="`q-${q.key}`">{{ q.question ?? humanize(q.key) }}</label>
-                <InputText :id="`q-${q.key}`" v-model="answers[q.key]" />
-                <span class="hint">{{ t('plan.answerHint') }}</span>
-                <GuardedButton :label="t('plan.answer')" size="small" :loading="saving" :reason="firstReason(lacking('course.edit'), !(answers[q.key] ?? '').trim() && t('plan.typeAnswer'))" @click="course && answer(q.key, course)" />
+                <FormField :id="`q-${q.key}`" :label="q.question ?? humanize(q.key)" :help="t('plan.answerHint')">
+                  <InputText :id="`q-${q.key}`" v-model="answers[q.key]" />
+                </FormField>
+                <ActionButton action="save" :label="t('plan.answer')" size="small" :loading="saving" :reason="firstReason(lacking('course.edit'), !(answers[q.key] ?? '').trim() && t('plan.typeAnswer'))" @click="course && answer(q.key, course)" />
               </li>
             </ul>
           </ResourceState>
-          <SectionHeading :title="t('plan.estimate')" :help="t('plan.forecastNote')" />
+          <Section :title="t('plan.estimate')" :help="t('plan.forecastNote')" />
           <ResourceState :loading="estimate.loading.value" :error="estimate.error.value" :empty="false" @retry="estimate.reload()">
             <p data-testid="forecast">{{ t('plan.forecastLine', { blocks: t('count.block', estimate.data.value?.blocks ?? 0), cost: usd(estimate.data.value?.cost_usd ?? '0') }) }}</p>
           </ResourceState>
-          <SectionHeading id="generate" :title="t('plan.generateTitle')" :help="t('plan.generateHelp')" />
-          <GuardedButton :label="t('plan.generate')" :loading="generating" :reason="firstReason(lacking('run.start'), dirty && t('plan.saveFirst'), validation && !validation.can_generate && t('plan.questionsOpen'), genQueue.queued.value && t('plan.alreadyQueued'))" data-testid="generate" @click="generate" />
-          <p v-if="genQueue.queued.value" class="chip" data-testid="queued-line">{{ t('op.queuedToast') }}</p>
+          <Section id="generate" :title="t('plan.generateTitle')" :help="t('plan.generateHelp')" />
+          <ActionButton action="generate" :label="t('plan.generate')" :loading="generating" :reason="firstReason(lacking('run.start'), dirty && t('plan.saveFirst'), validation && !validation.can_generate && t('plan.questionsOpen'), noSources && t('plan.addSourceFirst'), genQueue.queued.value && t('plan.alreadyQueued'))" data-testid="generate" @click="generate" />
+          <router-link v-if="noSources" :to="`/courses/${courseId}/sources`" data-testid="go-sources-generate">{{ t('plan.goSources') }}</router-link>
+          <StatusChip v-if="genQueue.queued.value" tone="info" :label="t('op.queuedToast')" data-testid="queued-line" />
           <router-link v-if="runId" :to="`/runs/${runId}`" data-testid="open-run">{{ t('plan.openRun') }}</router-link>
           <template v-if="!course?.profile || nodes.length === 0">
-            <SectionHeading id="build-plan" :title="t('plan.build')" :help="t('plan.buildHelp')" />
+            <Section id="build-plan" :title="t('plan.build')" :help="t('plan.buildHelp')" />
             <form class="stack" @submit.prevent="buildPlan">
-              <fieldset class="field">
-                <legend>{{ t('plan.methodology') }}</legend>
+              <FormField id="b-meth" group :label="t('plan.methodology')" :help="t('plan.methodologyHint')" required :error="methodologies.length === 0 ? t('plan.pickMethodology') : null">
                 <div v-for="code in METHODOLOGY_CODES" :key="code" class="perm-check">
                   <Checkbox v-model="methodologies" :input-id="`m-${code}`" :value="code" />
                   <label :for="`m-${code}`"><strong>{{ t(`methodology.${code}.name`) }}</strong> <span class="hint">{{ t(`methodology.${code}.line`) }}</span></label>
                 </div>
-                <span class="hint">{{ t('plan.methodologyHint') }}</span>
-              </fieldset>
-              <div class="field"><label for="b-bloom">{{ t('plan.bloom') }}</label><Select v-model="bloom" input-id="b-bloom" :options="BLOOM_LEVELS.map((c) => ({ code: c, label: t(`bloom.${c}`) }))" option-label="label" option-value="code" /><span class="hint">{{ t('plan.bloomHint') }}</span></div>
-              <div class="field"><label for="b-aud">{{ t('plan.audience') }}</label><InputText id="b-aud" v-model="audience" /><span class="hint">{{ t('plan.audienceHint') }}</span></div>
-              <div class="field"><label for="b-q">{{ t('plan.queries') }}</label><textarea id="b-q" v-model="queriesText" rows="3"></textarea><span class="hint">{{ t('plan.queriesHint') }}</span></div>
+              </FormField>
+              <FormField id="b-bloom" :label="t('plan.bloom')" :help="t('plan.bloomHint')"><Select v-model="bloom" input-id="b-bloom" :options="BLOOM_LEVELS.map((c) => ({ code: c, label: t(`bloom.${c}`) }))" option-label="label" option-value="code" /></FormField>
+              <FormField id="b-aud" :label="t('plan.audience')" :help="t('plan.audienceHint')"><InputText id="b-aud" v-model="audience" /></FormField>
+              <FormField id="b-q" :label="t('plan.queries')" :help="t('plan.queriesHint')" required :error="queriesText.trim().length === 0 ? t('plan.typeQueries') : null"><textarea id="b-q" v-model="queriesText" rows="3"></textarea></FormField>
+              <router-link v-if="noSources" :to="`/courses/${courseId}/sources`" data-testid="go-sources">{{ t('plan.goSources') }}</router-link>
               <p v-if="buildError" class="mono danger-text" role="alert" data-testid="build-error">{{ buildError }}</p>
-              <GuardedButton type="submit" :label="t('plan.buildButton')" :loading="building" :reason="firstReason(lacking('course.plan'), methodologies.length === 0 && t('plan.pickMethodology'), queriesText.trim().length === 0 && t('plan.typeQueries'), planQueue.queued.value && t('plan.alreadyQueued'))" data-testid="plan-build" />
-              <p v-if="planQueue.queued.value" class="chip" data-testid="queued-line">{{ t('op.queuedToast') }}</p>
+              <ActionButton type="submit" action="build-plan" :label="t('plan.buildButton')" :loading="building" :reason="firstReason(lacking('course.plan'), noSources && t('plan.addSourceFirst'), methodologies.length === 0 && t('plan.pickMethodology'), queriesText.trim().length === 0 && t('plan.typeQueries'), planQueue.queued.value && t('plan.alreadyQueued'))" data-testid="plan-build" />
+              <StatusChip v-if="planQueue.queued.value" tone="info" :label="t('op.queuedToast')" data-testid="queued-line" />
             </form>
           </template>
         </aside>
       </div>
-      <Dialog v-model:visible="confirmDelete" modal :header="t('plan.deleteTitle', { name: selectedTitle })" :style="{ width: 'min(460px, 92vw)' }">
-        <p>{{ t('plan.deleteBody', { name: selectedTitle }) }}</p>
-        <div class="row">
-          <Button :label="t('plan.deleteButton')" severity="danger" data-testid="dialog-submit" @click="removeSelected" />
-          <Button :label="t('common.cancel')" severity="secondary" text @click="confirmDelete = false" />
-        </div>
-      </Dialog>
-      <Dialog :visible="leaveAsk !== null" modal :closable="false" :header="t('common.unsavedTitle')" :style="{ width: 'min(420px, 92vw)' }">
+      <ConfirmDialog v-model:visible="confirmDelete" :title="t('plan.deleteTitle', { name: selectedTitle })" :body="t('plan.deleteBody', { name: selectedTitle })" action="delete" :label="t('plan.deleteButton')" @confirm="removeSelected" />
+      <AppDialog :visible="leaveAsk !== null" :closable="false" :header="t('common.unsavedTitle')" size="sm">
         <p>{{ t('common.unsavedBody') }}</p>
         <div class="row">
-          <Button :label="t('common.keepEditing')" severity="secondary" data-testid="leave-stay" @click="leaveAsk?.(false)" />
-          <Button :label="t('common.discard')" severity="danger" data-testid="leave-go" @click="leaveAsk?.(true)" />
+          <ActionButton action="keep-editing" data-testid="leave-stay" @click="leaveAsk?.(false)" />
+          <ActionButton action="discard" solid data-testid="leave-go" @click="leaveAsk?.(true)" />
         </div>
-      </Dialog>
+      </AppDialog>
     </template>
   </CourseHeader>
 </template>
