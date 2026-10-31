@@ -298,6 +298,31 @@ async def get_run(session: AsyncSession, *, run_id: UUID) -> dict[str, Any]:
     }
 
 
+async def list_runs(session: AsyncSession, *, course_id: UUID) -> list[dict[str, Any]]:
+    """Runs of one course, newest first: id, status, kind, cost, started, plain stop."""
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT r.id, r.status, r.kind, r.created_at, r.stop_marker,"
+                " COALESCE((SELECT SUM(l.cost_usd) FROM llm_calls l WHERE l.run_id = r.id), 0)"
+                " FROM runs r WHERE r.course_id = :course ORDER BY r.created_at DESC, r.id"
+            ),
+            {"course": str(course_id)},
+        )
+    ).all()
+    return [
+        {
+            "id": str(row[0]),
+            "status": row[1],
+            "kind": row[2],
+            "created_at": row[3].isoformat(),
+            "stop_marker": plain_marker(row[4])[0],
+            "cost_so_far": str(row[5]),
+        }
+        for row in rows
+    ]
+
+
 async def _run_topics(session: AsyncSession, *, course_id: Any) -> list[dict[str, Any]]:
     """Per-topic generation status: held wins, then checking, then accepted."""
     if course_id is None:

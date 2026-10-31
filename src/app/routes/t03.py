@@ -75,6 +75,15 @@ async def edit_plan(
     )
 
 
+@courses_router.get("/{course_id}/runs")
+async def list_course_runs(
+    course_id: Annotated[str, Depends(course_id_param)],
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> list[dict[str, Any]]:
+    """Runs of one course, newest first, with status, kind and cost."""
+    return await controller.list_course_runs(ctx, course_id=course_id)
+
+
 @courses_router.get("/{course_id}/plan")
 async def get_plan(
     course_id: Annotated[str, Depends(course_id_param)],

@@ -139,13 +139,14 @@ async def create_invite(ctx: RequestContext, *, body: dto.InviteRequest) -> dto.
     row = (
         await ctx.db.execute(
             sa.text(
-                "SELECT course_tags, max_uses, used_count, expires_at, revoked_at"
+                "SELECT course_tags, max_uses, used_count, expires_at, revoked_at, id"
                 " FROM invites WHERE token_hash = :hash"
             ),
             {"hash": hash_invite_token(raw_token)},
         )
     ).one()
     return dto.InviteResponse(
+        id=str(row[5]),
         token=raw_token,
         course_tags=list(row[0] or []),
         max_uses=row[1],

@@ -384,11 +384,13 @@ class World:
         )
         await sync_catalogue(session)
         if (
-            await session.execute(sa.text("SELECT 1 FROM roles WHERE name = 't06g-author'"))
+            await session.execute(sa.text("SELECT 1 FROM roles WHERE name = 't06i-author'"))
         ).first() is None:
-            await create_role(session, name="t06g-author", permission_codes=["course.edit"])
+            await create_role(
+                session, name="t06i-author", permission_codes=["course.edit", "run.start"]
+            )
         for owner in (self.w["user_id"], self.other["user_id"]):
-            await assign_role(session, owner, "t06g-author")
+            await assign_role(session, owner, "t06i-author")
         await session.commit()
         self.cookies: dict[str, tuple[dict[str, str], str] | None] = {
             "anon": None,
