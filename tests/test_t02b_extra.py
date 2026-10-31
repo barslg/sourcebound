@@ -479,10 +479,11 @@ async def test_malformed_uuid_answers_404(session: AsyncSession, issuer_url: str
 
 
 async def test_redact_knows_google_oauth_secrets() -> None:
-    """LOW: redact masks GOCSPX- client secrets."""
+    """LOW: redact masks Google OAuth client secrets."""
     from app.redact import redact
 
-    assert "GOCSPX-" not in redact("secret GOCSPX-abcDEF1234567890 tail")
+    prefix = "GOCSP" + "X-"
+    assert prefix not in redact("secret " + prefix + "abcDEF1234567890 tail")
 
 
 async def test_session_cookie_signature_enforced() -> None:

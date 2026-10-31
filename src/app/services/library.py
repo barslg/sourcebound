@@ -783,3 +783,65 @@ async def set_source_as_of(session: AsyncSession, *, source_id: UUID, as_of: dat
     ).first()
     if row is None:
         raise NotFoundError(f"source {source_id} not found")
+
+
+async def list_course_sources(session: AsyncSession, *, course_id: UUID) -> list[dict[str, Any]]:
+    """Sources bound to one course with binding approval and passage progress.
+
+    A pending binding is a candidate awaiting human approval; held
+    bindings were rejected and stay out of retrieval. Progress is the
+    ingested passage count.
+    """
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT s.id, s.title, s.media, s.licence, s.as_of, cs.approval,"
+                " count(p.id) FROM course_sources cs"
+                " JOIN sources s ON s.id = cs.source_id"
+                " LEFT JOIN passages p ON p.source_id = s.id"
+                " WHERE cs.course_id = :course"
+                " GROUP BY s.id, s.title, s.media, s.licence, s.as_of,"
+                " cs.approval, s.created_at ORDER BY s.created_at, s.id"
+            ),
+            {"course": str(course_id)},
+        )
+    ).all()
+    return [
+        {
+            "id": str(row[0]),
+            "title": row[1],
+            "media": row[2],
+            "licence": row[3],
+            "as_of": row[4].isoformat() if row[4] else None,
+            "approval": row[5],
+            "progress": int(row[6]),
+        }
+        for row in rows
+    ]
+
+
+async def reject_source(session: AsyncSession, *, source_id: UUID) -> None:
+    """Reject a source: pending bindings are held out of retrieval.
+
+    Rejection never deletes the immutable source row; it flips the
+    source and its pending bindings to held so no run can cite them.
+    """
+    row = (
+        await session.execute(
+            sa.text("SELECT id FROM sources WHERE id = :source"),
+            {"source": str(source_id)},
+        )
+    ).first()
+    if row is None:
+        raise NotFoundError(f"source {source_id} not found")
+    await session.execute(
+        sa.text(
+            "UPDATE course_sources SET approval = 'held'"
+            " WHERE source_id = :source AND approval = 'pending'"
+        ),
+        {"source": str(source_id)},
+    )
+    await session.execute(
+        sa.text("UPDATE sources SET approval = 'held' WHERE id = :source"),
+        {"source": str(source_id)},
+    )

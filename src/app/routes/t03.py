@@ -13,6 +13,7 @@ from app.schemas import t03 as dto
 courses_router = APIRouter(prefix="/courses", tags=["courses"])
 sources_router = APIRouter(prefix="/sources", tags=["sources"])
 runs_router = APIRouter(prefix="/runs", tags=["runs"])
+blocks_router = APIRouter(prefix="/blocks", tags=["blocks"])
 
 
 @courses_router.post("", status_code=201)
@@ -43,6 +44,14 @@ async def set_profile(
     return await controller.set_profile(ctx, course_id=course_id, body=body)
 
 
+@courses_router.get("")
+async def list_courses(
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> list[dict[str, Any]]:
+    """The caller's course library with profile, plan, and question flags."""
+    return await controller.list_courses(ctx)
+
+
 @courses_router.patch("/{course_id}/plan")
 async def edit_plan(
     course_id: str,
@@ -50,7 +59,63 @@ async def edit_plan(
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, Any]:
     """Author edits: rename/move/delete modules and topics, constraints."""
-    return await controller.edit_plan(ctx, course_id=course_id, operations=body.operations)
+    return await controller.edit_plan(
+        ctx, course_id=course_id, operations=body.operations, base_version=body.base_version
+    )
+
+
+@courses_router.get("/{course_id}/plan")
+async def get_plan(
+    course_id: str,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, Any]:
+    """The plan tree, same shape as the PATCH response, with source handles."""
+    return await controller.get_plan(ctx, course_id=course_id)
+
+
+@courses_router.get("/{course_id}/estimate")
+async def get_estimate(
+    course_id: str,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, Any]:
+    """Cost/time forecast for the course: a forecast, never a limit."""
+    return await controller.get_estimate(ctx, course_id=course_id)
+
+
+@courses_router.get("/{course_id}/sources")
+async def list_course_sources(
+    course_id: str,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> list[dict[str, Any]]:
+    """Sources bound to the course with approval and ingest progress."""
+    return await controller.list_sources(ctx, course_id=course_id)
+
+
+@courses_router.get("/{course_id}/held")
+async def get_held(
+    course_id: str,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, Any]:
+    """Held blocks with passages plus the batch rewrite quote."""
+    return await controller.get_held(ctx, course_id=course_id)
+
+
+@courses_router.post("/{course_id}/held/rewrite", status_code=202)
+async def rewrite_held(
+    course_id: str,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, str]:
+    """Rewrite every held block as one operation."""
+    return await controller.rewrite_held(ctx, course_id=course_id)
+
+
+@courses_router.post("/{course_id}/publish", status_code=201)
+async def publish_course(
+    course_id: str,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, str]:
+    """Snapshot an immutable published version; 422 while a block is held."""
+    return await controller.publish_course(ctx, course_id=course_id)
 
 
 @courses_router.get("/{course_id}/plan/validate")
@@ -94,6 +159,8 @@ async def upload_source(
     file: UploadFile,
     media: str = "text",
     course_id: str | None = None,
+    licence: str = "",
+    as_of: str | None = None,
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, str]:
     """Upload a source file: stored by sha256, chunked into passages."""
@@ -104,7 +171,18 @@ async def upload_source(
         media=media,
         content=content,
         course_id=course_id,
+        licence=licence,
+        as_of=as_of,
     )
+
+
+@sources_router.post("/{source_id}/reject")
+async def reject_source(
+    source_id: str,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, bool]:
+    """Reject a source: pending bindings are held out of retrieval."""
+    return await controller.reject_source(ctx, source_id=source_id)
 
 
 @sources_router.post("/fetch", status_code=201)
@@ -159,3 +237,40 @@ async def resume_run(
 ) -> dict[str, str]:
     """Resume a stopped run from its last good step."""
     return await controller.resume_run(ctx, run_id=run_id)
+
+
+@runs_router.post("/{run_id}/cancel")
+async def cancel_run(
+    run_id: str,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, bool]:
+    """Cooperative cancel: the in-flight call finishes, no new step starts."""
+    return await controller.cancel_run(ctx, run_id=run_id)
+
+
+@blocks_router.post("/{block_id}/rewrite", status_code=202)
+async def rewrite_block(
+    block_id: str,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, str]:
+    """Rewrite one held block as an operation."""
+    return await controller.rewrite_block(ctx, block_id=block_id)
+
+
+@blocks_router.post("/{block_id}/accept")
+async def accept_block(
+    block_id: str,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, bool]:
+    """Accept a held block after human review."""
+    return await controller.accept_block(ctx, block_id=block_id)
+
+
+@blocks_router.patch("/{block_id}")
+async def patch_block(
+    block_id: str,
+    body: dto.BlockBriefRequest,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, bool]:
+    """Edit a block brief in place."""
+    return await controller.patch_block(ctx, block_id=block_id, brief=body.brief)

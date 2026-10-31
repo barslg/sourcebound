@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.course.tree import ConstraintRow, CourseTree
-from app.errors import NotFoundError, ValidationError
+from app.errors import ConflictError, NotFoundError, UnprocessableError, ValidationError
 
 PLAN_EDIT_OPS = (
     "rename_module",
@@ -480,6 +480,11 @@ async def read_tree(session: AsyncSession, *, course_id: UUID) -> dict[str, Any]
                                     else []
                                 )
                             ],
+                            "source_handles": list(
+                                (block[7] or {}).get("source_handles", [])
+                                if isinstance(block[7], dict)
+                                else []
+                            ),
                         }
                         for block in blocks
                     ],
@@ -508,9 +513,31 @@ async def blocking_questions(session: AsyncSession, *, course_id: UUID) -> list[
 
 
 async def edit_plan(
-    session: AsyncSession, *, course_id: UUID, operations: list[dict[str, Any]]
+    session: AsyncSession,
+    *,
+    course_id: UUID,
+    operations: list[dict[str, Any]],
+    base_version: int | None = None,
 ) -> dict[str, Any]:
-    """Apply author edits: rename/move/delete modules and topics, constraints."""
+    """Apply author edits: rename/move/delete modules and topics, constraints.
+
+    With `base_version` the edit is refused with 409 when another writer
+    moved the course first (lost-update protection for the plan editor).
+    """
+    if base_version is not None:
+        current = (
+            await session.execute(
+                sa.text("SELECT row_version FROM courses WHERE id = :course"),
+                {"course": str(course_id)},
+            )
+        ).first()
+        if current is None:
+            raise NotFoundError(f"course {course_id} not found")
+        if int(current[0]) != base_version:
+            raise ConflictError(
+                f"plan changed underneath the editor: base {base_version},"
+                f" current {int(current[0])}"
+            )
     for operation in operations:
         op = operation.get("op")
         if op not in PLAN_EDIT_OPS:
@@ -679,3 +706,221 @@ async def snapshot_version(
             {"version": str(version_id), "course": str(course_id)},
         )
     return version_id
+
+
+async def list_courses(
+    session: AsyncSession, *, owner_id: UUID, is_superadmin: bool
+) -> list[dict[str, Any]]:
+    """Course rows for the library view, scoped to the caller.
+
+    Superadmins see every course; anyone else sees only their own.
+    Flags avoid extra round trips: profile presence, plan presence,
+    and the count of unanswered required questions.
+    """
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT c.id, c.title, c.language, c.status,"
+                " EXISTS(SELECT 1 FROM course_profiles p WHERE p.course_id = c.id),"
+                " EXISTS(SELECT 1 FROM modules m WHERE m.course_id = c.id),"
+                " (SELECT count(*) FROM profile_constraints pc WHERE pc.course_id = c.id"
+                " AND pc.required AND pc.answer IS NULL)"
+                " FROM courses c"
+                + ("" if is_superadmin else " WHERE c.owner_id = :owner")
+                + " ORDER BY c.created_at, c.id"
+            ),
+            {} if is_superadmin else {"owner": str(owner_id)},
+        )
+    ).all()
+    return [
+        {
+            "id": str(row[0]),
+            "title": row[1],
+            "language": row[2],
+            "status": row[3],
+            "has_profile": bool(row[4]),
+            "has_plan": bool(row[5]),
+            "open_questions": int(row[6]),
+        }
+        for row in rows
+    ]
+
+
+async def course_estimate(session: AsyncSession, *, course_id: UUID) -> dict[str, Any]:
+    """Forecast for one course from its current block count (never a limit)."""
+    from app.agents.estimator import forecast
+
+    await get_course(session, course_id=course_id)
+    count = (
+        await session.execute(
+            sa.text(
+                "SELECT count(*) FROM blocks b JOIN topics t ON t.id = b.topic_id"
+                " JOIN modules m ON m.id = t.module_id WHERE m.course_id = :course"
+            ),
+            {"course": str(course_id)},
+        )
+    ).scalar_one()
+    return forecast({"blocks": int(count)})
+
+
+async def block_course_id(session: AsyncSession, *, block_id: UUID) -> UUID:
+    """The course one block belongs to (scope checks for block writes)."""
+    row = (
+        await session.execute(
+            sa.text(
+                "SELECT m.course_id FROM blocks b JOIN topics t ON t.id = b.topic_id"
+                " JOIN modules m ON m.id = t.module_id WHERE b.id = :block"
+            ),
+            {"block": str(block_id)},
+        )
+    ).first()
+    if row is None:
+        raise NotFoundError(f"block {block_id} not found")
+    return UUID(str(row[0]))
+
+
+async def held_blocks(session: AsyncSession, *, course_id: UUID) -> dict[str, Any]:
+    """Held blocks with their first citing passage, plus a batch rewrite quote."""
+    from app.agents.estimator import forecast
+
+    await get_course(session, course_id=course_id)
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT b.id, t.title, b.brief, b.hold_reason, b.current_version_id"
+                " FROM blocks b JOIN topics t ON t.id = b.topic_id"
+                " JOIN modules m ON m.id = t.module_id"
+                " WHERE m.course_id = :course AND b.status = 'held'"
+                " ORDER BY m.ordinal, t.ordinal, b.ordinal"
+            ),
+            {"course": str(course_id)},
+        )
+    ).all()
+    blocks: list[dict[str, Any]] = []
+    for block_id, topic_title, brief, hold_reason, version_id in rows:
+        cited = (
+            await session.execute(
+                sa.text(
+                    "SELECT p.text, p.address_key FROM citations c"
+                    " JOIN passages p ON p.id = c.passage_id"
+                    " WHERE c.block_version_id = :version"
+                    " ORDER BY c.created_at LIMIT 1"
+                ),
+                {"version": str(version_id) if version_id else None},
+            )
+        ).first()
+        blocks.append(
+            {
+                "id": str(block_id),
+                "topic_title": topic_title,
+                "brief": brief,
+                "hold_reason": hold_reason,
+                "passage": cited[0] if cited else "",
+                "address": cited[1] if cited else "",
+            }
+        )
+    quote = forecast({"blocks": len(blocks)})
+    return {"blocks": blocks, "batch_quote_usd": quote["cost_usd"]}
+
+
+async def accept_block(session: AsyncSession, *, block_id: UUID) -> None:
+    """Accept a held block: only held blocks can be accepted."""
+    row = (
+        await session.execute(
+            sa.text("SELECT status FROM blocks WHERE id = :block"),
+            {"block": str(block_id)},
+        )
+    ).first()
+    if row is None:
+        raise NotFoundError(f"block {block_id} not found")
+    if row[0] != "held":
+        raise ValidationError(f"block {block_id} is {row[0]}; only held blocks are accepted")
+    await session.execute(
+        sa.text("UPDATE blocks SET status = 'accepted', hold_reason = NULL WHERE id = :block"),
+        {"block": str(block_id)},
+    )
+
+
+async def set_block_brief(session: AsyncSession, *, block_id: UUID, brief: str) -> None:
+    """Edit a block brief in place; the current version follows, keys never leak."""
+    cleaned = brief.strip()
+    if not cleaned:
+        raise ValidationError("brief must not be empty")
+    row = (
+        await session.execute(
+            sa.text("SELECT current_version_id FROM blocks WHERE id = :block"),
+            {"block": str(block_id)},
+        )
+    ).first()
+    if row is None:
+        raise NotFoundError(f"block {block_id} not found")
+    await session.execute(
+        sa.text("UPDATE blocks SET brief = :brief WHERE id = :block"),
+        {"brief": cleaned, "block": str(block_id)},
+    )
+    if row[0] is not None:
+        await session.execute(
+            sa.text(
+                "UPDATE block_versions SET content = content ||"
+                " jsonb_build_object('brief', CAST(:brief AS text)) WHERE id = :version"
+            ),
+            {"brief": cleaned, "version": str(row[0])},
+        )
+
+
+async def submit_rewrite_operation(
+    session: AsyncSession,
+    *,
+    actor: Any,
+    kind: str,
+    params: dict[str, Any],
+) -> UUID:
+    """Queue a block-rewrite operation (202); the worker drives it to done."""
+    from app.rbac.require import require
+    from app.services.audit import write_audit
+
+    require(actor, "course.generate")
+    row = (
+        await session.execute(
+            sa.text(
+                "INSERT INTO operations (kind, status, params, progress, actor_id)"
+                " VALUES (:kind, 'queued', CAST(:params AS jsonb), 0, :actor)"
+                " RETURNING id"
+            ),
+            {
+                "kind": kind,
+                "params": json.dumps({**params}),
+                "actor": str(actor.user_id),
+            },
+        )
+    ).one()
+    operation_id = UUID(str(row[0]))
+    await write_audit(
+        session,
+        actor_id=actor.user_id,
+        action=f"{kind}.submit",
+        entity="operation",
+        entity_id=str(operation_id),
+        meta=params,
+    )
+    return operation_id
+
+
+async def publish_course(session: AsyncSession, *, course_id: UUID) -> UUID:
+    """Publish a course: snapshot immutably, 422 while a held block stands."""
+    await get_course(session, course_id=course_id)
+    held = (
+        await session.execute(
+            sa.text(
+                "SELECT count(*) FROM blocks b JOIN topics t ON t.id = b.topic_id"
+                " JOIN modules m ON m.id = t.module_id"
+                " WHERE m.course_id = :course AND b.status = 'held'"
+            ),
+            {"course": str(course_id)},
+        )
+    ).scalar_one()
+    if int(held):
+        raise UnprocessableError(
+            f"course has {int(held)} held block(s); accept or rewrite each first"
+        )
+    return await snapshot_version(session, course_id=course_id, publish=True)

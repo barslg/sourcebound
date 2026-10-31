@@ -23,6 +23,11 @@ class ProfileRequest(BaseModel):
 
 class PlanEditRequest(BaseModel):
     operations: list[dict[str, Any]] = Field(min_length=1)
+    base_version: int | None = None
+
+
+class BlockBriefRequest(BaseModel):
+    brief: str = Field(min_length=1, max_length=10000)
 
 
 class PlanSubmitRequest(BaseModel):

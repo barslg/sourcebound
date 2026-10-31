@@ -188,7 +188,7 @@ async def resume_run(
     if row[0] != "stopped":
         raise ValidationError(f"run {run_id} is {row[0]}; only stopped runs resume")
     await session.execute(
-        sa.text("UPDATE runs SET status = 'running' WHERE id = :run"),
+        sa.text("UPDATE runs SET status = 'running', stop_marker = NULL WHERE id = :run"),
         {"run": str(run_id)},
     )
     op_row = (

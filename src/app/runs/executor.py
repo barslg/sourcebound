@@ -210,7 +210,7 @@ async def run_course_id(session: AsyncSession, *, run_id: UUID) -> UUID | None:
 
 
 async def get_run(session: AsyncSession, *, run_id: UUID) -> dict[str, Any]:
-    """One run with its steps in DAG order."""
+    """One run with its steps in DAG order, ledger cost, and per-topic status."""
     row = (
         await session.execute(
             sa.text(
@@ -233,6 +233,12 @@ async def get_run(session: AsyncSession, *, run_id: UUID) -> dict[str, Any]:
             {"run": str(run_id)},
         )
     ).all()
+    spent = (
+        await session.execute(
+            sa.text("SELECT COALESCE(SUM(cost_usd), 0) FROM llm_calls WHERE run_id = :run"),
+            {"run": str(run_id)},
+        )
+    ).scalar_one()
     return {
         "id": str(run_id),
         "status": row[0],
@@ -241,6 +247,8 @@ async def get_run(session: AsyncSession, *, run_id: UUID) -> dict[str, Any]:
         "dag_digest": row[3],
         "estimate": row[4],
         "stop_marker": row[5],
+        "cost_so_far": str(spent),
+        "topics": await _run_topics(session, course_id=row[1]),
         "steps": [
             {
                 "step_key": step[0],
@@ -252,6 +260,79 @@ async def get_run(session: AsyncSession, *, run_id: UUID) -> dict[str, Any]:
             for step in steps
         ],
     }
+
+
+async def _run_topics(session: AsyncSession, *, course_id: Any) -> list[dict[str, Any]]:
+    """Per-topic generation status: held wins, then checking, then accepted."""
+    if course_id is None:
+        return []
+    topics = (
+        await session.execute(
+            sa.text(
+                "SELECT t.id, t.title FROM topics t JOIN modules m ON m.id = t.module_id"
+                " WHERE m.course_id = :course ORDER BY m.ordinal, t.ordinal"
+            ),
+            {"course": str(course_id)},
+        )
+    ).all()
+    if not topics:
+        return []
+    states = (
+        await session.execute(
+            sa.text(
+                "SELECT b.topic_id, b.status, b.role FROM blocks b"
+                " WHERE b.topic_id IN (SELECT t.id FROM topics t"
+                " JOIN modules m ON m.id = t.module_id WHERE m.course_id = :course)"
+            ),
+            {"course": str(course_id)},
+        )
+    ).all()
+    by_topic: dict[str, list[tuple[str, str]]] = {}
+    for topic_id, status, role in states:
+        by_topic.setdefault(str(topic_id), []).append((str(status), str(role)))
+    result: list[dict[str, Any]] = []
+    for topic_id, title in topics:
+        members = by_topic.get(str(topic_id), [])
+        if any(status == "held" for status, _ in members):
+            state = "held"
+        elif any(status != "accepted" and role == "check" for status, role in members):
+            state = "checking"
+        elif members and all(status == "accepted" for status, _ in members):
+            state = "accepted"
+        else:
+            state = "draft"
+        result.append({"topic_id": str(topic_id), "title": title, "status": state})
+    return result
+
+
+async def cancel_run(session: AsyncSession, *, run_id: UUID) -> None:
+    """Cooperative cancel: plant a stop marker and commit it.
+
+    The in-flight model call finishes and pays normally; the driver
+    starts no new step once the marker is set (see _drive_locked).
+    Only running runs cancel; anything else is a client error.
+    """
+    row = (
+        await session.execute(
+            sa.text("SELECT status FROM runs WHERE id = :run"),
+            {"run": str(run_id)},
+        )
+    ).first()
+    if row is None:
+        from app.errors import NotFoundError
+
+        raise NotFoundError(f"run {run_id} not found")
+    if row[0] != "running":
+        from app.errors import ValidationError
+
+        raise ValidationError(f"run {run_id} is {row[0]}; only running runs cancel")
+    await session.execute(
+        sa.text(
+            "UPDATE runs SET stop_marker = 'cancel requested', updated_at = now() WHERE id = :run"
+        ),
+        {"run": str(run_id)},
+    )
+    await session.commit()
 
 
 def verify_citations(citations: list[dict[str, Any]], passages: dict[str, str]) -> list[str]:
@@ -359,6 +440,15 @@ async def _drive_locked(
         }
         for entry in dag:
             step_key = str(entry["step_key"])
+            marker = (
+                await session.execute(
+                    sa.text("SELECT stop_marker FROM runs WHERE id = :run"),
+                    {"run": str(run_id)},
+                )
+            ).scalar()
+            if marker:
+                await stop_run(session, run_id=run_id, marker=str(marker))
+                return await get_run(session, run_id=run_id)
             if not all(dep in done_keys for dep in entry.get("depends_on", [])):
                 continue
             if step_key in done_keys and entry.get("input_digest"):
