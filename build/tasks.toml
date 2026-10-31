@@ -107,3 +107,21 @@ model = "muse-spark-1.3"
 effort = "high"
 max_steps = 400
 depends = ["T03c"]
+
+[[task]]
+id = "T05b"
+title = "fix the live pipeline: reader schema requires the six rubric items, block-level verified citations, parser_spec written and reused, NUL-safe ledger, re-plan with variant"
+prompt = "build/tasks/T05b.md"
+model = "muse-wonder-1.0"
+effort = "high"
+max_steps = 600
+depends = ["T05"]
+
+[[task]]
+id = "T06a"
+title = "learner and teacher API: enrolment views, learner serializers without keys, code-graded answers, find-the-error attempts, module test, teacher report, quotes-only tutor"
+prompt = "build/tasks/T06a.md"
+model = "muse-spark-1.3"
+effort = "high"
+max_steps = 500
+depends = ["T05b"]

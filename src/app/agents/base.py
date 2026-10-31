@@ -41,6 +41,7 @@ AGENT_SCHEMAS: dict[str, dict[str, object]] = {
     "reader": tree.READER_SCHEMA,
     "saboteur": tree.SABOTEUR_SCHEMA,
     "continuity": tree.CONTINUITY_SCHEMA,
+    "translator": tree.TRANSLATOR_SCHEMA,
 }
 
 

@@ -71,18 +71,112 @@ def store_path(store_root: str | Path, digest: str, suffix: str) -> Path:
     return Path(store_root) / f"{digest}{suffix}"
 
 
+_EN_STOPWORDS = frozenset(
+    {
+        "the",
+        "and",
+        "must",
+        "staff",
+        "with",
+        "from",
+        "that",
+        "this",
+        "have",
+        "will",
+        "shall",
+        "their",
+        "ensure",
+        "which",
+        "what",
+        "about",
+        "because",
+        "between",
+        "through",
+        "during",
+        "requires",
+        "article",
+    }
+)
+_NB_STOPWORDS = _NB_MARKERS | frozenset(
+    {
+        "og",
+        "må",
+        "som",
+        "med",
+        "blir",
+        "være",
+        "eller",
+        "sørge",
+        "får",
+        "opplæring",
+        "arbeidsgivere",
+        "skal",
+        "sine",
+        "denne",
+    }
+)
+_UK_STOPWORDS = frozenset(
+    {
+        "та",
+        "для",
+        "що",
+        "який",
+        "яка",
+        "які",
+        "повинні",
+        "можуть",
+        "цього",
+        "також",
+        "або",
+        "працівників",
+        "працівники",
+        "навчання",
+        "проходять",
+        "курс",
+        "доступний",
+        "тому",
+    }
+)
+
+
 def detect_language(text: str) -> str:
-    """Code heuristics for en/nb/uk (BRIEF §9): Cyrillic is uk, æøå or
-    Norwegian-only words are nb, everything else is en. A stored
-    override wins over this guess wherever callers accept one."""
+    """Code heuristics for en/nb/uk (BRIEF §9): script plus stopwords.
+
+    Cyrillic script is uk, æøå is nb; otherwise the text scores
+    against per-language stopword lists and the winner takes it, with
+    English as the scoreless default. A stored override wins over this
+    guess wherever callers accept one.
+    """
     if re.search(r"[Ѐ-џ]", text):
         return "uk"
     if re.search(r"[æøåÆØÅ]", text):
         return "nb"
-    words = set(re.findall(r"[a-zæøå]+", text.lower()))
-    if words & _NB_MARKERS:
-        return "nb"
-    return "en"
+    words = set(re.findall(r"[^\W\d_]+", text.lower()))
+    scores = {
+        "en": len(words & _EN_STOPWORDS),
+        "nb": len(words & _NB_STOPWORDS),
+        "uk": len(words & _UK_STOPWORDS),
+    }
+    best = max(scores, key=lambda lang: scores[lang])
+    if scores[best] == 0:
+        return "en"
+    if best == "nb" and scores["nb"] < scores["en"]:
+        return "en"
+    if best == "uk" and max(scores["en"], scores["nb"]) >= scores["uk"]:
+        return "en"
+    return best
+
+
+async def set_passage_language_override(
+    session: AsyncSession, *, passage_id: str, language: str
+) -> str:
+    """Store a human language override on one passage; return its ts_config."""
+    config = ts_config_for_language(language)
+    await session.execute(
+        sa.text("UPDATE passages SET ts_config = :cfg WHERE id = :pid"),
+        {"cfg": config, "pid": passage_id},
+    )
+    return config
 
 
 def ts_config_for_passage(text: str, override: str | None = None) -> str:

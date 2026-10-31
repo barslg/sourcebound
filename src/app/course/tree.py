@@ -412,6 +412,17 @@ SABOTEUR_SCHEMA: dict[str, Any] = _strict_object(
     }
 )
 
+TRANSLATOR_SCHEMA: dict[str, Any] = _strict_object(
+    {
+        "segments": {
+            "type": "array",
+            "items": _strict_object({"id": _string(), "text": _string()}),
+        },
+    }
+)
+
+GLOSSARY_SCHEMA: dict[str, Any] = TRANSLATOR_SCHEMA
+
 CONTINUITY_SCHEMA: dict[str, Any] = _strict_object(
     {
         "handoffs": {

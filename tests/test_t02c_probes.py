@@ -935,7 +935,9 @@ def test_t02c_downgrade_survives_orphaned_audit_and_pending(fresh_database: str)
     command.upgrade(cfg, "head")
     with psycopg.connect(sync_dsn) as conn:
         version = conn.execute("SELECT version_num FROM alembic_version").fetchone()[0]
-        assert version == "0012"
+        from alembic.script import ScriptDirectory
+
+        assert version in ScriptDirectory.from_config(cfg).get_heads()
         orphans = conn.execute(
             "SELECT count(*) FROM audit_log WHERE actor_id IS NOT NULL"
             " AND actor_id NOT IN (SELECT id FROM users)"

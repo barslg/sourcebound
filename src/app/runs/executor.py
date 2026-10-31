@@ -986,6 +986,199 @@ async def rework_blocks_step(
     await session.commit()
 
 
+async def translate_glossary_step(
+    session: AsyncSession,
+    *,
+    run_id: UUID,
+    entry: dict[str, Any],
+    provider_factory: Callable[[AsyncSession], Any],
+) -> None:
+    """Glossary-first pass: translate bare terms before any block.
+
+    The only model-call site for term tables; the per-block steps read
+    this output and the translator must use its terms. Code checks term
+    use per segment after the run.
+    """
+    from app.agents import translator
+    from app.llm.prompts import cache_key
+
+    step_key = str(entry["step_key"])
+    source_language = str(entry.get("source_language", "en"))
+    target_language = str(entry["target_language"])
+    course_id = str(entry.get("course_id", ""))
+    terms = dict(entry.get("terms", {}))
+    if not terms:
+        claim = await claim_step(
+            session,
+            run_id=run_id,
+            step_key=step_key,
+            input_digest=input_digest_of({"kind": "glossary", "terms": {}}),
+        )
+        if claim["reused_output"] is None:
+            await finish_step(session, step_id=claim["step_id"], output={"terms": {}})
+        await session.commit()
+        return
+    prompt = translator.build_glossary_prompt(
+        terms=terms,
+        source_language=source_language,
+        target_language=target_language,
+    )
+    digest = step_digest(agent="translator", prompt=prompt, upstream={"glossary": target_language})
+    claim = await claim_step(session, run_id=run_id, step_key=step_key, input_digest=digest)
+    provider = provider_factory(session)
+    if claim["reused_output"] is not None:
+        output = dict(claim["reused_output"])
+    else:
+        expected = set(terms)
+        reply = await provider.generate_json(
+            agent="translator",
+            prompt=prompt,
+            schema=translator.schema(),
+            cache_key=cache_key("translator", "glossary", course_id or target_language),
+            run_id=run_id,
+            step_id=claim["step_id"],
+            variant=int(claim["attempt"]) - 1,
+            check=lambda answer: translator.check_translator_output(answer, expected_ids=expected),
+        )
+        output = {
+            "terms": {str(item["id"]): str(item["text"]) for item in reply.get("segments", [])}
+        }
+        await finish_step(session, step_id=claim["step_id"], output=output)
+    await session.commit()
+
+
+async def translate_block_step(
+    session: AsyncSession,
+    *,
+    run_id: UUID,
+    entry: dict[str, Any],
+    provider_factory: Callable[[AsyncSession], Any],
+) -> None:
+    """One translator call per block: plain segments in, segments out.
+
+    Translation-memory hits and the planted sentence's exclusion are
+    resolved here, before the call, so unchanged blocks never repay.
+    Structure, citations, answer keys, and checks stay in
+    app/translation; this step only pays for the model call.
+    """
+    from app.agents import translator
+    from app.llm.prompts import cache_key
+    from app.translation import memory, segments
+
+    step_key = str(entry["step_key"])
+    block_type = str(entry.get("block_type", "reading"))
+    content = dict(entry.get("content", {}))
+    source_language = str(entry.get("source_language", "en"))
+    target_language = str(entry["target_language"])
+    course_id = str(entry.get("course_id", ""))
+    node_id = str(entry.get("plan_node_id", step_key))
+    glossary = await _translation_glossary(session, run_id=run_id, target_language=target_language)
+    wanted = segments.extract_segments(block_type, content)
+    planted_id = segments.planted_segment_id(content)
+    cached: dict[str, str] = {}
+    missing: list[dict[str, str]] = []
+    for segment in wanted:
+        if segment["id"] == planted_id:
+            continue
+        hit = await memory.tm_lookup(
+            session,
+            source_text=segment["text"],
+            source_language=source_language,
+            target_language=target_language,
+        )
+        if hit is None:
+            missing.append(segment)
+        else:
+            cached[segment["id"]] = hit
+    batches = [missing] if missing else []
+    if planted_id is not None:
+        batches.append([seg for seg in wanted if seg["id"] == planted_id])
+    if not batches:
+        claim = await claim_step(
+            session,
+            run_id=run_id,
+            step_key=step_key,
+            input_digest=input_digest_of(
+                {"kind": "translate", "node": node_id, "lang": target_language}
+            ),
+        )
+        if claim["reused_output"] is None:
+            await finish_step(
+                session,
+                step_id=claim["step_id"],
+                output={
+                    "translations": cached,
+                    "planted_ids": [planted_id] if planted_id else [],
+                },
+            )
+        await session.commit()
+        return
+    prompts = [
+        translator.build_translator_prompt(
+            segments=batch,
+            source_language=source_language,
+            target_language=target_language,
+            glossary=glossary,
+            course_id=course_id,
+        )
+        for batch in batches
+    ]
+    digest = step_digest(
+        agent="translator",
+        prompt=json.dumps(prompts, ensure_ascii=False, sort_keys=True),
+        upstream={"node": node_id},
+    )
+    claim = await claim_step(session, run_id=run_id, step_key=step_key, input_digest=digest)
+    provider = provider_factory(session)
+    if claim["reused_output"] is not None:
+        output = dict(claim["reused_output"])
+    else:
+        fresh: dict[str, str] = {}
+
+        def _check_batch(answer: dict[str, Any], expected: set[str]) -> list[str]:
+            return translator.check_translator_output(answer, expected_ids=expected)
+
+        for batch, prompt in zip(batches, prompts, strict=True):
+            expected = {segment["id"] for segment in batch}
+            reply = await provider.generate_json(
+                agent="translator",
+                prompt=prompt,
+                schema=translator.schema(),
+                cache_key=cache_key("translator", block_type, course_id or node_id),
+                run_id=run_id,
+                step_id=claim["step_id"],
+                variant=int(claim["attempt"]) - 1,
+                check=lambda answer, want=expected: _check_batch(answer, want),
+            )
+            for item in reply.get("segments", []):
+                fresh[str(item["id"])] = str(item["text"])
+        output = {
+            "translations": {**cached, **fresh},
+            "planted_ids": [planted_id] if planted_id else [],
+        }
+        await finish_step(session, step_id=claim["step_id"], output=output)
+    await session.commit()
+
+
+async def _translation_glossary(
+    session: AsyncSession, *, run_id: UUID, target_language: str
+) -> dict[str, str]:
+    """Term table of this run's glossary step (empty when not done yet)."""
+    row = (
+        await session.execute(
+            sa.text(
+                "SELECT output FROM run_steps"
+                " WHERE run_id = :run AND step_key = :key AND status = 'done'"
+            ),
+            {"run": str(run_id), "key": f"translator_glossary:{target_language}"},
+        )
+    ).first()
+    if row is None or not isinstance(row[0], dict):
+        return {}
+    terms = row[0].get("terms")
+    return {str(k): str(v) for k, v in terms.items()} if isinstance(terms, dict) else {}
+
+
 GENERATION_HANDLERS: dict[str, str] = {
     "generate_block": "generate_block_step",
     "read_topic": "read_topic_step",
