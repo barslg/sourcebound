@@ -65,6 +65,31 @@ class LLMError(AppError):
     error_code = "llm_unavailable"
 
 
+class UnparseableReplyError(LLMError):
+    """A paid reply that is not a strict JSON object: kept for the ledger.
+
+    The call completed and was billed, so the usage and the raw text
+    travel with the error and the provider logs them before re-raising.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        raw_text: str = "",
+        input_tokens: int = 0,
+        cached_tokens: int = 0,
+        output_tokens: int = 0,
+        reasoning_tokens: int = 0,
+    ) -> None:
+        super().__init__(message)
+        self.raw_text = raw_text
+        self.input_tokens = input_tokens
+        self.cached_tokens = cached_tokens
+        self.output_tokens = output_tokens
+        self.reasoning_tokens = reasoning_tokens
+
+
 class ConfigurationError(AppError):
     """The service is misconfigured (a missing key, a bad setting)."""
 
@@ -124,15 +149,12 @@ async def _render(request: Request, exc: Exception) -> JSONResponse:
 
     code = _error_code(exc)
     locale = _request_locale(request)
+    message = str(exc) if isinstance(exc, AppError) and str(exc) else error_message(code, "en")
+    content: dict[str, Any] = {"error": code, "message": message}
     if locale is not None:
-        # An explicit language gets the localised catalogue message.
-        message = error_message(code, locale)
-    else:
-        message = str(exc) if isinstance(exc, AppError) else "internal error"
-    return JSONResponse(
-        status_code=http_status_for(exc),
-        content={"error": code, "message": message},
-    )
+        # The specific message stays; the localised catalogue sentence rides beside it.
+        content["localized_message"] = error_message(code, locale)
+    return JSONResponse(status_code=http_status_for(exc), content=content)
 
 
 def register_exception_handlers(app: FastAPI) -> None:
