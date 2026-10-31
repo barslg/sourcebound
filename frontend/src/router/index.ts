@@ -8,6 +8,7 @@ declare module 'vue-router' {
     public?: boolean
     navKey?: string
     bare?: boolean
+    icon?: string
   }
 }
 
@@ -16,15 +17,15 @@ export const routes: RouteRecordRaw[] = [
   { path: '/invite/:token', component: () => import('@/views/InviteAcceptView.vue'), meta: { public: true, bare: true } },
   { path: '/waiting', component: () => import('@/views/WaitingView.vue'), meta: { bare: true } },
   { path: '/', redirect: '/courses', meta: {} },
-  { path: '/courses', component: () => import('@/views/CoursesView.vue'), meta: { perm: 'section.courses', navKey: 'nav.courses' } },
+  { path: '/courses', component: () => import('@/views/CoursesView.vue'), meta: { perm: 'section.courses', navKey: 'nav.courses', icon: 'pi pi-book' } },
   { path: '/courses/:id/sources', component: () => import('@/views/course/SourcesView.vue'), meta: { perm: 'section.courses' } },
   { path: '/courses/:id/plan', component: () => import('@/views/course/PlanView.vue'), meta: { perm: 'section.courses' } },
   { path: '/courses/:id/fix', component: () => import('@/views/course/FixView.vue'), meta: { perm: 'section.courses' } },
   { path: '/courses/:id/publish', component: () => import('@/views/course/PublishView.vue'), meta: { perm: 'section.courses' } },
   { path: '/runs/:runId', component: () => import('@/views/RunView.vue'), meta: { perm: 'section.runs' } },
-  { path: '/users', component: () => import('@/views/UsersView.vue'), meta: { perm: 'user.list', navKey: 'nav.users' } },
-  { path: '/invites', component: () => import('@/views/InvitesView.vue'), meta: { perm: 'invite.create', navKey: 'nav.invites' } },
-  { path: '/roles', component: () => import('@/views/RolesView.vue'), meta: { perm: 'role.edit', navKey: 'nav.roles' } },
+  { path: '/users', component: () => import('@/views/UsersView.vue'), meta: { perm: 'user.list', navKey: 'nav.users', icon: 'pi pi-users' } },
+  { path: '/invites', component: () => import('@/views/InvitesView.vue'), meta: { perm: 'invite.create', navKey: 'nav.invites', icon: 'pi pi-share-alt' } },
+  { path: '/roles', component: () => import('@/views/RolesView.vue'), meta: { perm: 'role.edit', navKey: 'nav.roles', icon: 'pi pi-shield' } },
   { path: '/:rest(.*)*', component: () => import('@/views/NotFoundView.vue'), meta: {} },
 ]
 
@@ -32,7 +33,11 @@ export function sectionEntries(): SectionEntry[] {
   return routes.filter((r) => r.meta?.perm && r.meta.navKey).map((r) => ({ path: r.path, perm: r.meta?.perm as string }))
 }
 
-export const router = createRouter({ history: createWebHistory(), routes })
+export const router = createRouter({
+  history: createWebHistory(),
+  routes,
+  scrollBehavior: (to) => (to.hash ? { el: to.hash, behavior: 'smooth' } : undefined),
+})
 
 router.beforeEach(async (to) => {
   const session = useSessionStore()

@@ -9,7 +9,8 @@
     "roles": "Roles",
     "label": "Main navigation",
     "skip": "Skip to content",
-    "invites": "Invites"
+    "invites": "Invites",
+    "thisCourse": "This course"
   },
   "common": {
     "loading": "Loading",
@@ -31,25 +32,26 @@
     "emptyPage": "Nothing here yet.",
     "noResults": "Nothing matches your search.",
     "page": "Page {page}",
-    "reason": "Needs the permission {code}.",
     "unsavedTitle": "Discard your changes?",
     "unsavedBody": "You have edits that were not saved.",
     "keepEditing": "Keep editing",
     "discard": "Discard",
-    "tagsHint": "Comma-separated, for example: ai-act, hms",
+    "tagsHint": "Optional, comma-separated. Empty means all courses. Example: nursing, hms",
     "queued": "Queued",
     "done": "Done",
     "failed": "Failed",
-    "running": "Running"
+    "running": "Running",
+    "breadcrumb": "You are here",
+    "deniedHome": "Go to the first page you can use"
   },
   "shell": {
     "theme": "Theme",
-    "light": "Light",
-    "dark": "Dark",
     "language": "Language",
     "signOut": "Sign out",
     "signedInAs": "Signed in as {name}",
-    "admin": "Administrator"
+    "admin": "Administrator",
+    "toDark": "Switch to dark theme",
+    "toLight": "Switch to light theme"
   },
   "locale": {
     "en": "English",
@@ -73,29 +75,46 @@
     "signin": "Sign in and accept",
     "accepting": "Accepting the invitation",
     "accepted": "Invitation accepted",
-    "scopes": "You now have access to: {scopes}",
+    "scopes": "You now have access to the course you were invited to.",
     "noScopes": "The invitation was accepted.",
-    "open": "Open the app"
+    "open": "Open the app",
+    "help": "You were invited to a course. Sign in to accept it."
   },
   "bell": {
     "title": "Notifications",
-    "empty": "No operations yet. Long actions appear here while they run.",
-    "run": "Run a test operation",
-    "running": "Starting",
-    "message": "Test operation from the interface",
+    "empty": "Nothing is running. Start a plan or generate a course and the job appears here.",
     "open": "Open notifications",
     "unread": "{count} new",
     "progress": "{percent} percent",
     "error": "Error: {message}",
     "earlier": "From the server",
-    "markFailed": "Could not mark as read: {message}"
+    "markFailed": "Could not mark as read: {message}",
+    "help": "Long jobs such as writing a plan or generating a course are listed here while they run."
   },
   "op": {
     "queuedToast": "Queued. You will find it in the bell.",
     "doneToast": "Operation finished.",
     "failedToast": "Operation failed: {message}",
     "kind": "Kind: {kind}",
-    "echo": "Test operation"
+    "kinds": {
+      "echo": "Test task",
+      "plan_course": "Writing the plan",
+      "plan": "Writing the plan",
+      "generate": "Generating the course",
+      "generate_course": "Generating the course",
+      "rewrite_block": "Rewriting a block",
+      "rewrite_held_batch": "Rewriting held blocks",
+      "transcribe_audio": "Turning audio into text"
+    },
+    "statuses": {
+      "queued": "Queued",
+      "running": "Running",
+      "done": "Done",
+      "succeeded": "Done",
+      "failed": "Failed",
+      "error": "Failed",
+      "cancelled": "Cancelled"
+    }
   },
   "users": {
     "title": "Users",
@@ -113,15 +132,15 @@
     "assignTitle": "Assign a role to {name}",
     "role": "Role",
     "rolePlaceholder": "Choose a role",
-    "scope": "Scope tags",
+    "scope": "Limit to courses with these labels",
     "assigned": "Role assigned.",
-    "ban": "Ban",
+    "ban": "Ban user",
     "banTitle": "Ban {name}",
     "banBody": "The account cannot sign in again and its sessions end.",
     "banReason": "Reason",
     "banReasonHint": "For example: left the organisation",
     "banned_ok": "Account banned.",
-    "delete": "Delete",
+    "delete": "Delete user",
     "deleteTitle": "Delete {name}",
     "deleteBody": "This removes the personal data of {name} and cannot be undone.",
     "heir": "Heir for owned material",
@@ -129,7 +148,17 @@
     "heirHint": "If this person owns courses or sources, choose who takes them over.",
     "legacyOption": "Keep a legacy holder that can never sign in",
     "deleted": "Account deleted.",
-    "confirmType": "Delete {name}"
+    "confirmType": "Delete {name}",
+    "alreadyBanned": "Already banned.",
+    "help": "Everyone with an account, their roles and their status.",
+    "invitePeople": "Invite people",
+    "itsYou": "This is your own account.",
+    "legacyHint": "Choose this if nobody should take over the courses.",
+    "noRoles": "No role",
+    "pickRole": "Choose a role first.",
+    "roleHint": "The role decides which pages and actions the person gets.",
+    "roles": "Roles",
+    "typeReason": "Type a reason first."
   },
   "roles": {
     "title": "Roles",
@@ -138,7 +167,7 @@
     "scope": "Scope tags",
     "empty": "No roles yet.",
     "new": "New role",
-    "edit": "Edit",
+    "edit": "Edit role",
     "editTitle": "Edit role {name}",
     "newTitle": "New role",
     "nameHint": "For example: editor",
@@ -149,24 +178,36 @@
     "deleteBody": "Everyone who holds this role loses it. This cannot be undone.",
     "count": "{count} permissions",
     "global": "All courses",
-    "crud": "Record matrix",
-    "noCrud": "No record rules"
+    "builtIn": "The built-in administrator role is fixed.",
+    "createButton": "Create role",
+    "deleteButton": "Delete role",
+    "help": "A role is a set of permissions. Assign it to people on the Users page.",
+    "holders": "Held by",
+    "noHolders": "Nobody yet",
+    "saveButton": "Save role",
+    "scopeHint": "Optional. Limits the role to courses with these labels; empty means all courses. Example: nursing",
+    "typeName": "Type a name first."
   },
   "courses": {
     "title": "My courses",
-    "empty": "You have no courses yet.",
+    "empty": "You have no courses yet. A course is built from approved sources, a plan and checked blocks.",
     "created": "Course created.",
     "new": "New course",
     "newTitle": "New course",
     "titleLabel": "Title",
     "titleHint": "For example: Fire safety basics",
     "language": "Language",
-    "tags": "Scope tags"
+    "tags": "Scope tags",
+    "count": "You have {count}.",
+    "createButton": "Create course",
+    "first": "Create your first course",
+    "help": "Every course you author, with the next step it needs.",
+    "languageHint": "The language learners read the course in.",
+    "typeTitle": "Type a title first."
   },
   "invites": {
     "title": "Invite links",
-    "intro": "An invite gives the student role on the courses you name. The link is shown once; copy it now.",
-    "tags": "Course tags",
+    "intro": "An invite gives a learner the student role on one course. Pick the course, create the link and send it.",
     "maxUses": "Seats",
     "maxUsesHint": "Optional. Leave empty for unlimited, for example: 30",
     "expires": "Expires",
@@ -174,10 +215,9 @@
     "create": "Create invite",
     "created": "Invite created.",
     "revoked": "Invite revoked.",
-    "link": "Link",
     "uses": "Used {used} of {max}",
     "usesUnlimited": "Used {used}",
-    "revoke": "Revoke",
+    "revoke": "Revoke invite",
     "revokedChip": "Revoked",
     "empty": "No invites yet.",
     "copy": "Copy link",
@@ -185,8 +225,18 @@
     "expiresOn": "Expires {date}",
     "noExpiry": "No expiry",
     "earlier": "Existing invites",
-    "linkOnce": "The link of an invite is shown only when it is created.",
-    "createdNow": "New link"
+    "linkOnce": "The link of an invite is shown only when it is created; copy it now.",
+    "createdNow": "New link",
+    "alreadyRevoked": "Already revoked.",
+    "course": "Course",
+    "courseHint": "The invite opens this course for the learner. Example: Hand hygiene",
+    "coursePlaceholder": "Choose a course",
+    "earlierHelp": "Every invite you can see, with the course it opens.",
+    "emptyAction": "Create the first invite",
+    "noneNew": "No new link in this visit. Create an invite above.",
+    "pickCourse": "Choose a course first.",
+    "reloadToRevoke": "Reload the page to revoke this one.",
+    "unknownCourse": "A course you cannot see"
   },
   "needs": {
     "profile": "set the course profile",
@@ -194,7 +244,9 @@
     "questions": "answer the open questions",
     "generate": "generate the course",
     "publish": "review and publish",
-    "nothing": "nothing, it is published"
+    "nothing": "nothing, it is published",
+    "sources": "approve the waiting sources",
+    "fix": "fix the held blocks"
   },
   "course": {
     "status": {
@@ -205,10 +257,39 @@
     "tabSources": "Sources",
     "tabPlan": "Plan",
     "tabFix": "What to fix",
-    "tabPublish": "Publish"
+    "tabPublish": "Publish",
+    "blockedBy": "Blocked: {why}",
+    "needsNowLabel": "Needs now:",
+    "pendingCount": "{n} pending",
+    "questionCount": "{count} open questions | {count} open question | {count} open questions",
+    "stages": "Course stages",
+    "help": {
+      "sources": "Add the sources the course may quote and approve each one before it is used.",
+      "plan": "Edit the outline, answer the open questions, then generate the course.",
+      "fix": "Blocks the checker held back, each with the reason and the source passage.",
+      "publish": "Check the summary, publish, and share the course with learners."
+    },
+    "stage": {
+      "sources": "Sources",
+      "plan": "Plan",
+      "generate": "Generate",
+      "fix": "What to fix",
+      "publish": "Publish"
+    },
+    "state": {
+      "done": "Done",
+      "needs": "Needs you",
+      "blocked": "Blocked",
+      "later": "Not yet"
+    },
+    "why": {
+      "plan": "no plan yet",
+      "questions": "open questions",
+      "held": "held blocks"
+    }
   },
   "sources": {
-    "add": "Add a source",
+    "add": "Add source",
     "addHint": "Every block of the course will point back to a passage of an approved source.",
     "file": "File",
     "mediaLabel": "Kind of file",
@@ -223,25 +304,24 @@
     "licenceHint": "Optional, for example: CC BY 4.0",
     "asOf": "As of",
     "asOfHint": "Optional, for example: 2026-01-15",
-    "upload": "Upload",
+    "upload": "Upload file",
     "uploaded": "Source uploaded.",
     "url": "Web address",
     "urlHint": "For example: https://example.org/guide",
-    "fetch": "Add address",
+    "fetch": "Add web address",
     "fetched": "Page added as a source.",
     "queuedForHuman": "The site forbids automatic fetching. A person has to decide.",
     "waitsForHuman": "Waits for a person",
-    "candidates": "Candidates to approve",
-    "empty": "No sources yet. Upload a file or add a web address above.",
-    "approve": "Approve",
-    "reject": "Reject",
+    "candidates": "Waiting for your approval",
+    "empty": "No sources yet. Every block of the course points back to a passage of an approved source, so start here.",
+    "approve": "Approve source",
+    "reject": "Reject source",
     "approved": "Source approved.",
     "rejected": "Source rejected.",
-    "library": "Approved sources",
+    "library": "Decided sources",
     "libraryEmpty": "No approved sources yet.",
     "noLicence": "licence not stated",
     "asOfOn": "as of {date}",
-    "progress": "Processing progress",
     "passages": {
       "some": "{n} passages read",
       "none": "No passages read yet"
@@ -250,6 +330,31 @@
       "approved": "Approved",
       "held": "Rejected",
       "pending": "Waiting for you"
+    },
+    "addFirst": "Add your first source",
+    "addressApproved": "Address approved and read.",
+    "addressDismissed": "Address dismissed.",
+    "approveAddress": "Approve address",
+    "dismissAddress": "Dismiss address",
+    "candidatesHelp": "Read, but not used until you approve them.",
+    "chooseFile": "Choose a file first.",
+    "fileHint": "PDF, Markdown, plain text, an image or audio. Example: hygiene-guide.pdf",
+    "fromAddress": "From a web address",
+    "fromAddressHelp": "The page is fetched and read. A site that forbids this waits for a person.",
+    "fromFile": "From a file",
+    "fromFileHelp": "The kind is detected from the file name; change it if it is wrong.",
+    "libraryHelp": "Sources you approved or rejected.",
+    "mediaHint": "Audio is turned into text after upload; its state shows in the list.",
+    "noCandidates": "Nothing is waiting for your approval.",
+    "or": "or",
+    "typeAddress": "Type a web address first.",
+    "waitingAddresses": "Addresses waiting for a person",
+    "waitingAddressesHelp": "These sites forbid automatic fetching. Approve to read them anyway, or dismiss.",
+    "ingest": {
+      "queued": "Waiting to be read",
+      "parsing": "Being read",
+      "ready": "Read",
+      "failed": "Could not be read"
     }
   },
   "plan": {
@@ -261,10 +366,10 @@
     "keepMine": "Keep mine",
     "treeLabel": "Plan tree",
     "topicLabel": "Selected part",
-    "empty": "The plan is empty. Build it from your sources on the right.",
+    "empty": "The plan is empty. Choose a method and what to look for, then build it.",
     "pick": "Pick a module or a topic in the tree.",
     "nodeTitle": "Title",
-    "rename": "Rename",
+    "rename": "Apply new title",
     "moveUp": "Move up",
     "moveDown": "Move down",
     "deleteTitle": "Delete {name}",
@@ -278,31 +383,62 @@
       "practice": "Practice",
       "test": "Test"
     },
-    "constraints": "Constraints",
-    "noConstraints": "No constraints on this course.",
-    "required": "Required",
-    "unanswered": "not answered",
-    "before": "Before generating",
+    "before": "Open questions",
     "noQuestions": "No open questions.",
-    "answerHint": "Your answer is kept with the plan when you save.",
-    "answer": "Answer",
-    "answerStaged": "Answer waits for save",
-    "forecast": "Forecast, not a limit",
-    "forecastLine": "About {blocks} blocks, about ${cost}",
-    "forecastNote": "Forecast, not a limit.",
+    "answerHint": "Saved with the plan as soon as you press Save answer.",
+    "answer": "Save answer",
+    "forecastLine": "About {blocks}, about {cost}",
+    "forecastNote": "A forecast, not a limit.",
     "generate": "Generate course",
     "saveFirst": "Save the plan before generating.",
     "questionsOpen": "Answer the open questions first.",
     "openRun": "Open the run",
     "build": "Build the plan",
-    "methodology": "Methodologies",
-    "methodologyHint": "Comma-separated codes, for example: worked-examples, retrieval-practice",
+    "methodology": "How the course teaches",
+    "methodologyHint": "Pick one or more. You can combine methods that fit together.",
     "audience": "Audience",
-    "audienceHint": "Optional, for example: new nurses",
+    "audienceHint": "Optional. Example: new nurses",
     "queries": "What to look for in the sources",
-    "queriesHint": "One search per line, for example: hand hygiene steps",
+    "queriesHint": "One search per line. Example: hand hygiene steps",
     "buildButton": "Build plan",
-    "treeToggle": "Show or hide the topics of {name}"
+    "treeToggle": "Show or hide the topics of {name}",
+    "alreadyFirst": "Already first.",
+    "alreadyLast": "Already last.",
+    "alreadyQueued": "Already queued; wait for it to finish.",
+    "answered": "Answered questions",
+    "answeredHelp": "What you told the course about its learners.",
+    "beforeHelp": "Questions the course needs answered before it can be written. Each card saves on its own.",
+    "blocksHelp": "The pieces this topic will be written as, each tied to its source passages.",
+    "bloom": "Level of thinking",
+    "bloomHint": "What learners should be able to do at the end. Example: apply",
+    "buildHelp": "Choose how the course teaches and what to look for in the sources; the outline is written for you.",
+    "deleteButton": "Delete from plan",
+    "emptyAction": "Build the plan",
+    "estimate": "Estimate",
+    "generateHelp": "Writes every block from the plan and the approved sources. It runs in the background.",
+    "generateTitle": "Generate the course",
+    "handleTitle": "Source passage {handle}; open the sources",
+    "nodeTitleHint": "Example: Why hands must be clean",
+    "nothingToSave": "Nothing to save yet.",
+    "objectivesHelp": "What a learner can do after this topic.",
+    "pickMethodology": "Choose at least one method first.",
+    "purpose": "Purpose",
+    "purposeHelp": "Why this module exists and which topics it holds.",
+    "renameFirst": "Type a different title first.",
+    "topicHelp": "Edit the chosen module or topic and see its blocks.",
+    "treeHelp": "The outline of the course. Drag to reorder; changes are saved with Save plan.",
+    "typeAnswer": "Type an answer first.",
+    "typeQueries": "Write at least one thing to look for.",
+    "blockType": {
+      "text": "Text",
+      "reading": "Reading",
+      "figure": "Figure",
+      "choice": "Multiple choice",
+      "matching": "Matching",
+      "cloze": "Fill the gap",
+      "scenario_practice": "Scenario practice",
+      "spot_the_error": "Spot the error"
+    }
   },
   "run": {
     "title": "Generation run",
@@ -322,24 +458,35 @@
     },
     "lineStopped": "Stopped: {why}",
     "lineDone": "Everything is ready.",
-    "lineStep": "Working on {step}.",
+    "lineStep": "Working on step {step} of {total}.",
     "lineWaiting": "Waiting for the next step.",
     "cost": "Spent so far: {spent}. Forecast: {forecast}.",
     "spentUnknown": "not reported yet",
     "noForecast": "none yet",
-    "resume": "Resume",
+    "resume": "Resume run",
     "resumed": "Run resumed.",
     "cancel": "Cancel run",
     "cancelled": "Run cancelled.",
     "resumeHint": "Resume continues from the last good step; nothing paid is paid again.",
     "topics": "Topics",
-    "noTopics": "This course has no topics yet."
+    "noTopics": "This course has no topics yet.",
+    "backToCourse": "Back to {name}",
+    "cancelOnlyRunning": "Only a running run can be cancelled.",
+    "costTitle": "Cost",
+    "held": "Held blocks",
+    "heldHelp": "Each links to the block and its reason.",
+    "help": "What the generation is doing now, what it has cost, and where it needs you.",
+    "resumeOnlyStopped": "Only a stopped run can be resumed.",
+    "stepN": "Step {n}",
+    "steps": "Steps",
+    "stepsHelp": "Each step writes or checks one block.",
+    "topicsHelp": "Where each topic stands."
   },
   "fix": {
     "title": "What to fix",
-    "empty": "Nothing is held back. Every block passed its checks.",
-    "rewrite": "Rewrite",
-    "edit": "Edit",
+    "empty": "Nothing is held back. Every generated block passed its checks.",
+    "rewrite": "Rewrite block",
+    "edit": "Edit brief",
     "accept": "Accept as checked by me",
     "editLabel": "Block brief",
     "done": {
@@ -348,8 +495,15 @@
       "edit": "Block saved.",
       "batch": "Rewrite of all held blocks queued."
     },
-    "batch": "Rewrite {count} held blocks, about ${price}",
-    "noPassage": "The source passage is not available."
+    "batch": "Rewrite all held blocks ({count}, about {price})",
+    "noPassage": "The source passage is not available.",
+    "editHint": "Describe what the block should say; do not paste the answer into the question.",
+    "goGenerate": "Go to Generate",
+    "goPublish": "Go to Publish",
+    "help": "Each row is a block the checker held back. Rewrite it, edit its brief, or accept it after you checked it.",
+    "notGenerated": "Nothing to fix yet: generate the course first.",
+    "openSources": "Open the sources",
+    "saveBrief": "Save brief"
   },
   "publish": {
     "title": "Publish",
@@ -360,12 +514,78 @@
     "reviewVisible": "Learners with an invite will see this version.",
     "confirm": "Publish",
     "done": "Course published.",
-    "published": "Published version {version}."
+    "published": "Published. Learners with an invite see this version.",
+    "fixThem": "Fix them",
+    "held": "Held blocks: {count}",
+    "heldFirst": "Fix {count} first.",
+    "help": "Publishing freezes a version that invited learners will see.",
+    "questions": "Open questions: {count}",
+    "share": "Share with learners",
+    "shareHelp": "Invite links are made on the Invites page, with this course already chosen.",
+    "shareLink": "Create an invite link for this course",
+    "summary": "Summary",
+    "summaryHelp": "What you are about to publish.",
+    "topics": "Topics: {count}"
   },
   "notification": {
     "kind": {
       "operation_done": "Operation finished",
       "other": "Notification"
     }
+  },
+  "count": {
+    "block": "{count} blocks | {count} block | {count} blocks",
+    "course": "{count} courses | {count} course | {count} courses",
+    "permission": "{count} permissions | {count} permission | {count} permissions",
+    "question": "{count} open questions | {count} open question | {count} open questions",
+    "topic": "{count} topics | {count} topic | {count} topics"
+  },
+  "notFound": {
+    "help": "The page you asked for does not exist or you may not open it.",
+    "open": "Go to the start page",
+    "title": "Page not found"
+  },
+  "methodology": {
+    "direct_instruction": {
+      "name": "Direct instruction",
+      "line": "Teach, show an example, then check understanding."
+    },
+    "merrill_first_principles": {
+      "name": "Merrill's First Principles",
+      "line": "Start from a real case, show, let learners apply, then integrate."
+    },
+    "backward_design": {
+      "name": "Backward design",
+      "line": "Outcomes first, then evidence, then the learning plan."
+    },
+    "kolb_experiential": {
+      "name": "Kolb experiential learning",
+      "line": "Experience, reflect, form concepts, try it out."
+    }
+  },
+  "bloom": {
+    "remember": "Remember",
+    "understand": "Understand",
+    "apply": "Apply",
+    "analyze": "Analyse",
+    "evaluate": "Evaluate"
+  },
+  "reason": {
+    "course_create": "Your role does not allow creating courses.",
+    "course_edit": "Your role does not allow editing courses.",
+    "course_plan": "Your role does not allow planning courses.",
+    "course_generate": "Your role does not allow generating courses.",
+    "course_publish": "Your role does not allow publishing courses.",
+    "source_upload": "Your role does not allow adding sources.",
+    "source_approve": "Your role does not allow approving sources.",
+    "run_start": "Your role does not allow starting runs.",
+    "run_retry": "Your role does not allow resuming runs.",
+    "run_cancel": "Your role does not allow cancelling runs.",
+    "invite_create": "Your role does not allow creating invites.",
+    "invite_revoke": "Your role does not allow revoking invites.",
+    "role_edit": "Your role does not allow editing roles.",
+    "role_assign": "Your role does not allow assigning roles.",
+    "user_ban": "Your role does not allow banning users.",
+    "user_delete": "Your role does not allow deleting users."
   }
 }

@@ -13,12 +13,13 @@ const denied = computed(() => props.error !== null && props.error.status === 403
 
 <template>
   <div v-if="loading" class="state" role="status" aria-live="polite" data-view="loading">
-    <ProgressSpinner :stroke-width="4" aria-hidden="true" />
+    <ProgressSpinner stroke-width="4" aria-hidden="true" />
     <p class="muted">{{ t('common.loading') }}</p>
   </div>
   <div v-else-if="denied" class="state state-denied" role="alert" data-view="denied">
     <h2>{{ t('common.deniedTitle') }}</h2>
     <p>{{ error?.message }}</p>
+    <router-link to="/" data-testid="denied-home">{{ t('common.deniedHome') }}</router-link>
   </div>
   <div v-else-if="error" class="state state-error" role="alert" data-view="error">
     <h2>{{ t('common.errorTitle') }}</h2>

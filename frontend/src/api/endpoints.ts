@@ -40,6 +40,8 @@ export const sourceApprove = (id: string): string => `${ENDPOINTS.sources}/${enc
 export const runItem = (id: string): string => `${API}/runs/${enc(id)}`
 export const runResume = (id: string): string => `${runItem(id)}/resume`
 
+export const humanQueue = `${API}/human-queue`
+export const humanQueueResolve = (id: string): string => `${humanQueue}/${enc(id)}/resolve`
 export const courseSources = (id: string): string => `${courseItem(id)}/sources`
 export const courseEstimate = (id: string): string => `${courseItem(id)}/estimate`
 export const courseHeld = (id: string): string => `${courseItem(id)}/held`

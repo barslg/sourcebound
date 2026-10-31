@@ -6,15 +6,13 @@ import Popover from 'primevue/popover'
 import ProgressBar from 'primevue/progressbar'
 import { useOperationsStore } from '@/stores/operations'
 import { useSessionStore } from '@/stores/session'
-import { ApiError } from '@/api/client'
 import { notificationLabel } from '@/composables/notifications'
-import { notify } from '@/composables/notify'
+import { humanize } from '@/composables/labels'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const ops = useOperationsStore()
 const session = useSessionStore()
 const panel = ref<InstanceType<typeof Popover> | null>(null)
-const busy = ref(false)
 
 onMounted(() => { if (session.signedIn) void ops.loadNotifications() })
 watch(() => session.signedIn, (yes) => { if (yes) void ops.loadNotifications() })
@@ -24,16 +22,9 @@ function toggle(event: Event): void {
   ops.markAllRead()
 }
 
-async function runTest(): Promise<void> {
-  busy.value = true
-  try {
-    await ops.submitEcho(t('bell.message'))
-  } catch (cause) {
-    notify('error', cause instanceof ApiError ? cause.message : String(cause))
-  } finally {
-    busy.value = false
-  }
-}
+const kindLabel = (kind: string): string => (te(`op.kinds.${kind}`) ? t(`op.kinds.${kind}`) : humanize(kind))
+const statusLabel = (status: string): string => (te(`op.statuses.${status}`) ? t(`op.statuses.${status}`) : humanize(status))
+const runOf = (result: Record<string, unknown> | null): string | null => (result && typeof result.run_id === 'string' ? result.run_id : null)
 </script>
 
 <template>
@@ -53,16 +44,18 @@ async function runTest(): Promise<void> {
   <Popover ref="panel">
     <div class="bell-panel" role="region" :aria-label="t('bell.title')">
       <h2 class="page-title">{{ t('bell.title') }}</h2>
+      <p class="hint" data-testid="section-help">{{ t('bell.help') }}</p>
       <p v-if="ops.failure" class="mono danger-text">{{ t('bell.error', { message: ops.failure }) }}</p>
       <p v-if="ops.list.length === 0 && ops.notifications.length === 0" class="muted" data-testid="bell-empty">{{ t('bell.empty') }}</p>
       <ul v-if="ops.list.length > 0">
         <li v-for="op in ops.list" :key="op.operation_id" class="bell-item" data-testid="bell-item">
           <div class="row">
-            <span>{{ t('op.kind', { kind: op.kind }) }}</span>
-            <span class="chip row-end">{{ op.status }}</span>
+            <span>{{ kindLabel(op.kind) }}</span>
+            <span class="chip row-end">{{ statusLabel(op.status) }}</span>
           </div>
           <ProgressBar :value="Math.round(op.progress * 100)" :show-value="false" :aria-label="t('bell.progress', { percent: Math.round(op.progress * 100) })" />
           <p v-if="op.error" class="mono danger-text">{{ t('bell.error', { message: op.error }) }}</p>
+          <router-link v-if="runOf(op.result)" :to="`/runs/${runOf(op.result)}`">{{ t('plan.openRun') }}</router-link>
         </li>
       </ul>
       <template v-if="ops.notifications.length > 0">
@@ -74,15 +67,6 @@ async function runTest(): Promise<void> {
           </li>
         </ul>
       </template>
-      <Button
-        v-if="session.can('operation.run')"
-        :label="busy ? t('bell.running') : t('bell.run')"
-        :loading="busy"
-        :aria-busy="busy"
-        severity="secondary"
-        data-testid="bell-run"
-        @click="runTest"
-      />
     </div>
   </Popover>
 </template>

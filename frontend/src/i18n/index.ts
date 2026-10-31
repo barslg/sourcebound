@@ -1,4 +1,5 @@
 import { createI18n } from 'vue-i18n'
+import { pluralUk } from '@/composables/labels'
 import en from './locales/en.json'
 import nb from './locales/nb.json'
 import uk from './locales/uk.json'
@@ -11,7 +12,7 @@ type Tree = { [k: string]: string | Tree }
 
 function bracket(tree: Tree): Tree {
   const out: Tree = {}
-  for (const [k, v] of Object.entries(tree)) out[k] = typeof v === 'string' ? `[${v}]` : bracket(v)
+  for (const [k, v] of Object.entries(tree)) out[k] = typeof v === 'string' ? v.split(' | ').map((f) => `[${f}]`).join(' | ') : bracket(v)
   return out
 }
 
@@ -32,6 +33,7 @@ export const i18n = createI18n({
   legacy: false,
   locale: initial,
   fallbackLocale: 'en',
+  pluralRules: { uk: pluralUk },
   messages: { en, nb, uk, pseudo: bracket(en as Tree) },
   datetimeFormats: Object.fromEntries(
     ['en', 'nb', 'uk', 'pseudo'].map((code) => [code, { short: { dateStyle: 'medium', timeStyle: 'short' } as const }]),
