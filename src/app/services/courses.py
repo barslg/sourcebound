@@ -106,6 +106,47 @@ async def get_course(session: AsyncSession, *, course_id: UUID) -> dict[str, Any
             {"course": str(course_id)},
         )
     ).all()
+    counts = (
+        await session.execute(
+            sa.text(
+                "SELECT count(DISTINCT tp.id), count(b.id) FROM modules m"
+                " LEFT JOIN topics tp ON tp.module_id = m.id"
+                " LEFT JOIN blocks b ON b.topic_id = tp.id WHERE m.course_id = :course"
+            ),
+            {"course": str(course_id)},
+        )
+    ).one()
+    current_version = row[7]
+    if current_version is None:
+        latest = (
+            await session.execute(
+                sa.text(
+                    "SELECT id FROM course_versions WHERE course_id = :course"
+                    " ORDER BY created_at DESC LIMIT 1"
+                ),
+                {"course": str(course_id)},
+            )
+        ).first()
+        current_version = latest[0] if latest else None
+    translations = (
+        (
+            await session.execute(
+                sa.text(
+                    "SELECT ct.language, ct.status,"
+                    " count(*) FILTER (WHERE tb.status = 'ok'),"
+                    " count(*) FILTER (WHERE tb.status = 'held'),"
+                    " count(*) FILTER (WHERE tb.status = 'failed')"
+                    " FROM course_translations ct"
+                    " LEFT JOIN translation_blocks tb ON tb.translation_id = ct.id"
+                    " WHERE ct.course_version_id = :version GROUP BY ct.language, ct.status"
+                    " ORDER BY ct.language"
+                ),
+                {"version": str(current_version)},
+            )
+        ).all()
+        if current_version is not None
+        else []
+    )
     return {
         "id": str(row[0]),
         "owner_id": str(row[1]),
@@ -115,6 +156,19 @@ async def get_course(session: AsyncSession, *, course_id: UUID) -> dict[str, Any
         "scope_tags": list(row[5] or []),
         "row_version": row[6],
         "published_version_id": str(row[7]) if row[7] else None,
+        "current_version_id": str(current_version) if current_version else None,
+        "topic_count": int(counts[0]),
+        "block_count": int(counts[1]),
+        "translations": [
+            {
+                "language": str(item[0]),
+                "status": str(item[1]),
+                "ok": int(item[2]),
+                "held": int(item[3]),
+                "failed": int(item[4]),
+            }
+            for item in translations
+        ],
         "profile": (
             {
                 "methodology_codes": profile[0],
