@@ -21,10 +21,21 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.config import get_settings
 from app.errors import NotFoundError, ValidationError
 from app.rbac.principal import Principal, load_principal
-from app.rbac.require import require
+from app.rbac.require import require, require_scope
 from app.services.audit import write_audit
 
 OPERATION_KIND_ECHO = "echo"
+OPERATION_KIND_TRANSCRIBE_AUDIO = "transcribe_audio"
+
+OPERATION_CODES = {
+    "submit_plan": "course.plan",
+    "submit_generate": "course.generate",
+    "resume_run": "run.retry",
+    "rewrite_block": "course.generate",
+    "rewrite_held_batch": "course.generate",
+    OPERATION_KIND_TRANSCRIBE_AUDIO: "source.upload",
+    OPERATION_KIND_ECHO: "operation.run",
+}
 
 
 async def submit_echo(
@@ -88,10 +99,27 @@ async def submit_echo(
     return operation_id
 
 
+async def _owner_tags(session: AsyncSession, owner: UUID | None) -> list[str]:
+    """Every scope tag granted to the operation's owner (none when ownerless)."""
+    if owner is None:
+        return []
+    rows = (
+        await session.execute(
+            sa.text("SELECT ur.scope_tags FROM user_roles ur WHERE ur.user_id = :user"),
+            {"user": str(owner)},
+        )
+    ).all()
+    return sorted({tag for (tags,) in rows for tag in (tags or [])})
+
+
 async def get_operation(
     session: AsyncSession, *, actor: Principal, operation_id: UUID
 ) -> dict[str, Any]:
-    """One operation for its owner; anyone else's answers 404."""
+    """One operation for its owner; anyone else's answers 404.
+
+    An operation.view holder reads only operations whose owner lies in
+    their operation.view scope; anything else answers 404.
+    """
     row = (
         await session.execute(
             sa.text(
@@ -112,6 +140,11 @@ async def get_operation(
             require(actor, "operation.view")
         except ForbiddenError as exc:
             raise NotFoundError("operation not found") from exc
+        require_scope(
+            actor,
+            await _owner_tags(session, UUID(owner) if owner is not None else None),
+            code="operation.view",
+        )
     return {
         "operation_id": str(values[0]),
         "kind": values[1],
@@ -190,7 +223,7 @@ async def execute_operation(
                     if actor_id is not None
                     else None
                 )
-                require(actor, required_code)
+                require(actor, OPERATION_CODES.get(str(kind), required_code))
                 await _set_status(session, operation_id, status="running", progress=0.5)
                 await session.commit()
                 detail = await _run_kind(session, str(kind), operation_id, factory=factory)
@@ -281,6 +314,25 @@ async def _run_kind(
             provider_factory=real_provider_factory(get_settings()),
             session_factory=factory,
         )
+    if kind in ("rewrite_block", "rewrite_held_batch"):
+        from app.errors import ConflictError
+
+        raise ConflictError("block rewriting is not available until the generation pipeline lands")
+    if kind == OPERATION_KIND_TRANSCRIBE_AUDIO:
+        from app.services.library import transcribe_source
+
+        params = (
+            await session.execute(
+                sa.text("SELECT params FROM operations WHERE id = :op"),
+                {"op": str(operation_id)},
+            )
+        ).scalar_one()
+        count = await transcribe_source(
+            session,
+            source_id=UUID(str((params or {})["source_id"])),
+            settings=get_settings(),
+        )
+        return {"source_id": str((params or {})["source_id"]), "passages": count}
     if kind == OPERATION_KIND_ECHO:
         params = (
             await session.execute(

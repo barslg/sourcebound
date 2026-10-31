@@ -7,7 +7,7 @@ from fastapi import Request
 
 from app.auth.ctx import RequestContext, require_auth
 from app.auth.oidc import GoogleProvider, Provider
-from app.auth.session import create_session, destroy_session, set_pending_invite
+from app.auth.session import create_session, destroy_session, set_pending_invite_id
 from app.config import Settings
 from app.errors import ValidationError
 from app.schemas import t02 as dto
@@ -68,7 +68,7 @@ async def finish_login(
     from app.services.auth import finish_login as finish_use_case
 
     provider = provider_for(ctx.settings, provider_name, request)
-    pending = ctx.login_session.pending_invite_token if ctx.login_session else None
+    pending = ctx.login_session.pending_invite_id if ctx.login_session else None
     expected = ctx.login_session.id if ctx.login_session else None
     user, outcome = await finish_use_case(
         ctx.db,
@@ -76,12 +76,12 @@ async def finish_login(
         state=state,
         code=code,
         superadmin_emails=ctx.settings.superadmin_email_set,
-        pending_invite_token=pending,
+        pending_invite_id=pending,
         expected_session_id=expected,
     )
     token, _ = await create_session(ctx.db, user.id, ttl_s=ctx.settings.session_ttl_s)
     if ctx.login_session is not None:
-        await set_pending_invite(ctx.db, ctx.login_session.id, None)
+        await set_pending_invite_id(ctx.db, ctx.login_session.id, None)
         if ctx.session_token:
             await destroy_session(ctx.db, ctx.session_token)
     return (

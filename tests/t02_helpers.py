@@ -24,11 +24,30 @@ def make_session_factory() -> async_sessionmaker[AsyncSession]:
 async def truncate_all(session: AsyncSession) -> None:
     """Remove every row from every app table; keep alembic/procrastinate state.
 
-    Each table clears in its own savepoint: a table blocked by an
-    out-of-scope foreign key (course owners are RESTRICT) skips without
-    rolling back the tables already cleared.
+    Course/library/run tables come first (children before parents):
+    stale T03 courses hold RESTRICT references to users, and without
+    them a second consecutive run keeps yesterday's users while their
+    identities are gone — breaking fixed-email sign-in tests. Each
+    table still clears in its own savepoint, so a blocked table skips
+    without rolling back the tables already cleared.
     """
     tables = [
+        "retrieval_pairs",
+        "citations",
+        "passages",
+        "source_candidates",
+        "human_queue",
+        "block_versions",
+        "blocks",
+        "topics",
+        "modules",
+        "course_versions",
+        "profile_constraints",
+        "course_profiles",
+        "course_sources",
+        "courses",
+        "course_groups",
+        "sources",
         "invite_uses",
         "notifications",
         "operations",

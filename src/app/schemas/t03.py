@@ -42,3 +42,7 @@ class GenerateSubmitRequest(BaseModel):
 class SourceFetchRequest(BaseModel):
     url: str = Field(min_length=1, max_length=2000)
     course_id: str | None = None
+
+
+class HumanQueueResolveRequest(BaseModel):
+    action: str = Field(pattern="^(approve|dismiss)$")

@@ -14,6 +14,7 @@ courses_router = APIRouter(prefix="/courses", tags=["courses"])
 sources_router = APIRouter(prefix="/sources", tags=["sources"])
 runs_router = APIRouter(prefix="/runs", tags=["runs"])
 blocks_router = APIRouter(prefix="/blocks", tags=["blocks"])
+human_queue_router = APIRouter(prefix="/human-queue", tags=["human-queue"])
 
 
 @courses_router.post("", status_code=201)
@@ -274,3 +275,21 @@ async def patch_block(
 ) -> dict[str, bool]:
     """Edit a block brief in place."""
     return await controller.patch_block(ctx, block_id=block_id, brief=body.brief)
+
+
+@human_queue_router.get("")
+async def list_human_queue(
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> list[dict[str, Any]]:
+    """Open human-queue items for the caller's courses."""
+    return await controller.list_human_queue(ctx)
+
+
+@human_queue_router.post("/{item_id}/resolve")
+async def resolve_human_queue(
+    item_id: str,
+    body: dto.HumanQueueResolveRequest,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, Any]:
+    """Resolve one queued URL: approve ingests it, dismiss drops it."""
+    return await controller.resolve_human_queue(ctx, item_id=item_id, body={"action": body.action})

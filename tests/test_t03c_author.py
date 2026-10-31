@@ -302,7 +302,18 @@ async def test_sources_list_and_reject(t03_session: AsyncSession) -> None:
     ctx = _ctx(t03_session, settings, _actor(user, FULL))
     rows = await controller.list_sources(ctx, course_id=str(course_id))
     assert len(rows) == 1
-    assert set(rows[0]) == {"id", "title", "media", "licence", "as_of", "approval", "progress"}
+    assert set(rows[0]) == {
+        "id",
+        "title",
+        "media",
+        "licence",
+        "as_of",
+        "approval",
+        "progress",
+        "ingest_status",
+        "ingest_message",
+    }
+    assert rows[0]["ingest_status"] == "ready"
     assert rows[0]["approval"] == "pending"
     assert rows[0]["progress"] >= 1
     assert (await controller.reject_source(ctx, source_id=str(source_id))) == {"ok": True}

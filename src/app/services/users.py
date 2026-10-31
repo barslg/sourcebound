@@ -83,14 +83,15 @@ async def list_users(session: AsyncSession, *, actor: Principal) -> list[dict[st
             {"name": str(name), "scope_tags": sorted(tags or [])}
         )
     directory: list[dict[str, Any]] = []
+    visible_scope = actor.scope_for("user.list")
     for user_id, email, name, admin, legacy, banned, reason, created in rows:
         if bool(admin) and not actor.is_superadmin:
             continue
-        if not actor.is_superadmin and actor.scope_tags:
+        if not actor.is_superadmin and visible_scope is not None:
             user_tags = {
                 tag for grant in grants.get(str(user_id), ()) for tag in grant["scope_tags"]
             }
-            if user_tags.isdisjoint(set(actor.scope_tags)):
+            if not user_tags or user_tags.isdisjoint(visible_scope):
                 continue
         directory.append(
             {
@@ -155,7 +156,7 @@ async def ban_user(session: AsyncSession, *, actor: Principal, user_id: UUID, re
     require(actor, "user.ban")
     target = await _target_row(session, user_id)
     _refuse_superadmin_target(actor, is_superadmin=bool(target[2]))
-    require_scope(actor, await _target_tags(session, user_id))
+    require_scope(actor, await _target_tags(session, user_id), code="user.ban")
     await _record_ban(session, email=str(target[1]), user_id=user_id, reason=reason)
     await session.execute(
         sa.text("UPDATE users SET banned_at = now(), banned_reason = :reason WHERE id = :user"),
@@ -164,6 +165,15 @@ async def ban_user(session: AsyncSession, *, actor: Principal, user_id: UUID, re
     from app.auth.session import revoke_user_sessions
 
     await revoke_user_sessions(session, user_id)
+    await session.execute(
+        sa.text(
+            "UPDATE invites AS invite SET used_count = GREATEST(invite.used_count - freed.n, 0)"
+            " FROM (SELECT invite_id, count(*) AS n FROM invite_uses"
+            " WHERE user_id = :user GROUP BY invite_id) AS freed"
+            " WHERE invite.id = freed.invite_id"
+        ),
+        {"user": str(user_id)},
+    )
     await session.execute(
         sa.text("DELETE FROM invite_uses WHERE user_id = :user"), {"user": str(user_id)}
     )
@@ -246,7 +256,7 @@ async def delete_user(
     require(actor, "user.delete")
     target = await _target_row(session, user_id)
     _refuse_superadmin_target(actor, is_superadmin=bool(target[2]))
-    require_scope(actor, await _target_tags(session, user_id))
+    require_scope(actor, await _target_tags(session, user_id), code="user.delete")
     owned_invites = await _owned_invites(session, user_id)
     owned_operations = await _owned_operation_count(session, user_id)
     owned = len(owned_invites) + owned_operations
@@ -258,7 +268,13 @@ async def delete_user(
             raise ValidationError("an account cannot inherit its own objects")
         heir = await _vet_heir(session, heir_id=heir_id)
         for _, tags in owned_invites:
-            require_scope(heir, list(tags or []))
+            if tags:
+                try:
+                    require_scope(heir, list(tags), code="course.edit")
+                except NotFoundError as exc:
+                    raise ValidationError(
+                        "the heir must hold edit rights in the scope of every object"
+                    ) from exc
     if heir is not None:
         await session.execute(
             sa.text("UPDATE invites SET created_by = :heir WHERE created_by = :user"),

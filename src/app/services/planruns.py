@@ -140,6 +140,28 @@ async def submit_generate(
 OPERATION_KIND_RESUME_RUN = "resume_run"
 
 
+async def _no_driver_holds(session: AsyncSession, *, run_id: UUID) -> bool:
+    """True when no live driver holds the run's session-level lock.
+
+    The lock is acquired and released inside this call on the
+    request's own session, so a pooled connection never keeps it.
+    """
+    from app.runs.executor import RUN_LOCK_PREFIX
+
+    acquired = (
+        await session.execute(
+            sa.text("SELECT pg_try_advisory_lock(hashtext(:key))"),
+            {"key": f"{RUN_LOCK_PREFIX}{run_id}"},
+        )
+    ).scalar()
+    if acquired:
+        await session.execute(
+            sa.text("SELECT pg_advisory_unlock(hashtext(:key))"),
+            {"key": f"{RUN_LOCK_PREFIX}{run_id}"},
+        )
+    return bool(acquired)
+
+
 def plan_handlers() -> dict[str, Any]:
     """Handler map for plan/resume drives (the worker entry points)."""
     from app.runs import executor
@@ -150,15 +172,47 @@ def plan_handlers() -> dict[str, Any]:
     }
 
 
-def real_provider_factory(settings: Any) -> Any:
-    """Production provider factory: Meta calls with ledger on the app DB."""
+class _RealProviderFactory:
+    """Production provider factory sharing one ledger engine.
 
-    def make(session: AsyncSession) -> Any:
+    Every provider built by one drive shares a single ledger engine
+    (one pool, not one per model call); `aclose` disposes it when the
+    drive is done. `ledger()` hands out ledger sessions for probes.
+    """
+
+    def __init__(self, settings: Any) -> None:
+        from sqlalchemy.ext.asyncio import async_sessionmaker
+
+        from app.db import create_engine
+
+        self._settings = settings
+        self._engine = create_engine(settings.database_url)
+        self._ledger = async_sessionmaker(self._engine, class_=AsyncSession, expire_on_commit=False)
+
+    def __call__(self, session: AsyncSession) -> Any:
         from app.providers.llm import MetaProvider
 
-        return MetaProvider(session, settings, None, None)
+        return MetaProvider(session, self._settings, None, self._ledger)
 
-    return make
+    def ledger(self) -> Any:
+        """Borrow the shared ledger factory's session (context manager)."""
+        return self._ledger()
+
+    async def aclose(self) -> None:
+        """Dispose the shared engine; the drive is done paying."""
+        await self._engine.dispose()
+
+
+def real_provider_factory(settings: Any) -> _RealProviderFactory:
+    """Production provider factory: Meta calls with ledger on the app DB."""
+    return _RealProviderFactory(settings)
+
+
+async def _close_factory(provider_factory: Any) -> None:
+    """Dispose a shared-engine factory; plain callables have nothing to close."""
+    aclose = getattr(provider_factory, "aclose", None)
+    if aclose is not None:
+        await aclose()
 
 
 async def resume_run(
@@ -168,12 +222,14 @@ async def resume_run(
     run_id: UUID,
     defer: Callable[[UUID], Awaitable[None]] | None = None,
 ) -> UUID:
-    """Resume a stopped run: enqueue a resume operation driving the run.
+    """Resume a stopped (or stranded running) run: enqueue a resume operation.
 
-    Only stopped runs resume; running runs already have a driver (the
-    session-level lock would refuse a second one anyway). The worker —
-    never the request — drives the resumed run, so resume pays nothing
-    for done steps.
+    Stopped runs always resume. A running run resumes only when no
+    driver holds its session-level lock — a queue failure after commit
+    or a dead worker can strand a run in `running` with nobody
+    driving it, and the lock proves it. A running run with a live
+    driver still refuses. The worker — never the request — drives the
+    resumed run, so resume pays nothing for done steps.
     """
     require(actor, "run.retry")
 
@@ -185,7 +241,9 @@ async def resume_run(
     ).first()
     if row is None:
         raise NotFoundError(f"run {run_id} not found")
-    if row[0] != "stopped":
+    if row[0] == "running" and not await _no_driver_holds(session, run_id=run_id):
+        raise ValidationError(f"run {run_id} is running; only stopped runs resume")
+    if row[0] not in ("stopped", "running"):
         raise ValidationError(f"run {run_id} is {row[0]}; only stopped runs resume")
     await session.execute(
         sa.text("UPDATE runs SET status = 'running', stop_marker = NULL WHERE id = :run"),
@@ -264,12 +322,15 @@ async def run_plan_operation(
     run_id = await new_run(session, course_id=course_id, kind="plan", dag=dag)
     await session.commit()
     if provider_factory is not None and session_factory is not None:
-        await drive_run(
-            session_factory,
-            run_id=run_id,
-            provider_factory=provider_factory,
-            handlers=plan_handlers(),
-        )
+        try:
+            await drive_run(
+                session_factory,
+                run_id=run_id,
+                provider_factory=provider_factory,
+                handlers=plan_handlers(),
+            )
+        finally:
+            await _close_factory(provider_factory)
         async with session_factory() as fresh:
             await refresh_plan_estimate(fresh, run_id=run_id)
         async with session_factory() as fresh:
@@ -285,7 +346,14 @@ async def run_resume_operation(
     provider_factory: Any | None = None,
     session_factory: Any | None = None,
 ) -> dict[str, Any]:
-    """Worker body for resume_run: drive the stopped run to done."""
+    """Worker body for resume_run: drive the run to done, then refresh it.
+
+    Like the plan path, the resumed run gets its forecast refreshed
+    and its plan snapshotted — resume is a full continuation, not a
+    bare drive.
+    """
+    from app.services import courses as course_service
+
     params = (
         await session.execute(
             sa.text("SELECT params FROM operations WHERE id = :op"),
@@ -295,14 +363,24 @@ async def run_resume_operation(
     run_id = UUID(str(params["run_id"]))
     if provider_factory is None or session_factory is None:  # pragma: no cover - worker wires these
         raise ValidationError("resume needs a provider and session factory")
-    from app.runs.executor import drive_run
+    from app.runs.executor import drive_run, run_course_id
 
-    await drive_run(
-        session_factory,
-        run_id=run_id,
-        provider_factory=provider_factory,
-        handlers=plan_handlers(),
-    )
+    try:
+        await drive_run(
+            session_factory,
+            run_id=run_id,
+            provider_factory=provider_factory,
+            handlers=plan_handlers(),
+        )
+    finally:
+        await _close_factory(provider_factory)
+    async with session_factory() as fresh:
+        await refresh_plan_estimate(fresh, run_id=run_id)
+    async with session_factory() as fresh:
+        course_id = await run_course_id(fresh, run_id=run_id)
+        if course_id is not None:
+            await course_service.snapshot_version(fresh, course_id=course_id)
+            await fresh.commit()
     return {"run_id": str(run_id)}
 
 

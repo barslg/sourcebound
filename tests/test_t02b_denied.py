@@ -190,7 +190,7 @@ async def test_denied_create_and_revoke_invite(session: AsyncSession) -> None:
         await create_invite(session, actor=nobody, course_tags=["course-a"])  # type: ignore[arg-type]
     await session.rollback()
     with pytest.raises(ForbiddenError):
-        await revoke_invite(session, actor=nobody, token_hash="dead")  # type: ignore[arg-type]
+        await revoke_invite(session, actor=nobody, invite_id=uuid.uuid4())  # type: ignore[arg-type]
     await session.rollback()
 
 

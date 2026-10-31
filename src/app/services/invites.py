@@ -57,7 +57,7 @@ async def create_invite(
         from app.errors import ValidationError
 
         raise ValidationError("max_uses must be positive")
-    require_scope(actor, course_tags)
+    require_scope(actor, course_tags, code="invite.create")
     raw_token = mint_invite_token()
     row = (
         await session.execute(
@@ -104,10 +104,11 @@ async def list_invites(session: AsyncSession, *, actor: Principal) -> list[dict[
             )
         )
     ).all()
+    visible_scope = actor.scope_for_any(("invite.create", "invite.revoke"))
     visible: list[dict[str, Any]] = []
     for invite_id, tags, max_uses, used_count, expires_at, revoked_at in rows:
-        if not actor.is_superadmin and actor.scope_tags:
-            if set(tags or []).isdisjoint(set(actor.scope_tags)):
+        if not actor.is_superadmin and visible_scope is not None:
+            if set(tags or []).isdisjoint(visible_scope):
                 continue
         visible.append(
             {
@@ -122,18 +123,18 @@ async def list_invites(session: AsyncSession, *, actor: Principal) -> list[dict[
     return visible
 
 
-async def revoke_invite(session: AsyncSession, *, actor: Principal, token_hash: str) -> None:
-    """Revoke an invite link; later accepts are refused."""
+async def revoke_invite(session: AsyncSession, *, actor: Principal, invite_id: UUID) -> None:
+    """Revoke an invite link by id; later accepts are refused."""
     require(actor, "invite.revoke")
     row = (
         await session.execute(
-            sa.text("SELECT id, course_tags FROM invites WHERE token_hash = :hash"),
-            {"hash": token_hash},
+            sa.text("SELECT id, course_tags FROM invites WHERE id = :invite"),
+            {"invite": str(invite_id)},
         )
     ).first()
     if row is None:
         raise NotFoundError("invite not found")
-    require_scope(actor, list(row[1] or []))
+    require_scope(actor, list(row[1] or []), code="invite.revoke")
     await session.execute(
         sa.text("UPDATE invites SET revoked_at = now() WHERE id = :invite"),
         {"invite": str(row[0])},
@@ -165,25 +166,18 @@ async def _ensure_student_role(session: AsyncSession, role_name: str) -> None:
         )
 
 
-async def accept_invite(session: AsyncSession, *, user_id: UUID, token_hash: str) -> list[str]:
-    """Accept an invite: consume one seat and grant the scoped student role.
-
-    Runs in the caller's transaction with the invite row locked, so two
-    simultaneous accepts on a one-seat invite leave exactly one winner.
-    The lookup key is the token hash; plaintext tokens never reach the DB.
-    """
-    row = (
-        await session.execute(
-            sa.text(
-                "SELECT id, course_tags, max_uses, used_count, expires_at,"
-                " revoked_at FROM invites WHERE token_hash = :hash FOR UPDATE"
-            ),
-            {"hash": token_hash},
-        )
-    ).first()
-    if row is None:
-        raise NotFoundError("invite not found")
-    invite_id, course_tags, max_uses, used_count, expires_at, revoked_at = row
+async def _consume_seat(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    invite_id: object,
+    course_tags: list[str] | None,
+    max_uses: int | None,
+    used_count: int,
+    expires_at: datetime | None,
+    revoked_at: datetime | None,
+) -> list[str]:
+    """Consume one seat and grant the scoped student role for a locked invite."""
     now = datetime.now(UTC)
     if revoked_at is not None:
         raise ConflictError("this invite was revoked")
@@ -229,3 +223,75 @@ async def accept_invite(session: AsyncSession, *, user_id: UUID, token_hash: str
         meta={"course_tags": list(course_tags or [])},
     )
     return sorted(course_tags or [])
+
+
+async def accept_invite(session: AsyncSession, *, user_id: UUID, token_hash: str) -> list[str]:
+    """Accept an invite: consume one seat and grant the scoped student role.
+
+    Runs in the caller's transaction with the invite row locked, so two
+    simultaneous accepts on a one-seat invite leave exactly one winner.
+    The lookup key is the token hash; plaintext tokens never reach the DB.
+    """
+    row = (
+        await session.execute(
+            sa.text(
+                "SELECT id, course_tags, max_uses, used_count, expires_at,"
+                " revoked_at FROM invites WHERE token_hash = :hash FOR UPDATE"
+            ),
+            {"hash": token_hash},
+        )
+    ).first()
+    if row is None:
+        raise NotFoundError("invite not found")
+    invite_id, course_tags, max_uses, used_count, expires_at, revoked_at = row
+    return await _consume_seat(
+        session,
+        user_id=user_id,
+        invite_id=invite_id,
+        course_tags=list(course_tags or []),
+        max_uses=max_uses,
+        used_count=int(used_count),
+        expires_at=expires_at,
+        revoked_at=revoked_at,
+    )
+
+
+async def accept_invite_by_id(
+    session: AsyncSession, *, user_id: UUID, invite_id: UUID
+) -> list[str]:
+    """Accept an invite by id (the signed-out flow stashes the id, not the token)."""
+    row = (
+        await session.execute(
+            sa.text(
+                "SELECT id, course_tags, max_uses, used_count, expires_at,"
+                " revoked_at FROM invites WHERE id = :invite FOR UPDATE"
+            ),
+            {"invite": str(invite_id)},
+        )
+    ).first()
+    if row is None:
+        raise NotFoundError("invite not found")
+    found_id, course_tags, max_uses, used_count, expires_at, revoked_at = row
+    return await _consume_seat(
+        session,
+        user_id=user_id,
+        invite_id=found_id,
+        course_tags=list(course_tags or []),
+        max_uses=max_uses,
+        used_count=int(used_count),
+        expires_at=expires_at,
+        revoked_at=revoked_at,
+    )
+
+
+async def invite_details(session: AsyncSession, *, token_hash: str) -> tuple[UUID, list[str]]:
+    """The (id, course tags) behind a token hash; 404 when the token is unknown."""
+    row = (
+        await session.execute(
+            sa.text("SELECT id, course_tags FROM invites WHERE token_hash = :hash"),
+            {"hash": token_hash},
+        )
+    ).first()
+    if row is None:
+        raise NotFoundError("invite not found")
+    return UUID(str(row[0])), sorted(row[1] or [])

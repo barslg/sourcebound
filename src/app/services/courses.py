@@ -205,6 +205,7 @@ async def write_tree(
     tree: CourseTree,
     plan_digest: str,
     run_step_id: UUID | None = None,
+    held: dict[str, str] | None = None,
 ) -> dict[str, dict[str, str]]:
     """Replace the plan tree: modules, topics, block skeletons in order.
 
@@ -212,7 +213,9 @@ async def write_tree(
     citation writer (same transaction). Plan-written versions carry
     the step id and become current; author-edited blocks (a current
     version with run_step_id NULL) are restored on top of the rewrite
-    so re-planning never deletes author work.
+    so re-planning never deletes author work. `held` maps block
+    plan_node_id to a hold reason: those blocks are written held with
+    the reason instead of draft (BRIEF §3: a hold returns the block).
     """
     kept = (
         await session.execute(
@@ -280,13 +283,14 @@ async def write_tree(
                 )
             ).one()[0]
             for block_index, block in enumerate(topic.blocks):
+                hold_reason = (held or {}).get(block.plan_node_id)
                 block_id = (
                     await session.execute(
                         sa.text(
                             "INSERT INTO blocks (topic_id, plan_node_id, ordinal, role,"
-                            " block_type, brief, status)"
+                            " block_type, brief, status, hold_reason)"
                             " VALUES (:topic, :node, :ord, :role, :type, :brief,"
-                            " 'draft') RETURNING id"
+                            " :status, :reason) RETURNING id"
                         ),
                         {
                             "topic": str(topic_id),
@@ -295,6 +299,8 @@ async def write_tree(
                             "role": block.role,
                             "type": block.block_type,
                             "brief": block.brief,
+                            "status": "held" if hold_reason else "draft",
+                            "reason": hold_reason,
                         },
                     )
                 ).one()[0]
@@ -596,35 +602,102 @@ async def _rename(
 async def _move(
     session: AsyncSession, table: str, course_id: UUID, operation: dict[str, Any]
 ) -> None:
-    """Reorder by ordinal; the deferrable unique tolerates the swap."""
+    """Reorder siblings around one move; a full ordinal list still applies.
+
+    The client sends a single move ({id, ordinal}) and the backend
+    shifts the siblings itself, so no two siblings ever share an
+    ordinal. A client-sent full ordinal list ({id, ordinals: {...}})
+    keeps working and is applied verbatim after validation.
+    """
+    bulk = operation.get("ordinals")
+    if bulk is not None:
+        await _move_bulk(session, table, course_id, operation, bulk)
+        return
     try:
         ordinal = int(operation.get("ordinal", -1))
     except (TypeError, ValueError):
         raise ValidationError("ordinal must be an integer") from None
     if ordinal < 0:
         raise ValidationError("ordinal must be non-negative")
-    if table == "modules":
-        row = (
-            await session.execute(
-                sa.text(
-                    "UPDATE modules SET ordinal = :ord WHERE id = :node"
-                    " AND course_id = :course RETURNING id"
-                ),
-                {"ord": ordinal, "node": str(operation.get("id")), "course": str(course_id)},
-            )
-        ).first()
-    else:
-        row = (
-            await session.execute(
-                sa.text(
-                    "UPDATE topics SET ordinal = :ord WHERE id = :node AND module_id IN"
-                    " (SELECT id FROM modules WHERE course_id = :course) RETURNING id"
-                ),
-                {"ord": ordinal, "node": str(operation.get("id")), "course": str(course_id)},
-            )
-        ).first()
-    if row is None:
+    node_id = str(operation.get("id"))
+    siblings = await _siblings(session, table, course_id, node_id)
+    current = next((index for index, sibling in enumerate(siblings) if sibling == node_id), None)
+    if current is None:
         raise NotFoundError(f"plan node {operation.get('id')} not found")
+    target = min(ordinal, len(siblings) - 1)
+    ordered = [sibling for sibling in siblings if sibling != node_id]
+    ordered.insert(target, node_id)
+    await _write_ordinals(session, table, ordered)
+
+
+async def _siblings(session: AsyncSession, table: str, course_id: UUID, node_id: str) -> list[str]:
+    """Sibling ids in ordinal order within the node's own parent scope."""
+    if table == "modules":
+        rows = (
+            await session.execute(
+                sa.text("SELECT id FROM modules WHERE course_id = :course ORDER BY ordinal, id"),
+                {"course": str(course_id)},
+            )
+        ).all()
+        return [str(row[0]) for row in rows]
+    parent = (
+        await session.execute(
+            sa.text(
+                "SELECT t.module_id FROM topics t JOIN modules m ON m.id = t.module_id"
+                " WHERE t.id = :node AND m.course_id = :course"
+            ),
+            {"node": node_id, "course": str(course_id)},
+        )
+    ).first()
+    if parent is None:
+        return []
+    rows = (
+        await session.execute(
+            sa.text("SELECT id FROM topics WHERE module_id = :parent ORDER BY ordinal, id"),
+            {"parent": str(parent[0])},
+        )
+    ).all()
+    return [str(row[0]) for row in rows]
+
+
+async def _write_ordinals(session: AsyncSession, table: str, ordered: list[str]) -> None:
+    """Persist one dense ordinal run; the deferrable unique tolerates it."""
+    column = "modules" if table == "modules" else "topics"
+    for position, node_id in enumerate(ordered):
+        await session.execute(
+            sa.text(f"UPDATE {column} SET ordinal = :ord WHERE id = :node"),
+            {"ord": position, "node": node_id},
+        )
+
+
+async def _move_bulk(
+    session: AsyncSession,
+    table: str,
+    course_id: UUID,
+    operation: dict[str, Any],
+    bulk: Any,
+) -> None:
+    """Apply a client-sent full ordinal list after validating it."""
+    if not isinstance(bulk, dict) or not bulk:
+        raise ValidationError("ordinals must be a non-empty object of id to ordinal")
+    try:
+        wanted = {str(key): int(value) for key, value in bulk.items()}
+    except (TypeError, ValueError):
+        raise ValidationError("ordinals must map ids to integers") from None
+    if any(value < 0 for value in wanted.values()):
+        raise ValidationError("ordinal must be non-negative")
+    if len(set(wanted.values())) != len(wanted):
+        raise ValidationError("ordinals must be unique per sibling")
+    node_id = str(operation.get("id") or next(iter(wanted)))
+    siblings = set(await _siblings(session, table, course_id, node_id))
+    if set(wanted) - siblings:
+        raise NotFoundError(f"plan node {operation.get('id')} not found")
+    for target_id, ordinal in wanted.items():
+        column = "modules" if table == "modules" else "topics"
+        await session.execute(
+            sa.text(f"UPDATE {column} SET ordinal = :ord WHERE id = :node"),
+            {"ord": ordinal, "node": target_id},
+        )
 
 
 async def _delete(
@@ -874,8 +947,16 @@ async def submit_rewrite_operation(
     actor: Any,
     kind: str,
     params: dict[str, Any],
+    defer: Any = None,
 ) -> UUID:
-    """Queue a block-rewrite operation (202); the worker drives it to done."""
+    """Queue a block-rewrite operation (202); the worker drives it to done.
+
+    The operation is committed and handed to the queue on the same
+    submit path as plan/generate, so it never stands orphaned: until
+    T05 the worker answers 409 "not available until the generation
+    pipeline lands" and the operation fails loudly instead of idling
+    in queued.
+    """
     from app.rbac.require import require
     from app.services.audit import write_audit
 
@@ -903,6 +984,9 @@ async def submit_rewrite_operation(
         entity_id=str(operation_id),
         meta=params,
     )
+    await session.commit()
+    if defer is not None:
+        await defer(operation_id)
     return operation_id
 
 

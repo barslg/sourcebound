@@ -269,10 +269,13 @@ async def test_signed_out_invite_flow_applies_after_login(
     _override_session(app, make_session_factory())
     async with await _client_for(app) as client:
         accept = await client.post(f"/api/v1/invites/{token}/accept", follow_redirects=False)
-        assert accept.status_code == 307
-        assert "/api/v1/auth/login" in accept.headers["location"]
-        start = await client.get(accept.headers["location"])
+        assert accept.status_code == 303
+        target = accept.headers["location"]
+        assert "/api/v1/auth/login" in target
+        assert token not in target
+        start = await client.get(target)
         assert start.status_code == 307
+        assert token not in start.headers["location"]
         state = parse_qs(urlparse(start.headers["location"]).query)["state"][0]
         stored = (
             await session.execute(
@@ -286,6 +289,7 @@ async def test_signed_out_invite_flow_applies_after_login(
             "/api/v1/auth/callback", params={"state": state, "code": code}, follow_redirects=False
         )
         assert done.status_code == 303, done.text
+        assert done.headers["location"] == "/courses/course-z"
         me = await client.get("/api/v1/auth/me")
         assert "student" in me.json()["roles"]
         assert "course-z" in me.json()["scope_tags"]
@@ -385,7 +389,10 @@ async def test_invite_create_revoke_over_http(session: AsyncSession, issuer_url:
         )
         assert created.status_code == 201, created.text
         invite_token = created.json()["token"]
-        revoked = await admin.post(f"/api/v1/invites/{invite_token}/revoke", headers=headers)
+        listed = await admin.get("/api/v1/invites")
+        assert listed.status_code == 200
+        invite_id = next(row["id"] for row in listed.json() if row["course_tags"] == ["course-q"])
+        revoked = await admin.post(f"/api/v1/invites/{invite_id}/revoke", headers=headers)
         assert revoked.status_code == 200
         answer = await admin.post(f"/api/v1/invites/{invite_token}/accept", headers=headers)
         assert answer.status_code == 409

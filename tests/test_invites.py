@@ -65,6 +65,8 @@ async def _setup_catalogue(session: AsyncSession) -> None:
 
 
 async def test_create_and_revoke_invite(session: AsyncSession) -> None:
+    import uuid as uuid_mod
+
     from app.services.invites import create_invite, hash_invite_token, revoke_invite
 
     await _setup_catalogue(session)
@@ -85,7 +87,13 @@ async def test_create_and_revoke_invite(session: AsyncSession) -> None:
         )
     ).scalar_one()
     assert stored == hash_invite_token(raw)
-    await revoke_invite(session, actor=_actor(creator), token_hash=hash_invite_token(raw))
+    invite_id = (
+        await session.execute(
+            sa.text("SELECT id FROM invites WHERE token_hash = :h"),
+            {"h": hash_invite_token(raw)},
+        )
+    ).scalar_one()
+    await revoke_invite(session, actor=_actor(creator), invite_id=uuid_mod.UUID(str(invite_id)))
     await session.commit()
     revoked = (
         await session.execute(

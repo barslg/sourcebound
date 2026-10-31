@@ -159,9 +159,9 @@ async def store_upload(
             sa.text(
                 "INSERT INTO sources"
                 " (content_sha256, kind, media, title, licence, approval, storage_path,"
-                " created_by)"
+                " created_by, ingest_status)"
                 " VALUES (:digest, 'upload', :media, :title, :licence, 'pending',"
-                " :path, :actor) RETURNING id"
+                " :path, :actor, :ingest) RETURNING id"
             ),
             {
                 "digest": digest,
@@ -170,6 +170,7 @@ async def store_upload(
                 "licence": licence,
                 "path": str(store_path(root, digest, suffix)),
                 "actor": str(created_by) if created_by else None,
+                "ingest": "queued" if media == "audio" else "ready",
             },
         )
     ).one()
@@ -438,6 +439,22 @@ async def robots_allowed(url: str, *, settings: Settings, client: Any | None = N
     return await web_provider.robots_allowed(url, settings=settings, client=client)
 
 
+async def stored_parser_spec(session: AsyncSession, *, url: str) -> dict[str, Any] | None:
+    """The newest stored parser spec for one URL, if any source has one."""
+    row = (
+        await session.execute(
+            sa.text(
+                "SELECT parser_spec FROM sources WHERE title = :url AND kind = 'url'"
+                " AND parser_spec IS NOT NULL ORDER BY created_at DESC LIMIT 1"
+            ),
+            {"url": url},
+        )
+    ).first()
+    if row is None or not row[0]:
+        return None
+    return dict(row[0])
+
+
 async def intake_url(
     session: AsyncSession,
     *,
@@ -450,11 +467,24 @@ async def intake_url(
     """URL intake: robots-disallowed pages go to the human queue.
 
     Returns {"source_id": ...} for fetched pages or {"queued": ...}
-    for robots-disallowed ones. Raises when the fetch is refused.
-    With `parser_spec` the declarative librarian spec is executed by
-    code (never generated code) and stored on the source for re-crawls;
-    otherwise the page text is chunked with web addresses.
+    for robots-disallowed ones. Non-http(s) schemes are refused with
+    422 and internal URLs are refused outright — neither ever reaches
+    the human queue. With `parser_spec` (or the stored spec of an
+    earlier crawl of the same URL) the declarative librarian spec is
+    executed by code (never generated code) and stored on the source
+    for re-crawls; otherwise the page text is chunked with web
+    addresses.
     """
+    from urllib.parse import urlparse
+
+    from app.errors import UnprocessableError
+    from app.providers import web as web_provider
+
+    if urlparse(url).scheme not in ("http", "https"):
+        raise UnprocessableError(f"only http(s) URLs are fetched: {url!r}")
+    await web_provider.ensure_public_url(url)
+    if parser_spec is None:
+        parser_spec = await stored_parser_spec(session, url=url)
     if not await robots_allowed(url, settings=settings, client=client):
         row = (
             await session.execute(
@@ -491,8 +521,10 @@ async def intake_url(
         await session.execute(
             sa.text(
                 "INSERT INTO sources"
-                " (content_sha256, kind, media, title, licence, approval, storage_path)"
-                " VALUES (:digest, 'url', 'text', :title, '', 'pending', '') RETURNING id"
+                " (content_sha256, kind, media, title, licence, approval, storage_path,"
+                " ingest_status)"
+                " VALUES (:digest, 'url', 'text', :title, '', 'pending', '',"
+                " 'ready') RETURNING id"
             ),
             {"digest": digest, "title": url},
         )
@@ -613,8 +645,9 @@ async def approve_candidate(
         await session.execute(
             sa.text(
                 "INSERT INTO sources (content_sha256, kind, media, title, approval,"
-                " approved_by, storage_path)"
-                " VALUES (:digest, 'url', 'text', :title, 'approved', :actor, '')"
+                " approved_by, storage_path, ingest_status)"
+                " VALUES (:digest, 'url', 'text', :title, 'approved', :actor, '',"
+                " 'ready')"
                 " ON CONFLICT (content_sha256) DO NOTHING RETURNING id"
             ),
             {
@@ -743,10 +776,18 @@ async def transcribe_source(
         raise NotFoundError(f"source {source_id} not found")
     if row[1] != "audio":
         raise ValidationError(f"source {source_id} is not audio")
-    audio = await asyncio.to_thread(Path(row[0]).read_bytes)
-    segments = await transcribe_audio(audio, settings=settings, client=client)
-    passages = chunk_transcript(segments)
-    count = await ingest_passages(session, source_id=source_id, passages=passages)
+    await set_ingest_status(session, source_id=source_id, status="parsing")
+    try:
+        audio = await asyncio.to_thread(Path(row[0]).read_bytes)
+        segments = await transcribe_audio(audio, settings=settings, client=client)
+        passages = chunk_transcript(segments)
+        count = await ingest_passages(session, source_id=source_id, passages=passages)
+    except Exception as exc:
+        await set_ingest_status(
+            session, source_id=source_id, status="failed", message=str(exc)[:500]
+        )
+        raise
+    await set_ingest_status(session, source_id=source_id, status="ready")
     ends = [_stamp_seconds(item.get("end", "")) for item in segments]
     hours = (max([end for end in ends if end is not None] or [0.0])) / 3600.0
     await session.execute(
@@ -785,23 +826,48 @@ async def set_source_as_of(session: AsyncSession, *, source_id: UUID, as_of: dat
         raise NotFoundError(f"source {source_id} not found")
 
 
+async def set_ingest_status(
+    session: AsyncSession,
+    *,
+    source_id: UUID,
+    status: str,
+    message: str | None = None,
+) -> None:
+    """Record one source's ingest state (queued/parsing/ready/failed)."""
+    if status not in ("queued", "parsing", "ready", "failed"):
+        raise ValidationError(f"unknown ingest status: {status!r}")
+    row = (
+        await session.execute(
+            sa.text(
+                "UPDATE sources SET ingest_status = :status, ingest_message = :message"
+                " WHERE id = :source RETURNING id"
+            ),
+            {"status": status, "message": message, "source": str(source_id)},
+        )
+    ).first()
+    if row is None:
+        raise NotFoundError(f"source {source_id} not found")
+
+
 async def list_course_sources(session: AsyncSession, *, course_id: UUID) -> list[dict[str, Any]]:
-    """Sources bound to one course with binding approval and passage progress.
+    """Sources bound to one course with binding approval and ingest progress.
 
     A pending binding is a candidate awaiting human approval; held
     bindings were rejected and stay out of retrieval. Progress is the
-    ingested passage count.
+    ingested passage count; ingest_status reports the pipeline state
+    (queued/parsing/ready/failed) with a message on failure.
     """
     rows = (
         await session.execute(
             sa.text(
                 "SELECT s.id, s.title, s.media, s.licence, s.as_of, cs.approval,"
-                " count(p.id) FROM course_sources cs"
+                " count(p.id), s.ingest_status, s.ingest_message FROM course_sources cs"
                 " JOIN sources s ON s.id = cs.source_id"
                 " LEFT JOIN passages p ON p.source_id = s.id"
                 " WHERE cs.course_id = :course"
                 " GROUP BY s.id, s.title, s.media, s.licence, s.as_of,"
-                " cs.approval, s.created_at ORDER BY s.created_at, s.id"
+                " cs.approval, s.ingest_status, s.ingest_message,"
+                " s.created_at ORDER BY s.created_at, s.id"
             ),
             {"course": str(course_id)},
         )
@@ -815,6 +881,8 @@ async def list_course_sources(session: AsyncSession, *, course_id: UUID) -> list
             "as_of": row[4].isoformat() if row[4] else None,
             "approval": row[5],
             "progress": int(row[6]),
+            "ingest_status": row[7],
+            "ingest_message": row[8],
         }
         for row in rows
     ]
@@ -845,3 +913,166 @@ async def reject_source(session: AsyncSession, *, source_id: UUID) -> None:
         sa.text("UPDATE sources SET approval = 'held' WHERE id = :source"),
         {"source": str(source_id)},
     )
+
+
+async def list_human_queue(
+    session: AsyncSession, *, course_ids: list[UUID] | None
+) -> list[dict[str, Any]]:
+    """Open human-queue items scoped to the caller's courses.
+
+    `course_ids=None` is the superadmin view (every open item);
+    otherwise only items whose payload names an owned course. Items
+    queued without a course stay visible to superadmins only.
+    """
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT id, kind, url, reason, payload, created_at FROM human_queue"
+                " WHERE status = 'open' ORDER BY created_at, id"
+            )
+        )
+    ).all()
+    owned = {str(course) for course in course_ids} if course_ids is not None else None
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        payload = dict(row[4] or {})
+        course = payload.get("course_id")
+        if owned is not None and (course is None or str(course) not in owned):
+            continue
+        items.append(
+            {
+                "id": str(row[0]),
+                "kind": row[1],
+                "url": row[2],
+                "reason": row[3],
+                "payload": payload,
+                "created_at": row[5].isoformat() if row[5] else None,
+            }
+        )
+    return items
+
+
+async def resolve_human_queue(
+    session: AsyncSession,
+    *,
+    item_id: UUID,
+    action: str,
+    settings: Settings,
+    approved_by: UUID | None,
+    client: Any | None = None,
+) -> dict[str, Any]:
+    """Resolve one open queue item: approve ingests it, dismiss drops it.
+
+    Approval is the human override: the URL is fetched (still
+    SSRF-guarded, robots waived by the human decision), ingested as a
+    pending source bound to the payload's course, and the item closes.
+    Returns {"source_id"} on approve, {"ok": True} on dismiss.
+    """
+    if action not in ("approve", "dismiss"):
+        raise ValidationError(f"unknown queue action: {action!r}")
+    row = (
+        await session.execute(
+            sa.text(
+                "SELECT id, kind, url, payload FROM human_queue"
+                " WHERE id = :item AND status = 'open'"
+            ),
+            {"item": str(item_id)},
+        )
+    ).first()
+    if row is None:
+        raise NotFoundError(f"queue item {item_id} not found")
+    if action == "dismiss":
+        await session.execute(
+            sa.text("UPDATE human_queue SET status = 'done' WHERE id = :item"),
+            {"item": str(item_id)},
+        )
+        return {"ok": True}
+    payload = dict(row[3] or {})
+    course_id = UUID(str(payload["course_id"])) if payload.get("course_id") else None
+    page = await fetch_url(str(row[2]), settings=settings, client=client)
+    if page.status != 200:
+        raise ValidationError(f"URL fetch failed with status {page.status}: {row[2]!r}")
+    digest = content_sha256(page.text.encode("utf-8"))
+    existing = (
+        await session.execute(
+            sa.text("SELECT id FROM sources WHERE content_sha256 = :digest"),
+            {"digest": digest},
+        )
+    ).first()
+    if existing is not None:
+        source_id = UUID(str(existing[0]))
+        if course_id is not None:
+            await bind_source_to_course(session, course_id=course_id, source_id=source_id)
+    else:
+        created = (
+            await session.execute(
+                sa.text(
+                    "INSERT INTO sources"
+                    " (content_sha256, kind, media, title, licence, approval,"
+                    " storage_path, ingest_status)"
+                    " VALUES (:digest, 'url', 'text', :title, '', 'pending', '',"
+                    " 'ready') RETURNING id"
+                ),
+                {"digest": digest, "title": str(row[2])},
+            )
+        ).one()
+        source_id = UUID(str(created[0]))
+        if course_id is not None:
+            await bind_source_to_course(session, course_id=course_id, source_id=source_id)
+        await ingest_passages(
+            session, source_id=source_id, passages=chunk_text(page.text, kind="web")
+        )
+        await set_source_as_of(session, source_id=source_id, as_of=date.today())
+    await session.execute(
+        sa.text("UPDATE human_queue SET status = 'done' WHERE id = :item"),
+        {"item": str(item_id)},
+    )
+    return {"source_id": str(source_id)}
+
+
+async def submit_transcribe(
+    session: AsyncSession,
+    *,
+    actor: Any,
+    source_id: UUID,
+    defer: Any = None,
+) -> UUID:
+    """Queue audio transcription as an operation (202); the worker runs it."""
+    from app.rbac.require import require
+    from app.services.audit import write_audit
+
+    require(actor, "source.upload")
+    row = (
+        await session.execute(
+            sa.text("SELECT id FROM sources WHERE id = :source"),
+            {"source": str(source_id)},
+        )
+    ).first()
+    if row is None:
+        raise NotFoundError(f"source {source_id} not found")
+    created = (
+        await session.execute(
+            sa.text(
+                "INSERT INTO operations (kind, status, params, progress, actor_id)"
+                " VALUES ('transcribe_audio', 'queued', CAST(:params AS jsonb), 0, :actor)"
+                " RETURNING id"
+            ),
+            {
+                "params": json.dumps({"source_id": str(source_id)}),
+                "actor": str(actor.user_id),
+            },
+        )
+    ).one()
+    operation_id = UUID(str(created[0]))
+    await write_audit(
+        session,
+        actor_id=actor.user_id,
+        action="transcribe_audio.submit",
+        entity="operation",
+        entity_id=str(operation_id),
+        meta={"source_id": str(source_id)},
+    )
+    await session.commit()
+    if defer is not None:
+        await defer(operation_id)
+    return operation_id

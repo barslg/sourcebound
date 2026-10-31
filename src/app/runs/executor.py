@@ -117,14 +117,18 @@ async def claim_step(
 ) -> dict[str, Any]:
     """Claim a step and commit BEFORE the model call.
 
-    Returns {"step_id", "reused_output"}: done steps with the same
-    input digest reuse their output (never repaid); done steps with a
-    changed digest reset to pending so downstream reruns.
+    Returns {"step_id", "reused_output", "attempt"}: done steps with
+    the same input digest reuse their output (never repaid); done
+    steps with a changed digest — and every other non-done state —
+    reset to running with attempt + 1. The caller passes
+    variant=attempt-1 to the model, so an explicit retry pays for a
+    fresh draft under a new request hash instead of re-serving a
+    rejected reply at $0.
     """
     existing = (
         await session.execute(
             sa.text(
-                "SELECT id, status, input_digest, output FROM run_steps"
+                "SELECT id, status, input_digest, output, attempt FROM run_steps"
                 " WHERE run_id = :run AND step_key = :key"
             ),
             {"run": str(run_id), "key": step_key},
@@ -143,20 +147,22 @@ async def claim_step(
             )
         ).one()
         await session.commit()
-        return {"step_id": UUID(str(row[0])), "reused_output": None}
-    step_id, status, digest, output = existing
+        return {"step_id": UUID(str(row[0])), "reused_output": None, "attempt": 1}
+    step_id, status, digest, output, attempt = existing
     if status == "done" and digest == input_digest:
-        return {"step_id": UUID(str(step_id)), "reused_output": output}
-    await session.execute(
-        sa.text(
-            "UPDATE run_steps SET status = 'running', input_digest = :digest,"
-            " output = NULL, error = NULL, attempt = attempt + 1,"
-            " started_at = now() WHERE id = :step"
-        ),
-        {"digest": input_digest, "step": str(step_id)},
-    )
+        return {"step_id": UUID(str(step_id)), "reused_output": output, "attempt": int(attempt)}
+    row = (
+        await session.execute(
+            sa.text(
+                "UPDATE run_steps SET status = 'running', input_digest = :digest,"
+                " output = NULL, error = NULL, attempt = attempt + 1,"
+                " started_at = now() WHERE id = :step RETURNING attempt"
+            ),
+            {"digest": input_digest, "step": str(step_id)},
+        )
+    ).one()
     await session.commit()
-    return {"step_id": UUID(str(step_id)), "reused_output": None}
+    return {"step_id": UUID(str(step_id)), "reused_output": None, "attempt": int(row[0])}
 
 
 async def finish_step(session: AsyncSession, *, step_id: UUID, output: dict[str, Any]) -> None:
@@ -559,23 +565,23 @@ async def plan_researcher_step(
     if claim["reused_output"] is not None:
         output = dict(claim["reused_output"])
     else:
+        known_handles = set(handle_to_passage)
         output = await provider.generate_json(
             agent="researcher",
             prompt=prompt,
             schema=researcher.schema(),
             run_id=run_id,
             step_id=claim["step_id"],
+            variant=int(claim["attempt"]) - 1,
+            check=lambda reply: researcher.check_output(reply, known_handles),
         )
-        errors = researcher.check_output(output, set(handle_to_passage))
-        if errors:
-            raise ValidationError(f"researcher output rejected: {errors[0]}")
         await researcher.record_pairs(
             session,
             query=query,
             query_lang=language,
             ranked=output["ranked"],
             handle_to_passage=handle_to_passage,
-            ranker=retriever.name,
+            ranker="model",
             fts_order=[item.passage_id for item in found],
         )
         for candidate in output.get("web_candidates", []):
@@ -668,18 +674,18 @@ async def plan_architect_step(
     if claim["reused_output"] is not None:
         output = dict(claim["reused_output"])
     else:
+        handles = set(handle_to_passage)
         output = await provider.generate_json(
             agent="architect",
             prompt=prompt,
             schema=architect.schema(),
             run_id=run_id,
             step_id=claim["step_id"],
+            variant=int(claim["attempt"]) - 1,
+            check=lambda reply: _rejectable_architect_errors(reply, prescription, handles),
         )
-        errors = architect.check_output(output, prescription, set(handle_to_passage))
-        if errors:
-            raise ValidationError(f"architect output rejected: {errors[0]}")
         parsed = ArchitectOutput.model_validate(output)
-        resolved = _resolve_handles(parsed, handle_to_passage)
+        resolved, held = _resolve_handles_tolerant(parsed, handle_to_passage)
         refs = _passage_refs(resolved)
         version_map = await write_tree(
             session,
@@ -687,33 +693,59 @@ async def plan_architect_step(
             tree=CourseTree(modules=parsed.modules, through_line=parsed.through_line),
             plan_digest=digest,
             run_step_id=claim["step_id"],
+            held=held,
         )
         await write_plan_citations(session, version_map=version_map, refs=refs)
         await finish_step(session, step_id=claim["step_id"], output=resolved)
     await session.commit()
 
 
-def _resolve_handles(parsed: Any, handle_to_passage: dict[str, Any]) -> dict[str, Any]:
-    """Map P-handles to passage ids for the stored step output.
+def _rejectable_architect_errors(
+    reply: dict[str, Any], prescription: dict[str, list[str]], handles: set[str]
+) -> list[str]:
+    """Architect errors that stop the run; unknown handles hold instead.
 
-    Unknown handles raise ValidationError (the step fails with a
-    marker); check_output rejects them first, so this is the backstop
-    that can never surface a KeyError to the driver.
+    A reply whose only errors are unknown source handles is accepted
+    here (the reply is stored) and its blocks are held with a reason
+    by _resolve_handles_tolerant; every other error rejects the reply
+    so it never poisons the store.
+    """
+    from app.agents import architect
+
+    errors = architect.check_output(reply, prescription, handles)
+    if errors and all("unknown handle" in error for error in errors):
+        return []
+    return errors
+
+
+def _resolve_handles_tolerant(
+    parsed: Any, handle_to_passage: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Map P-handles to passage ids; unknown handles hold their block.
+
+    Returns the resolved output plus plan_node_id to hold reason for
+    blocks citing handles outside this step. Known refs of a held
+    block are kept (so the reader still sees the passage); a block
+    with no known ref keeps an empty ref list and is still held.
     """
     dump: dict[str, Any] = json.loads(parsed.model_dump_json())
+    held: dict[str, str] = {}
     for module in dump["modules"]:
         for topic in module["topics"]:
             for block in topic["blocks"]:
                 resolved_refs = []
+                unknown: list[str] = []
                 for ref in block["source_refs"]:
                     passage_id = handle_to_passage.get(ref["handle"])
                     if passage_id is None:
-                        raise ValidationError(
-                            f"block {block['plan_node_id']}: unknown handle {ref['handle']!r}"
-                        )
-                    resolved_refs.append({"passage_id": str(passage_id)})
+                        unknown.append(str(ref["handle"]))
+                    else:
+                        resolved_refs.append({"passage_id": str(passage_id)})
                 block["source_refs"] = resolved_refs
-    return dump
+                if unknown:
+                    quoted = ", ".join(sorted(set(unknown)))
+                    held[str(block["plan_node_id"])] = f"unknown handle {quoted}"
+    return dump, held
 
 
 def _passage_refs(resolved: dict[str, Any]) -> dict[str, list[str]]:
@@ -728,6 +760,19 @@ def _passage_refs(resolved: dict[str, Any]) -> dict[str, list[str]]:
     return refs
 
 
+async def _stored_passage_texts(session: AsyncSession, *, passage_ids: list[str]) -> dict[str, str]:
+    """Passage id to its stored text for every cited passage."""
+    if not passage_ids:
+        return {}
+    rows = (
+        await session.execute(
+            sa.text("SELECT id, text FROM passages WHERE id::text = ANY(:ids)"),
+            {"ids": passage_ids},
+        )
+    ).all()
+    return {str(row[0]): str(row[1]) for row in rows}
+
+
 async def write_plan_citations(
     session: AsyncSession,
     *,
@@ -739,10 +784,16 @@ async def write_plan_citations(
 
     Plan-time links carry no quote yet (verified_by='plan'); rows with
     a quote (generation time, T05) are verified verbatim in code
-    first, and a bad quote holds the block via ValidationError instead
-    of crashing the run. Passage is RESTRICT: cited passages cannot be
-    deleted out from under their blocks.
+    first against the STORED passage text — caller-supplied text never
+    decides verification. A bad quote raises ValidationError (the
+    generation layer turns it into a held block) instead of crashing
+    the run. Passage is RESTRICT: cited passages cannot be deleted
+    out from under their blocks.
     """
+    wanted: list[str] = []
+    for passage_ids in refs.values():
+        wanted.extend(passage_ids)
+    stored = await _stored_passage_texts(session, passage_ids=list(dict.fromkeys(wanted)))
     count = 0
     for node_id, passage_ids in refs.items():
         target = version_map.get(node_id)
@@ -763,7 +814,7 @@ async def write_plan_citations(
                             "quote_end": quote_item.get("quote_end", 0),
                         }
                     ],
-                    {passage_id: str(quote_item.get("passage_text", ""))},
+                    {passage_id: stored.get(passage_id, "")},
                 )
                 if holds:
                     raise ValidationError(f"citation rejected: {holds[0]}")
@@ -786,3 +837,158 @@ async def write_plan_citations(
             )
             count += 1
     return count
+
+
+async def generate_block_step(
+    session: AsyncSession,
+    *,
+    run_id: UUID,
+    entry: dict[str, Any],
+    provider_factory: Callable[[AsyncSession], Any],
+) -> None:
+    """One block generator call: prompt assembly plus code-checked output.
+
+    The only model-call site for generation; agents build prompts and
+    check replies, this step pays for the call. Prompt prefix order is
+    system + rubric, approved source, frozen plan + dossier, skeleton;
+    cache scope is agent:block_type:course_id.
+    """
+    from app.agents import generate_block
+
+    step_key = str(entry["step_key"])
+    agent, _, node_id = step_key.partition(":")
+    block_type = str(entry.get("block_type", "reading"))
+    course_id = str(entry.get("course_id", ""))
+    prompt = generate_block.build_generation_prompt(
+        agent=agent,
+        block_type=block_type,
+        course_id=course_id,
+        course_language=str(entry.get("course_language", "en")),
+        sources=list(entry.get("sources", [])),
+        plan=dict(entry.get("plan", {})),
+        dossier=dict(entry.get("dossier", {})),
+        skeleton=dict(entry.get("skeleton", {"plan_node_id": node_id})),
+    )
+    digest = step_digest(agent=agent, prompt=prompt, upstream={"node": node_id})
+    claim = await claim_step(session, run_id=run_id, step_key=step_key, input_digest=digest)
+    provider = provider_factory(session)
+    if claim["reused_output"] is not None:
+        output = dict(claim["reused_output"])
+    else:
+        from app.llm.prompts import cache_key
+
+        output = await provider.generate_json(
+            agent=agent,
+            prompt=prompt,
+            schema=generate_block.schema(),
+            cache_key=cache_key(agent, block_type, course_id),
+            run_id=run_id,
+            step_id=claim["step_id"],
+            variant=int(claim["attempt"]) - 1,
+            check=generate_block.check_block_output,
+        )
+        await finish_step(session, step_id=claim["step_id"], output=output)
+    await session.commit()
+
+
+async def read_topic_step(
+    session: AsyncSession,
+    *,
+    run_id: UUID,
+    entry: dict[str, Any],
+    provider_factory: Callable[[AsyncSession], Any],
+) -> None:
+    """One reader call per topic with per-block pass/hold/unknown verdicts."""
+    from app.agents import reader
+
+    step_key = str(entry["step_key"])
+    _, _, topic_id = step_key.partition(":")
+    node_ids = {str(item.get("plan_node_id", "")) for item in entry.get("blocks", [])}
+    prompt = reader.build_reader_prompt(
+        topic_plan_node_id=topic_id,
+        course_language=str(entry.get("course_language", "en")),
+        sources=list(entry.get("sources", [])),
+        plan=dict(entry.get("plan", {})),
+        dossier=dict(entry.get("dossier", {})),
+        blocks=list(entry.get("blocks", [])),
+    )
+    digest = step_digest(agent="reader", prompt=prompt, upstream={"topic": topic_id})
+    claim = await claim_step(session, run_id=run_id, step_key=step_key, input_digest=digest)
+    provider = provider_factory(session)
+    if claim["reused_output"] is not None:
+        output = dict(claim["reused_output"])
+    else:
+        output = await provider.generate_json(
+            agent="reader",
+            prompt=prompt,
+            schema=reader.schema(),
+            run_id=run_id,
+            step_id=claim["step_id"],
+            variant=int(claim["attempt"]) - 1,
+            check=lambda reply: reader.check_reader_output(reply, node_ids=node_ids),
+        )
+        await finish_step(session, step_id=claim["step_id"], output=output)
+    await session.commit()
+
+
+async def read_continuity_step(
+    session: AsyncSession,
+    *,
+    run_id: UUID,
+    entry: dict[str, Any],
+    provider_factory: Callable[[AsyncSession], Any],
+) -> None:
+    """One continuity reader call per module over topic handoffs."""
+    from app.agents import continuity
+
+    step_key = str(entry["step_key"])
+    _, _, module_id = step_key.partition(":")
+    prompt = continuity.build_continuity_prompt(
+        module_plan_node_id=module_id,
+        course_language=str(entry.get("course_language", "en")),
+        handoffs=list(entry.get("handoffs", [])),
+        dossier=dict(entry.get("dossier", {})),
+    )
+    digest = step_digest(agent="continuity", prompt=prompt, upstream={"module": module_id})
+    claim = await claim_step(session, run_id=run_id, step_key=step_key, input_digest=digest)
+    provider = provider_factory(session)
+    if claim["reused_output"] is not None:
+        output = dict(claim["reused_output"])
+    else:
+        output = await provider.generate_json(
+            agent="continuity",
+            prompt=prompt,
+            schema=continuity.schema(),
+            run_id=run_id,
+            step_id=claim["step_id"],
+            variant=int(claim["attempt"]) - 1,
+            check=continuity.check_continuity_output,
+        )
+        await finish_step(session, step_id=claim["step_id"], output=output)
+    await session.commit()
+
+
+async def rework_blocks_step(
+    session: AsyncSession,
+    *,
+    run_id: UUID,
+    entry: dict[str, Any],
+    provider_factory: Callable[[AsyncSession], Any],
+) -> None:
+    """Rework marker: only named blocks rerun; settled blocks are skipped."""
+    step_key = str(entry["step_key"])
+    digest = input_digest_of({"kind": "rework", "named": entry.get("named", [])})
+    claim = await claim_step(session, run_id=run_id, step_key=step_key, input_digest=digest)
+    if claim["reused_output"] is None:
+        await finish_step(
+            session, step_id=claim["step_id"], output={"reworked": list(entry.get("named", []))}
+        )
+    await session.commit()
+
+
+GENERATION_HANDLERS: dict[str, str] = {
+    "generate_block": "generate_block_step",
+    "read_topic": "read_topic_step",
+    "read_continuity": "read_continuity_step",
+    "rework_blocks": "rework_blocks_step",
+}

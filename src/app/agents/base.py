@@ -33,6 +33,14 @@ AGENT_SCHEMAS: dict[str, dict[str, object]] = {
     "researcher": tree.RESEARCHER_SCHEMA,
     "architect": tree.ARCHITECT_SCHEMA,
     "librarian": tree.LIBRARIAN_SCHEMA,
+    "block_teach": tree.GENERATOR_SCHEMA,
+    "block_example": tree.GENERATOR_SCHEMA,
+    "block_check": tree.GENERATOR_SCHEMA,
+    "block_practice": tree.GENERATOR_SCHEMA,
+    "block_test": tree.GENERATOR_SCHEMA,
+    "reader": tree.READER_SCHEMA,
+    "saboteur": tree.SABOTEUR_SCHEMA,
+    "continuity": tree.CONTINUITY_SCHEMA,
 }
 
 

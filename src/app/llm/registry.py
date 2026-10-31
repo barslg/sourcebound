@@ -145,6 +145,7 @@ STEPS: dict[str, StepSpec] = {
     "saboteur": StepSpec(model="muse-wonder-1.0", effort="medium", max_output_tokens=4000),
     "translator": StepSpec(model="muse-spark-1.3", effort="low", max_output_tokens=8000),
     "tutor": StepSpec(model="muse-spark-1.3", effort="low", max_output_tokens=2000),
+    "continuity": StepSpec(model="muse-wonder-1.0", effort="high", max_output_tokens=4000),
 }
 
 

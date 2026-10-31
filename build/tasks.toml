@@ -43,7 +43,7 @@ prompt = "build/tasks/T05.md"
 model = "muse-spark-1.3"
 effort = "high"
 max_steps = 700
-depends = ["T03", "T02b", "T03b", "T03c", "T03d"]
+depends = ["T03", "T02b", "T03b", "T03c", "T03d", "T02c"]
 
 [[task]]
 id = "T07"
@@ -97,4 +97,13 @@ prompt = "build/tasks/T03d.md"
 model = "muse-spark-1.3"
 effort = "high"
 max_steps = 350
-depends = ["T02b"]
+depends = ["T02b", "T02c"]
+
+[[task]]
+id = "T02c"
+title = "second-pass security fixes: circular worker import (fresh deploy and worker down), scope containment per permission, revoke scope, heir rights, immutable administrator role, signed-out invite flow, revoke by id"
+prompt = "build/tasks/T02c.md"
+model = "muse-spark-1.3"
+effort = "high"
+max_steps = 400
+depends = ["T03c"]

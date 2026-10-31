@@ -364,3 +364,60 @@ LIBRARIAN_SCHEMA: dict[str, Any] = _strict_object(
         ),
     }
 )
+
+GENERATOR_SCHEMA: dict[str, Any] = _strict_object(
+    {
+        "block_type": _string(),
+        "text": _string(),
+        "citations": {
+            "type": "array",
+            "items": _strict_object({"passage_id": _string(), "quote": _string()}),
+        },
+        "answer": _string(),
+    }
+)
+
+READER_SCHEMA: dict[str, Any] = _strict_object(
+    {
+        "verdicts": {
+            "type": "array",
+            "items": _strict_object(
+                {
+                    "plan_node_id": _string(),
+                    "verdict": {
+                        "type": "string",
+                        "enum": ["pass", "hold", "unknown"],
+                    },
+                    "items": {
+                        "type": "array",
+                        "items": _strict_object(
+                            {
+                                "item": _string(),
+                                "status": _string(),
+                                "evidence": _string(),
+                            }
+                        ),
+                    },
+                }
+            ),
+        }
+    }
+)
+
+SABOTEUR_SCHEMA: dict[str, Any] = _strict_object(
+    {
+        "sentence": _string(),
+        "kind": _string(),
+        "mutated": _string(),
+    }
+)
+
+CONTINUITY_SCHEMA: dict[str, Any] = _strict_object(
+    {
+        "handoffs": {
+            "type": "array",
+            "items": _strict_object({"topic_plan_node_id": _string(), "note": _string()}),
+        },
+        "issues": {"type": "array", "items": _string()},
+    }
+)

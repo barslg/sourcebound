@@ -17,14 +17,20 @@ def require(principal: Principal | None, code: str) -> Principal:
     return principal
 
 
-def require_scope(principal: Principal, tags: Collection[str]) -> None:
-    """Demand scope overlap; an object outside scope answers 404.
+def require_scope(principal: Principal, tags: Collection[str], *, code: str) -> None:
+    """Demand scope containment for one permission; outside scope answers 404.
 
-    A superadmin and a globally scoped principal (no tags) see
-    everything; anyone else must share at least one tag with the object.
+    The scope is read from the grants carrying `code`, never from the
+    union across grants. A superadmin, or a principal holding `code`
+    globally (a grant with no tags), sees everything. Every other caller
+    must cover every tag of the object; a target with no tags is in scope
+    for a global actor only.
     """
-    wanted = set(tags)
-    if principal.is_superadmin or not principal.scope_tags or not wanted:
+    if principal.is_superadmin:
         return
-    if wanted.isdisjoint(principal.scope_tags):
+    scope = principal.scope_for(code)
+    if scope is None:
+        return
+    wanted = set(tags)
+    if not wanted or wanted - scope:
         raise NotFoundError("object not found")

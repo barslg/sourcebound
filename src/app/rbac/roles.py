@@ -60,7 +60,11 @@ def _check_assignment(
     role_codes: Collection[str],
     scope_tags: Collection[str],
 ) -> None:
-    """Anti-escalation for grants: codes and tags ⊆ the actor's, never oneself."""
+    """Anti-escalation for grants: codes and tags ⊆ the actor's, never oneself.
+
+    Tags are read from the grants carrying role.assign, never from the
+    union across grants; an empty (global) grant needs a global actor.
+    """
     if actor is None or actor.is_superadmin:
         return
     from app.errors import ForbiddenError
@@ -70,11 +74,23 @@ def _check_assignment(
         raise ForbiddenError(PERMISSION_DENIED_MESSAGE)
     if sorted(set(role_codes) - actor.permissions):
         raise ForbiddenError(PERMISSION_DENIED_MESSAGE)
+    scope = actor.scope_for("role.assign")
+    if scope is None:
+        return
     wanted = set(scope_tags)
-    if not wanted and actor.scope_tags:
+    if not wanted or wanted - scope:
         raise ForbiddenError(PERMISSION_DENIED_MESSAGE)
-    if wanted - set(actor.scope_tags):
-        raise ForbiddenError(PERMISSION_DENIED_MESSAGE)
+
+
+async def _target_tags(session: AsyncSession, user_id: UUID) -> list[str]:
+    """Every scope tag granted to the target account."""
+    rows = (
+        await session.execute(
+            sa.text("SELECT ur.scope_tags FROM user_roles ur WHERE ur.user_id = :user"),
+            {"user": str(user_id)},
+        )
+    ).all()
+    return sorted({tag for (tags,) in rows for tag in (tags or [])})
 
 
 def _validate_crud(crud: Mapping[str, Collection[str]] | None) -> dict[str, list[str]]:
@@ -182,15 +198,30 @@ async def update_role(
     scope_tags: Collection[str] | None = None,
     actor: Principal | None = None,
 ) -> None:
-    """Change a role's grants, matrix, or default scope."""
+    """Change a role's grants, matrix, or default scope.
+
+    The administrator role is immutable except by a superadmin, and it
+    can never lose permission codes, not even to a superadmin.
+    """
     if actor is not None:
         require(actor, "role.edit")
+    from app.rbac.catalogue import ADMIN_ROLE_NAME
+
+    if name == ADMIN_ROLE_NAME and actor is not None and not actor.is_superadmin:
+        from app.errors import ForbiddenError
+        from app.rbac.require import PERMISSION_DENIED_MESSAGE
+
+        raise ForbiddenError(PERMISSION_DENIED_MESSAGE)
     role_id = await _role_id(session, name)
     if permission_codes is not None:
-        from app.rbac.catalogue import ADMIN_ROLE_NAME
-
         if name == ADMIN_ROLE_NAME and not set(permission_codes):
             raise ValidationError("the administrator role must keep its permissions")
+        if name == ADMIN_ROLE_NAME:
+            removed = sorted(await _role_codes(session, role_id) - set(permission_codes))
+            if removed:
+                raise ValidationError(
+                    f"the administrator role cannot lose permissions: {', '.join(removed)}"
+                )
         await _reject_unknown(session, permission_codes)
         _check_escalation(actor, permission_codes, name)
         await session.execute(
@@ -231,9 +262,22 @@ async def update_role(
 
 
 async def delete_role(session: AsyncSession, *, name: str, actor: Principal | None) -> None:
-    """Delete a role; grants and assignments cascade in the schema."""
+    """Delete a role; grants and assignments cascade in the schema.
+
+    The administrator role cannot be deleted: removing it would lose
+    every permission code it carries.
+    """
     if actor is not None:
         require(actor, "role.edit")
+    from app.rbac.catalogue import ADMIN_ROLE_NAME
+
+    if name == ADMIN_ROLE_NAME:
+        if actor is not None and not actor.is_superadmin:
+            from app.errors import ForbiddenError
+            from app.rbac.require import PERMISSION_DENIED_MESSAGE
+
+            raise ForbiddenError(PERMISSION_DENIED_MESSAGE)
+        raise ValidationError("the administrator role cannot be deleted")
     role_id = await _role_id(session, name)
     if actor is not None and not actor.is_superadmin and name in actor.roles:
         from app.errors import ForbiddenError
@@ -321,10 +365,16 @@ async def revoke_role(
     *,
     actor: Principal | None = None,
 ) -> None:
-    """Remove a role grant from a user."""
+    """Remove a role grant from a user, with the same check as the grant."""
     if actor is not None:
         require(actor, "role.assign")
     role_id = await _role_id(session, role_name)
+    _check_assignment(
+        actor,
+        target_id=user_id,
+        role_codes=await _role_codes(session, role_id),
+        scope_tags=await _target_tags(session, user_id),
+    )
     await session.execute(
         sa.text("DELETE FROM user_roles WHERE user_id = :user AND role_id = :role"),
         {"user": str(user_id), "role": str(role_id)},
