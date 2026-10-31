@@ -17,6 +17,35 @@ ROLES = ("teach", "example", "check", "practice", "test")
 QUESTION_ROLES = frozenset({"check", "practice", "test"})
 TOPIC_KINDS = ("lesson", "module_test")
 TS_CONFIGS = {"en": "english", "nb": "norwegian", "uk": "simple"}
+# Block-type registry per topic kind (item 14): block_type is not free
+# text. Lessons teach with readings/figures/examples and check with
+# exercises; module tests only assess.
+BLOCK_TYPES: dict[str, tuple[str, ...]] = {
+    "lesson": (
+        "reading",
+        "figure",
+        "worked_example",
+        "definition",
+        "choice",
+        "matching",
+        "cloze",
+        "scenario_practice",
+        "numeric",
+        "ordering",
+    ),
+    "module_test": (
+        "choice",
+        "matching",
+        "cloze",
+        "scenario_practice",
+        "spot_the_error",
+        "numeric",
+        "ordering",
+    ),
+}
+KNOWN_BLOCK_TYPES = frozenset(
+    block_type for allowed in BLOCK_TYPES.values() for block_type in allowed
+)
 
 
 class SourceRef(BaseModel):
@@ -57,10 +86,25 @@ class ModuleNode(BaseModel):
     topics: list[TopicNode] = Field(min_length=1)
 
 
+class ThroughLineHandoff(BaseModel):
+    """One per-topic handoff of the course-level case."""
+
+    topic_plan_node_id: str = Field(min_length=1)
+    note: str = Field(min_length=1)
+
+
+class ThroughLine(BaseModel):
+    """The course-level through-line: one case, per-topic handoffs."""
+
+    case: str = ""
+    handoffs: list[ThroughLineHandoff] = Field(default_factory=list)
+
+
 class CourseTree(BaseModel):
     """The whole plan: modules in order."""
 
     modules: list[ModuleNode] = Field(min_length=1)
+    through_line: ThroughLine | None = None
 
 
 class EstimateInputs(BaseModel):
@@ -76,6 +120,7 @@ class ArchitectOutput(BaseModel):
 
     modules: list[ModuleNode] = Field(min_length=1)
     estimate_inputs: EstimateInputs
+    through_line: ThroughLine | None = None
 
 
 class ConstraintRow(BaseModel):
@@ -106,10 +151,22 @@ def validate_tree(tree: CourseTree, prescription: dict[str, list[str]]) -> list[
                     f"{sorted(block.role for block in topic.blocks)} do not match "
                     f"prescription {sorted(expected)} for kind {topic.kind}"
                 )
+            allowed = BLOCK_TYPES.get(topic.kind)
+            if allowed is None:
+                errors.append(f"topic {topic.plan_node_id}: unknown topic kind {topic.kind}")
             for block in topic.blocks:
                 if block.plan_node_id in seen:
                     errors.append(f"duplicate plan_node_id {block.plan_node_id}")
                 seen.add(block.plan_node_id)
+                if block.block_type not in KNOWN_BLOCK_TYPES:
+                    errors.append(
+                        f"block {block.plan_node_id}: unknown block type {block.block_type!r}"
+                    )
+                elif allowed is not None and block.block_type not in allowed:
+                    errors.append(
+                        f"block {block.plan_node_id}: block type {block.block_type!r}"
+                        f" is not allowed for topic kind {topic.kind}"
+                    )
                 if not block.source_refs:
                     errors.append(f"block {block.plan_node_id}: needs at least one source ref")
                 asks = block.brief.strip().endswith("?")
@@ -127,6 +184,51 @@ def validate_tree(tree: CourseTree, prescription: dict[str, list[str]]) -> list[
     if len(set(node_ids)) != len(node_ids):
         errors.append("duplicate module/topic plan_node_id")
     return errors
+
+
+def _answer_strings(answer_key: Any) -> list[str]:
+    """Every string leaf of an answer key (server-side, any shape)."""
+    found: list[str] = []
+    if isinstance(answer_key, str):
+        found.append(answer_key)
+    elif isinstance(answer_key, dict):
+        for value in answer_key.values():
+            found.extend(_answer_strings(value))
+    elif isinstance(answer_key, list):
+        for value in answer_key:
+            found.extend(_answer_strings(value))
+    return found
+
+
+def _normalize(text: str) -> str:
+    import re as _re
+    import unicodedata as _ud
+
+    folded = _ud.normalize("NFKC", text.lower())
+    return " ".join(_re.sub(r"[^0-9a-zа-яёіїєґæøå]+", " ", folded).split())
+
+
+def brief_contains_answer(brief: str, answer_key: Any) -> bool:
+    """True when a block brief leaks its answer key (generation-time check).
+
+    A brief must be a topic, never the answer: any substantial answer
+    string appearing verbatim in the brief — or all of its content
+    words showing up there — fails the block. Short fragments (under
+    4 chars, fewer than 3 content words) never count, so ordinary
+    vocabulary overlap does not false-positive.
+    """
+    haystack = _normalize(brief)
+    hay_words = set(haystack.split())
+    for raw in _answer_strings(answer_key):
+        needle = _normalize(raw)
+        if len(needle) < 4:
+            continue
+        if needle in haystack:
+            return True
+        content = [word for word in needle.split() if len(word) > 3]
+        if len(content) >= 3 and all(word in hay_words for word in content):
+            return True
+    return False
 
 
 def _strict_object(properties: dict[str, Any]) -> dict[str, Any]:
@@ -227,6 +329,15 @@ ARCHITECT_SCHEMA: dict[str, Any] = _strict_object(
                 "blocks": {"type": "integer"},
                 "calls": {"type": "integer"},
                 "tokens": {"type": "integer"},
+            }
+        ),
+        "through_line": _strict_object(
+            {
+                "case": _string(),
+                "handoffs": {
+                    "type": "array",
+                    "items": _strict_object({"topic_plan_node_id": _string(), "note": _string()}),
+                },
             }
         ),
     }

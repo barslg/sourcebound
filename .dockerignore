@@ -1,0 +1,17 @@
+# Build context allow-list: prompts/ MUST ship (the image cannot start
+# without the agent system prompts), so it is never excluded here.
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.git/
+tmp/
+.env
+.env.*
+var/
+frontend/node_modules/
+frontend/dist/
+build/logs/
+*.log

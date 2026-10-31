@@ -113,6 +113,7 @@ T03_TABLES = [
     "sources",
     "profile_constraints",
     "course_profiles",
+    "course_sources",
     "block_versions",
     "blocks",
     "topics",

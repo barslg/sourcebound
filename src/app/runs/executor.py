@@ -19,9 +19,13 @@ from uuid import UUID
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.errors import LLMError, ValidationError
+from app.errors import ValidationError
+from app.llm.registry import resolve_step
 
 RUN_LOCK_PREFIX = "run:"
+# Whole approved source the architect may see (BRIEF §3: ≤200k tokens).
+ARCHITECT_SOURCE_CHAR_BUDGET = 800_000
+TS_CONFIG_TO_LANGUAGE = {"english": "en", "norwegian": "nb", "simple": "uk"}
 
 PLAN_HANDLERS: dict[str, str] = {
     "researcher": "plan_researcher_step",
@@ -34,6 +38,48 @@ def input_digest_of(payload: dict[str, Any]) -> str:
     return hashlib.sha256(
         json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
     ).hexdigest()[:32]
+
+
+def step_digest(*, agent: str, prompt: str, upstream: dict[str, Any] | None = None) -> str:
+    """Digest of one step's real inputs: prompt, upstream outputs, model.
+
+    The digest carries the assembled prompt, the outputs of upstream
+    steps (so a changed researcher output reruns the architect), and
+    the resolved model, effort, and max_output_tokens from the
+    registry — never a constant.
+    """
+    model, effort, max_tokens = resolve_step(agent, None, None, None)
+    return input_digest_of(
+        {
+            "agent": agent,
+            "prompt": prompt,
+            "upstream": upstream or {},
+            "model": model,
+            "effort": effort,
+            "max_output_tokens": max_tokens,
+        }
+    )
+
+
+def address_sort_key(address_key: str) -> tuple[Any, ...]:
+    """Numeric sort for passage addresses: para2 before para10.
+
+    Text sorting would put para10 before para2; the architect must see
+    the source in reading order, so page/paragraph numbers compare
+    numerically with a stable fallback for unknown shapes.
+    """
+    import re
+
+    match = re.fullmatch(r"p(\d+)/para(\d+)", address_key)
+    if match:
+        return (0, int(match.group(1)), int(match.group(2)))
+    match = re.fullmatch(r"h:(.*)/para(\d+)", address_key)
+    if match:
+        return (1, match.group(1), int(match.group(2)))
+    match = re.fullmatch(r"t([0-9:.]+)-([0-9:.]+)", address_key)
+    if match:
+        return (2, match.group(1), match.group(2))
+    return (3, address_key)
 
 
 async def new_run(
@@ -51,11 +97,12 @@ async def new_run(
     row = (
         await session.execute(
             sa.text(
-                "INSERT INTO runs (status, compiled_dag, dag_digest, estimate)"
-                " VALUES ('running', CAST(:dag AS jsonb), :digest,"
+                "INSERT INTO runs (status, course_id, compiled_dag, dag_digest, estimate)"
+                " VALUES ('running', :course, CAST(:dag AS jsonb), :digest,"
                 " CAST(:estimate AS jsonb)) RETURNING id"
             ),
             {
+                "course": str(course_id),
                 "dag": json.dumps(dag),
                 "digest": digest,
                 "estimate": json.dumps(estimate) if estimate is not None else None,
@@ -147,12 +194,27 @@ async def complete_run(session: AsyncSession, *, run_id: UUID) -> None:
     await session.commit()
 
 
+async def run_course_id(session: AsyncSession, *, run_id: UUID) -> UUID | None:
+    """The course a run belongs to (scope checks for reads and resume)."""
+    row = (
+        await session.execute(
+            sa.text("SELECT course_id FROM runs WHERE id = :run"),
+            {"run": str(run_id)},
+        )
+    ).first()
+    if row is None:
+        from app.errors import NotFoundError
+
+        raise NotFoundError(f"run {run_id} not found")
+    return UUID(str(row[0])) if row[0] is not None else None
+
+
 async def get_run(session: AsyncSession, *, run_id: UUID) -> dict[str, Any]:
     """One run with its steps in DAG order."""
     row = (
         await session.execute(
             sa.text(
-                "SELECT status, compiled_dag, dag_digest, estimate, stop_marker"
+                "SELECT status, course_id, compiled_dag, dag_digest, estimate, stop_marker"
                 " FROM runs WHERE id = :run"
             ),
             {"run": str(run_id)},
@@ -174,10 +236,11 @@ async def get_run(session: AsyncSession, *, run_id: UUID) -> dict[str, Any]:
     return {
         "id": str(run_id),
         "status": row[0],
-        "compiled_dag": row[1],
-        "dag_digest": row[2],
-        "estimate": row[3],
-        "stop_marker": row[4],
+        "course_id": str(row[1]) if row[1] is not None else None,
+        "compiled_dag": row[2],
+        "dag_digest": row[3],
+        "estimate": row[4],
+        "stop_marker": row[5],
         "steps": [
             {
                 "step_key": step[0],
@@ -226,16 +289,50 @@ async def drive_run(
     Steps run in compiled-DAG order, skipping satisfied dependencies;
     done steps with an unchanged input digest are reused without a
     model call. Returns the final run record.
+
+    The lock is session-level (`pg_try_advisory_lock`) on a dedicated
+    connection held for the whole drive: the old transaction-scoped
+    lock was released by the first commit inside claim_step, so two
+    drivers could enter the same run. Any exception in a handler —
+    LLM errors and code bugs alike — fails the step and stops the run
+    with a marker instead of leaving it running.
     """
-    async with factory() as session:
+    engine = factory.kw.get("bind")
+    if engine is None:  # pragma: no cover - every caller binds an engine
+        raise ValidationError("drive_run needs a session factory bound to an engine")
+    async with engine.connect() as lock_conn:
         acquired = (
-            await session.execute(
-                sa.text("SELECT pg_try_advisory_xact_lock(hashtext(:key))"),
+            await lock_conn.execute(
+                sa.text("SELECT pg_try_advisory_lock(hashtext(:key))"),
                 {"key": f"{RUN_LOCK_PREFIX}{run_id}"},
             )
         ).scalar()
         if not acquired:
-            return await get_run(session, run_id=run_id)
+            async with factory() as busy:
+                return await get_run(busy, run_id=run_id)
+        try:
+            return await _drive_locked(
+                factory,
+                run_id=run_id,
+                provider_factory=provider_factory,
+                handlers=handlers,
+            )
+        finally:
+            await lock_conn.execute(
+                sa.text("SELECT pg_advisory_unlock(hashtext(:key))"),
+                {"key": f"{RUN_LOCK_PREFIX}{run_id}"},
+            )
+
+
+async def _drive_locked(
+    factory: async_sessionmaker[AsyncSession],
+    *,
+    run_id: UUID,
+    provider_factory: Callable[[AsyncSession], Any],
+    handlers: dict[str, Callable[..., Any]],
+) -> dict[str, Any]:
+    """One drive pass; the caller holds the session-level run lock."""
+    async with factory() as session:
         dag_row = (
             await session.execute(
                 sa.text("SELECT compiled_dag, status FROM runs WHERE id = :run"),
@@ -284,7 +381,7 @@ async def drive_run(
                 await handler(
                     session, run_id=run_id, entry=entry, provider_factory=provider_factory
                 )
-            except LLMError as exc:
+            except Exception as exc:
                 await session.rollback()
                 async with factory() as failed:
                     await failed.execute(
@@ -292,12 +389,16 @@ async def drive_run(
                             "UPDATE run_steps SET status = 'failed', error = :error,"
                             " finished_at = now() WHERE run_id = :run AND step_key = :key"
                         ),
-                        {"error": str(exc)[:2000], "run": str(run_id), "key": step_key},
+                        {
+                            "error": f"{type(exc).__name__}: {exc}"[:2000],
+                            "run": str(run_id),
+                            "key": step_key,
+                        },
                     )
                     await stop_run(
                         failed,
                         run_id=run_id,
-                        marker=f"retry policy exhausted at {step_key}: {exc}",
+                        marker=f"stopped at {step_key}: {type(exc).__name__}: {exc}"[:2000],
                     )
                 async with factory() as fresh:
                     return await get_run(fresh, run_id=run_id)
@@ -334,10 +435,10 @@ async def plan_researcher_step(
 
     step_key = str(entry["step_key"])
     query = str(entry["query"])
+    course_id = UUID(str(entry["course_id"]))
     language = str(entry.get("language", "en"))
-    ts_config = str(entry.get("ts_config", "english"))
     retriever = get_retriever(str(entry.get("retriever", "fts")))
-    found = await retriever.search(session, query=query, ts_config=ts_config, limit=8)
+    found = await retriever.search_course(session, query=query, course_id=course_id, limit=8)
     handle_to_passage = {f"P{index}": item.passage_id for index, item in enumerate(found, 1)}
     handles = [
         {
@@ -347,9 +448,22 @@ async def plan_researcher_step(
         }
         for index, item in enumerate(found, 1)
     ]
+    source_languages = sorted(
+        {
+            TS_CONFIG_TO_LANGUAGE.get(item.ts_config, item.ts_config)
+            for item in found
+            if item.ts_config
+        }
+    )
     rephrased = researcher.rephrase_queries(query)
-    prompt = researcher.build_prompt(query, rephrased, handles)
-    digest = input_digest_of({"prompt": prompt, "query": query})
+    prompt = researcher.build_prompt(
+        query, rephrased, handles, course_language=language, source_languages=source_languages
+    )
+    digest = step_digest(
+        agent="researcher",
+        prompt=prompt,
+        upstream={"query": query, "course_id": str(course_id)},
+    )
     claim = await claim_step(session, run_id=run_id, step_key=step_key, input_digest=digest)
     provider = provider_factory(session)
     if claim["reused_output"] is not None:
@@ -372,6 +486,7 @@ async def plan_researcher_step(
             ranked=output["ranked"],
             handle_to_passage=handle_to_passage,
             ranker=retriever.name,
+            fts_order=[item.passage_id for item in found],
         )
         for candidate in output.get("web_candidates", []):
             from app.services.library import add_web_candidate
@@ -403,25 +518,61 @@ async def plan_architect_step(
 
     step_key = str(entry["step_key"])
     course_id = UUID(str(entry["course_id"]))
+    language = str(entry.get("language", "en"))
     profile = entry["profile"]
     constraints = entry.get("constraints", [])
     prescription = prescription_for(list(profile.get("methodology_codes", [])))
     rows = (
         await session.execute(
             sa.text(
-                "SELECT id, address_key, text FROM passages WHERE source_id IN"
-                " (SELECT id FROM sources WHERE approval = 'approved')"
-                " ORDER BY source_id, address_key LIMIT 60"
-            )
+                "SELECT passages.id, passages.address_key, passages.text,"
+                " passages.source_id, passages.ts_config FROM passages"
+                " JOIN course_sources cs ON cs.source_id = passages.source_id"
+                " AND cs.course_id = :course AND cs.approval = 'approved'"
+                " JOIN sources s ON s.id = passages.source_id"
+                " AND s.approval = 'approved'"
+            ),
+            {"course": str(course_id)},
         )
     ).all()
-    handle_to_passage = {f"P{index}": row[0] for index, row in enumerate(rows, 1)}
+    ordered = sorted(rows, key=lambda row: (str(row[3]), address_sort_key(str(row[1]))))
+    picked: list[Any] = []
+    budget = 0
+    for row in ordered:
+        size = len(str(row[2]))
+        if picked and budget + size > ARCHITECT_SOURCE_CHAR_BUDGET:
+            break
+        picked.append(row)
+        budget += size
+    handle_to_passage = {f"P{index}": row[0] for index, row in enumerate(picked, 1)}
     passages = [
-        {"handle": f"P{index}", "address_key": row[1], "text": str(row[2])[:500]}
-        for index, row in enumerate(rows, 1)
+        {"handle": f"P{index}", "address_key": row[1], "text": str(row[2])}
+        for index, row in enumerate(picked, 1)
     ]
-    prompt = architect.build_prompt(profile, constraints, prescription, passages)
-    digest = input_digest_of({"prompt": prompt})
+    source_languages = sorted(
+        {TS_CONFIG_TO_LANGUAGE.get(str(row[4]), str(row[4])) for row in picked if row[4]}
+    )
+    prompt = architect.build_prompt(
+        profile,
+        constraints,
+        prescription,
+        passages,
+        course_language=language,
+        source_languages=source_languages,
+    )
+    upstream_rows = (
+        await session.execute(
+            sa.text(
+                "SELECT step_key, output FROM run_steps WHERE run_id = :run AND status = 'done'"
+            ),
+            {"run": str(run_id)},
+        )
+    ).all()
+    digest = step_digest(
+        agent="architect",
+        prompt=prompt,
+        upstream={str(key): output for key, output in upstream_rows},
+    )
     claim = await claim_step(session, run_id=run_id, step_key=step_key, input_digest=digest)
     provider = provider_factory(session)
     if claim["reused_output"] is not None:
@@ -434,29 +585,114 @@ async def plan_architect_step(
             run_id=run_id,
             step_id=claim["step_id"],
         )
-        errors = architect.check_output(output, prescription)
+        errors = architect.check_output(output, prescription, set(handle_to_passage))
         if errors:
             raise ValidationError(f"architect output rejected: {errors[0]}")
         parsed = ArchitectOutput.model_validate(output)
         resolved = _resolve_handles(parsed, handle_to_passage)
-        await write_tree(
+        refs = _passage_refs(resolved)
+        version_map = await write_tree(
             session,
             course_id=course_id,
-            tree=CourseTree(modules=parsed.modules),
+            tree=CourseTree(modules=parsed.modules, through_line=parsed.through_line),
             plan_digest=digest,
+            run_step_id=claim["step_id"],
         )
+        await write_plan_citations(session, version_map=version_map, refs=refs)
         await finish_step(session, step_id=claim["step_id"], output=resolved)
     await session.commit()
 
 
 def _resolve_handles(parsed: Any, handle_to_passage: dict[str, Any]) -> dict[str, Any]:
-    """Map P-handles to passage ids for the stored step output."""
+    """Map P-handles to passage ids for the stored step output.
+
+    Unknown handles raise ValidationError (the step fails with a
+    marker); check_output rejects them first, so this is the backstop
+    that can never surface a KeyError to the driver.
+    """
     dump: dict[str, Any] = json.loads(parsed.model_dump_json())
     for module in dump["modules"]:
         for topic in module["topics"]:
             for block in topic["blocks"]:
-                block["source_refs"] = [
-                    {"passage_id": str(handle_to_passage[ref["handle"]])}
-                    for ref in block["source_refs"]
-                ]
+                resolved_refs = []
+                for ref in block["source_refs"]:
+                    passage_id = handle_to_passage.get(ref["handle"])
+                    if passage_id is None:
+                        raise ValidationError(
+                            f"block {block['plan_node_id']}: unknown handle {ref['handle']!r}"
+                        )
+                    resolved_refs.append({"passage_id": str(passage_id)})
+                block["source_refs"] = resolved_refs
     return dump
+
+
+def _passage_refs(resolved: dict[str, Any]) -> dict[str, list[str]]:
+    """Block plan_node_id to cited passage ids from resolved output."""
+    refs: dict[str, list[str]] = {}
+    for module in resolved["modules"]:
+        for topic in module["topics"]:
+            for block in topic["blocks"]:
+                refs[str(block["plan_node_id"])] = [
+                    str(ref["passage_id"]) for ref in block["source_refs"]
+                ]
+    return refs
+
+
+async def write_plan_citations(
+    session: AsyncSession,
+    *,
+    version_map: dict[str, dict[str, str]],
+    refs: dict[str, list[str]],
+    citations: dict[str, list[dict[str, Any]]] | None = None,
+) -> int:
+    """Write block→passage citation rows beside the block versions.
+
+    Plan-time links carry no quote yet (verified_by='plan'); rows with
+    a quote (generation time, T05) are verified verbatim in code
+    first, and a bad quote holds the block via ValidationError instead
+    of crashing the run. Passage is RESTRICT: cited passages cannot be
+    deleted out from under their blocks.
+    """
+    count = 0
+    for node_id, passage_ids in refs.items():
+        target = version_map.get(node_id)
+        if target is None:
+            continue
+        quoted = {item.get("passage_id"): item for item in (citations or {}).get(node_id, [])}
+        for passage_id in passage_ids:
+            quote_item = quoted.get(passage_id, {})
+            quote = str(quote_item.get("quote", ""))
+            if quote:
+                holds = verify_citations(
+                    [
+                        {
+                            "passage_id": passage_id,
+                            "claim_path": f"blocks.{node_id}",
+                            "quote": quote,
+                            "quote_start": quote_item.get("quote_start", 0),
+                            "quote_end": quote_item.get("quote_end", 0),
+                        }
+                    ],
+                    {passage_id: str(quote_item.get("passage_text", ""))},
+                )
+                if holds:
+                    raise ValidationError(f"citation rejected: {holds[0]}")
+            await session.execute(
+                sa.text(
+                    "INSERT INTO citations (block_version_id, passage_id, claim_path,"
+                    " quote, quote_start, quote_end, verified_by)"
+                    " VALUES (:version, :passage, :claim, :quote, :start, :end,"
+                    " :verified)"
+                ),
+                {
+                    "version": target["version_id"],
+                    "passage": passage_id,
+                    "claim": f"plan:{node_id}",
+                    "quote": quote,
+                    "start": int(quote_item.get("quote_start", 0)),
+                    "end": int(quote_item.get("quote_end", 0)),
+                    "verified": "code" if quote else "plan",
+                },
+            )
+            count += 1
+    return count

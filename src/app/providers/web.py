@@ -45,20 +45,29 @@ async def fetch_url(url: str, *, settings: Settings, client: Any | None = None) 
 
 
 async def robots_allowed(url: str, *, settings: Settings, client: Any | None = None) -> bool:
-    """True unless the site's robots.txt disallows this path."""
+    """True only when the site's robots.txt allows this path.
+
+    Fails closed: an unreadable robots.txt queues the page for a
+    human instead of fetching blind.
+    """
     parsed = urlparse(url)
     robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
     owned = client is not None
     active: Any = client if owned else build_client(settings)
     try:
-        text = await fetch_robots_text(
-            active, robots_url, timeout_s=settings.source_fetch_timeout_s
-        )
+        from app.errors import ValidationError as _ValidationError
+
+        try:
+            text = await fetch_robots_text(
+                active, robots_url, timeout_s=settings.source_fetch_timeout_s
+            )
+        except _ValidationError:
+            return False
     finally:
         if not owned:
             await active.aclose()
     if text is None:
-        return True
+        return False
     parser = urllib.robotparser.RobotFileParser()
     parser.parse(text.splitlines())
     return parser.can_fetch("*", url)

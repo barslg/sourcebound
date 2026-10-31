@@ -43,7 +43,7 @@ prompt = "build/tasks/T05.md"
 model = "muse-spark-1.3"
 effort = "high"
 max_steps = 700
-depends = ["T03", "T02b"]
+depends = ["T03", "T02b", "T03b", "T03c"]
 
 [[task]]
 id = "T07"
@@ -61,7 +61,7 @@ prompt = "build/tasks/T02b.md"
 model = "muse-spark-1.3"
 effort = "high"
 max_steps = 500
-depends = ["T03", "T03a"]
+depends = ["T03", "T03a", "T03b"]
 
 [[task]]
 id = "T03a"
@@ -71,3 +71,21 @@ model = "muse-spark-1.3"
 effort = "high"
 max_steps = 250
 depends = ["T03"]
+
+[[task]]
+id = "T03b"
+title = "close the T03 review: course-scoped sources, SSRF guard, per-course plan ids, one driver per run, pipeline wired to the worker, citations persisted, PDF extraction, FTS per language, digests, scope checks"
+prompt = "build/tasks/T03b.md"
+model = "muse-spark-1.3"
+effort = "high"
+max_steps = 600
+depends = ["T03a"]
+
+[[task]]
+id = "T03c"
+title = "author API completeness: course list, plan GET, estimate, sources list/reject, run cancel, held blocks and fix actions, publish, invites/notifications/permissions lists"
+prompt = "build/tasks/T03c.md"
+model = "muse-spark-1.3"
+effort = "high"
+max_steps = 350
+depends = ["T02b"]

@@ -207,8 +207,17 @@ async def test_web_candidates_need_human_approval(t03_session: AsyncSession) -> 
         title="AI Act",
     )
     await t03_session.commit()
+
+    def page(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="The AI Act requires literacy for deployers.")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(page))
     source_id = await library.approve_candidate(
-        t03_session, candidate_id=candidate_id, approved_by=user_id
+        t03_session,
+        candidate_id=candidate_id,
+        approved_by=user_id,
+        settings=_settings(),
+        client=client,
     )
     await t03_session.commit()
     status = (
@@ -218,6 +227,13 @@ async def test_web_candidates_need_human_approval(t03_session: AsyncSession) -> 
         )
     ).scalar()
     assert status == "approved"
+    passages = (
+        await t03_session.execute(
+            sa.text("SELECT count(*) FROM passages WHERE source_id = :source"),
+            {"source": str(source_id)},
+        )
+    ).scalar()
+    assert passages and passages >= 1
 
 
 async def test_transcription_price_and_key_guard() -> None:

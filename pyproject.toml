@@ -24,6 +24,7 @@ dependencies = [
   "structlog>=24.0",
   "python-multipart>=0.0.18",
   "pyjwt[crypto]>=2.8",
+  "pypdf>=6.21.4",
 ]
 
 [dependency-groups]

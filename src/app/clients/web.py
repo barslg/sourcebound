@@ -82,7 +82,7 @@ async def fetch_page(client: Any, url: str, *, timeout_s: float, max_bytes: int)
 
 
 async def fetch_robots_text(client: Any, robots_url: str, *, timeout_s: float) -> str | None:
-    """robots.txt body, or None when it cannot be read (fail open to fetch)."""
+    """robots.txt body, or None when it cannot be read (fails closed)."""
     await asyncio.to_thread(ensure_public_url, robots_url)
     try:
         response = await client.get(robots_url, timeout=timeout_s, follow_redirects=False)

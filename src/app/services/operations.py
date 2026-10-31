@@ -169,7 +169,7 @@ async def execute_operation(
                 require(actor, required_code)
                 await _set_status(session, operation_id, status="running", progress=0.5)
                 await session.commit()
-                detail = await _run_kind(session, str(kind), operation_id)
+                detail = await _run_kind(session, str(kind), operation_id, factory=factory)
                 await _set_status(session, operation_id, status="done", progress=1.0, result=detail)
                 target = UUID(str(actor_id)) if actor_id is not None else None
                 if target is not None:
@@ -227,12 +227,36 @@ async def execute_operation(
             await engine.dispose()
 
 
-async def _run_kind(session: AsyncSession, kind: str, operation_id: UUID) -> dict[str, Any]:
+async def _run_kind(
+    session: AsyncSession,
+    kind: str,
+    operation_id: UUID,
+    *,
+    factory: async_sessionmaker[AsyncSession] | None = None,
+) -> dict[str, Any]:
     """Do the kind-specific work; echo returns its submitted message."""
-    if kind in ("submit_plan", "submit_generate"):
-        from app.services.planruns import run_plan_operation
+    if kind == "submit_plan":
+        from app.services.planruns import real_provider_factory, run_plan_operation
 
-        return await run_plan_operation(session, operation_id)
+        return await run_plan_operation(
+            session,
+            operation_id,
+            provider_factory=real_provider_factory(get_settings()),
+            session_factory=factory,
+        )
+    if kind == "submit_generate":
+        from app.errors import ConflictError
+
+        raise ConflictError("block generation is not available until the generation pipeline lands")
+    if kind == "resume_run":
+        from app.services.planruns import real_provider_factory, run_resume_operation
+
+        return await run_resume_operation(
+            session,
+            operation_id,
+            provider_factory=real_provider_factory(get_settings()),
+            session_factory=factory,
+        )
     if kind == OPERATION_KIND_ECHO:
         params = (
             await session.execute(

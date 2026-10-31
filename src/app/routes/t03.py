@@ -93,12 +93,17 @@ async def submit_generate(
 async def upload_source(
     file: UploadFile,
     media: str = "text",
+    course_id: str | None = None,
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, str]:
     """Upload a source file: stored by sha256, chunked into passages."""
     content = await file.read()
     return await controller.upload_source(
-        ctx, filename=file.filename or "upload", media=media, content=content
+        ctx,
+        filename=file.filename or "upload",
+        media=media,
+        content=content,
+        course_id=course_id,
     )
 
 
@@ -118,6 +123,24 @@ async def approve_source(
 ) -> dict[str, bool]:
     """Human approval moves a source from pending to approved."""
     return await controller.approve_source(ctx, source_id=source_id)
+
+
+@sources_router.post("/candidates/{candidate_id}/approve", status_code=201)
+async def approve_candidate(
+    candidate_id: str,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, str]:
+    """Approve a web candidate: fetch, ingest, then approve."""
+    return await controller.approve_candidate(ctx, candidate_id=candidate_id)
+
+
+@sources_router.post("/{source_id}/transcribe", status_code=202)
+async def transcribe_source(
+    source_id: str,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, Any]:
+    """Transcribe an audio source into timestamped passages."""
+    return await controller.transcribe_source(ctx, source_id=source_id)
 
 
 @runs_router.get("/{run_id}")

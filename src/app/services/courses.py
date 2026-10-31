@@ -59,6 +59,21 @@ async def create_course(
     return UUID(str(row[0]))
 
 
+async def owns_any_course(session: AsyncSession, *, owner_id: UUID, course_ids: list[UUID]) -> bool:
+    """True when the owner holds at least one of the courses (scope checks)."""
+    if not course_ids:
+        return False
+    row = (
+        await session.execute(
+            sa.text(
+                "SELECT count(*) FROM courses WHERE owner_id = :owner AND id::text = ANY(:ids)"
+            ),
+            {"owner": str(owner_id), "ids": [str(course) for course in course_ids]},
+        )
+    ).scalar_one()
+    return int(row) > 0
+
+
 async def get_course(session: AsyncSession, *, course_id: UUID) -> dict[str, Any]:
     """One course row with its profile; 404 when missing."""
     row = (
@@ -184,12 +199,44 @@ async def set_profile(
 
 
 async def write_tree(
-    session: AsyncSession, *, course_id: UUID, tree: CourseTree, plan_digest: str
-) -> None:
-    """Replace the plan tree: modules, topics, block skeletons in order."""
+    session: AsyncSession,
+    *,
+    course_id: UUID,
+    tree: CourseTree,
+    plan_digest: str,
+    run_step_id: UUID | None = None,
+) -> dict[str, dict[str, str]]:
+    """Replace the plan tree: modules, topics, block skeletons in order.
+
+    Returns block plan_node_id to {"block_id", "version_id"} for the
+    citation writer (same transaction). Plan-written versions carry
+    the step id and become current; author-edited blocks (a current
+    version with run_step_id NULL) are restored on top of the rewrite
+    so re-planning never deletes author work.
+    """
+    kept = (
+        await session.execute(
+            sa.text(
+                "SELECT b.plan_node_id, bv.content, bv.answer_key FROM blocks b"
+                " JOIN block_versions bv ON bv.id = b.current_version_id"
+                " JOIN topics t ON t.id = b.topic_id"
+                " JOIN modules m ON m.id = t.module_id"
+                " WHERE m.course_id = :course AND bv.run_step_id IS NULL"
+            ),
+            {"course": str(course_id)},
+        )
+    ).all()
+    author_versions = {
+        str(node): {"content": content, "answer_key": answer} for node, content, answer in kept
+    }
     await session.execute(
         sa.text("DELETE FROM modules WHERE course_id = :course"), {"course": str(course_id)}
     )
+    if tree.through_line is not None:
+        await session.execute(
+            sa.text("UPDATE courses SET through_line = CAST(:tl AS jsonb) WHERE id = :course"),
+            {"tl": tree.through_line.model_dump_json(), "course": str(course_id)},
+        )
     for module_index, module in enumerate(tree.modules):
         module_id = (
             await session.execute(
@@ -251,22 +298,119 @@ async def write_tree(
                         },
                     )
                 ).one()[0]
-                await session.execute(
-                    sa.text(
-                        "INSERT INTO block_versions (block_id, version_no, content,"
-                        " schema_version, run_step_id)"
-                        " VALUES (:block, 1, CAST(:content AS jsonb), '1', NULL)"
-                    ),
-                    {
-                        "block": str(block_id),
-                        "content": json.dumps(
-                            {
-                                "brief": block.brief,
-                                "source_handles": [ref.handle for ref in block.source_refs],
-                            }
+                version_id = (
+                    await session.execute(
+                        sa.text(
+                            "INSERT INTO block_versions (block_id, version_no, content,"
+                            " answer_key, schema_version, run_step_id)"
+                            " VALUES (:block, 1, CAST(:content AS jsonb), NULL,"
+                            " '1', :step) RETURNING id"
                         ),
-                    },
+                        {
+                            "block": str(block_id),
+                            "content": json.dumps(
+                                {
+                                    "brief": block.brief,
+                                    "source_handles": [ref.handle for ref in block.source_refs],
+                                }
+                            ),
+                            "step": str(run_step_id) if run_step_id is not None else None,
+                        },
+                    )
+                ).one()[0]
+                await session.execute(
+                    sa.text("UPDATE blocks SET current_version_id = :version WHERE id = :block"),
+                    {"version": str(version_id), "block": str(block_id)},
                 )
+                author = author_versions.get(block.plan_node_id)
+                if author is not None:
+                    restored_id = (
+                        await session.execute(
+                            sa.text(
+                                "INSERT INTO block_versions (block_id, version_no, content,"
+                                " answer_key, schema_version, run_step_id)"
+                                " VALUES (:block, 2, CAST(:content AS jsonb),"
+                                " CAST(:answer AS jsonb), '1', NULL) RETURNING id"
+                            ),
+                            {
+                                "block": str(block_id),
+                                "content": json.dumps(author["content"]),
+                                "answer": json.dumps(author["answer_key"])
+                                if author["answer_key"] is not None
+                                else None,
+                            },
+                        )
+                    ).one()[0]
+                    await session.execute(
+                        sa.text(
+                            "UPDATE blocks SET current_version_id = :version WHERE id = :block"
+                        ),
+                        {"version": str(restored_id), "block": str(block_id)},
+                    )
+    by_node: dict[str, dict[str, str]] = {}
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT plan_node_id, id, current_version_id FROM blocks"
+                " WHERE topic_id IN (SELECT t.id FROM topics t"
+                " JOIN modules m ON m.id = t.module_id WHERE m.course_id = :course)"
+            ),
+            {"course": str(course_id)},
+        )
+    ).all()
+    for node, block_id, version_id in rows:
+        by_node[str(node)] = {"block_id": str(block_id), "version_id": str(version_id)}
+    return by_node
+
+
+async def read_through_line(session: AsyncSession, *, course_id: UUID) -> dict[str, Any]:
+    """The course-level through-line object (case + per-topic handoffs)."""
+    row = (
+        await session.execute(
+            sa.text("SELECT through_line FROM courses WHERE id = :course"),
+            {"course": str(course_id)},
+        )
+    ).first()
+    if row is None:
+        raise NotFoundError(f"course {course_id} not found")
+    return dict(row[0] or {})
+
+
+def stored_tree_contract(tree: dict[str, Any]) -> CourseTree:
+    """Build the validatable contract from a stored tree dict.
+
+    Modules do not persist plan_node_id (topics and blocks do), so
+    positional ids fill the contract field read_tree cannot provide;
+    every check that matters — prescriptions, refs, types, briefs —
+    runs on the stored rows.
+    """
+    from copy import deepcopy
+
+    filled = deepcopy(tree)
+    for index, module in enumerate(filled.get("modules", [])):
+        module.setdefault("plan_node_id", f"m{index}")
+    return CourseTree.model_validate(filled)
+
+
+async def validate_course_tree(session: AsyncSession, *, course_id: UUID) -> list[str]:
+    """Re-run the tree contract in code: prescriptions, refs, types.
+
+    The validate route calls this on the stored plan (not only the
+    blocking questions), so an edited or drifted tree is rejected
+    before generation.
+    """
+    from app.course.methodologies import prescription_for
+    from app.course.tree import validate_tree
+
+    course = await get_course(session, course_id=course_id)
+    profile = course["profile"] or {}
+    prescription = prescription_for(list(profile.get("methodology_codes", [])))
+    tree = await read_tree(session, course_id=course_id)
+    try:
+        contract = stored_tree_contract(tree)
+    except Exception as exc:
+        return [f"tree contract: {exc}"]
+    return validate_tree(contract, prescription)
 
 
 async def read_tree(session: AsyncSession, *, course_id: UUID) -> dict[str, Any]:
@@ -303,8 +447,10 @@ async def read_tree(session: AsyncSession, *, course_id: UUID) -> dict[str, Any]
             blocks = (
                 await session.execute(
                     sa.text(
-                        "SELECT id, plan_node_id, role, block_type, brief, status,"
-                        " hold_reason FROM blocks WHERE topic_id = :topic ORDER BY ordinal"
+                        "SELECT b.id, b.plan_node_id, b.role, b.block_type, b.brief,"
+                        " b.status, b.hold_reason, bv.content FROM blocks b"
+                        " LEFT JOIN block_versions bv ON bv.id = b.current_version_id"
+                        " WHERE b.topic_id = :topic ORDER BY b.ordinal"
                     ),
                     {"topic": str(topic[0])},
                 )
@@ -326,12 +472,24 @@ async def read_tree(session: AsyncSession, *, course_id: UUID) -> dict[str, Any]
                             "brief": block[4],
                             "status": block[5],
                             "hold_reason": block[6],
+                            "source_refs": [
+                                {"handle": handle}
+                                for handle in (
+                                    (block[7] or {}).get("source_handles", [])
+                                    if isinstance(block[7], dict)
+                                    else []
+                                )
+                            ],
                         }
                         for block in blocks
                     ],
                 }
             )
         tree["modules"].append(module_node)
+    try:
+        tree["through_line"] = await read_through_line(session, course_id=course_id) or None
+    except NotFoundError:
+        tree["through_line"] = None
     return tree
 
 

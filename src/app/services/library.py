@@ -26,10 +26,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.course.tree import TS_CONFIGS
-from app.errors import NotFoundError, ValidationError
+from app.errors import NotFoundError, UnsupportedMediaError, ValidationError
 from app.providers.web import FetchedPage as FetchedPage
 
 UPLOAD_MEDIA = ("pdf", "text", "markdown", "image", "audio")
+# Norwegian-only content words (no English overlap): æøå plus these decide.
+_NB_MARKERS = frozenset(
+    {
+        "ikke",
+        "også",
+        "derfor",
+        "fordi",
+        "mellom",
+        "gjennom",
+        "gjelder",
+        "ansatte",
+        "arbeids",
+        "blitt",
+        "hvilke",
+        "deres",
+        "våre",
+        "samtidig",
+        "henhold",
+    }
+)
 ADDRESS_KIND_BY_MEDIA = {
     "pdf": "pdf",
     "text": "pdf",
@@ -51,6 +71,52 @@ def store_path(store_root: str | Path, digest: str, suffix: str) -> Path:
     return Path(store_root) / f"{digest}{suffix}"
 
 
+def detect_language(text: str) -> str:
+    """Code heuristics for en/nb/uk (BRIEF §9): Cyrillic is uk, æøå or
+    Norwegian-only words are nb, everything else is en. A stored
+    override wins over this guess wherever callers accept one."""
+    if re.search(r"[Ѐ-џ]", text):
+        return "uk"
+    if re.search(r"[æøåÆØÅ]", text):
+        return "nb"
+    words = set(re.findall(r"[a-zæøå]+", text.lower()))
+    if words & _NB_MARKERS:
+        return "nb"
+    return "en"
+
+
+def ts_config_for_passage(text: str, override: str | None = None) -> str:
+    """FTS config for one passage: explicit override or detected."""
+    if override is not None:
+        if override not in TS_CONFIG_BY_LANGUAGE.values():
+            raise ValidationError(f"unsupported ts_config: {override}")
+        return override
+    return TS_CONFIG_BY_LANGUAGE[detect_language(text)]
+
+
+async def bind_source_to_course(session: AsyncSession, *, course_id: UUID, source_id: UUID) -> None:
+    """Bind one source to one course (pending approval, idempotent)."""
+    await session.execute(
+        sa.text(
+            "INSERT INTO course_sources (course_id, source_id, approval)"
+            " VALUES (:course, :source, 'pending')"
+            " ON CONFLICT (course_id, source_id) DO NOTHING"
+        ),
+        {"course": str(course_id), "source": str(source_id)},
+    )
+
+
+async def source_course_ids(session: AsyncSession, *, source_id: UUID) -> list[UUID]:
+    """Courses one source is bound to (scope checks for approval)."""
+    rows = (
+        await session.execute(
+            sa.text("SELECT course_id FROM course_sources WHERE source_id = :source"),
+            {"source": str(source_id)},
+        )
+    ).all()
+    return [UUID(str(row[0])) for row in rows]
+
+
 async def store_upload(
     session: AsyncSession,
     *,
@@ -60,10 +126,15 @@ async def store_upload(
     media: str,
     content: bytes,
     licence: str = "",
+    course_id: UUID | None = None,
 ) -> UUID:
-    """Persist an upload: disk blob plus immutable source row."""
+    """Persist an upload: disk blob plus immutable source row.
+
+    When `course_id` is given the source is bound to that course
+    (pending); unbound sources stay invisible to every run.
+    """
     if media not in UPLOAD_MEDIA:
-        raise ValidationError(f"unsupported media: {media}")
+        raise UnsupportedMediaError(f"unsupported media: {media}")
     if not content:
         raise ValidationError("upload content is empty")
     digest = content_sha256(content)
@@ -74,6 +145,10 @@ async def store_upload(
         )
     ).first()
     if existing is not None:
+        if course_id is not None:
+            await bind_source_to_course(
+                session, course_id=course_id, source_id=UUID(str(existing[0]))
+            )
         return UUID(str(existing[0]))
     suffix = Path(filename).suffix.lower() or ".bin"
     root = Path(settings.source_store_path)
@@ -98,7 +173,67 @@ async def store_upload(
             },
         )
     ).one()
-    return UUID(str(row[0]))
+    source_id = UUID(str(row[0]))
+    if course_id is not None:
+        await bind_source_to_course(session, course_id=course_id, source_id=source_id)
+    return source_id
+
+
+def extract_pdf_pages(content: bytes) -> list[dict[str, Any]]:
+    """PDF text extraction (pypdf) with page addresses: `p<page>/para<n>`.
+
+    Binary uploads must never be chunked as UTF-8 text: a PDF decoded
+    as text produced hundreds of garbage passages. Raises
+    ValidationError when the bytes are not a readable PDF.
+    """
+    from io import BytesIO
+
+    from pypdf import PdfReader
+
+    try:
+        reader = PdfReader(BytesIO(content))
+        pages = list(reader.pages)
+    except Exception as exc:
+        raise ValidationError(f"unreadable PDF upload: {exc}") from exc
+    passages: list[dict[str, Any]] = []
+    for page_no, page in enumerate(pages, start=1):
+        try:
+            text = page.extract_text() or ""
+        except Exception as exc:
+            raise ValidationError(f"unreadable PDF page {page_no}: {exc}") from exc
+        paragraph = 0
+        for para in re.split(r"\n\s*\n", text):
+            cleaned = " ".join(para.split())
+            if not cleaned:
+                continue
+            paragraph += 1
+            passages.append(
+                {
+                    "text": cleaned,
+                    "address": {"kind": "pdf", "page": page_no, "para": paragraph},
+                    "address_key": f"p{page_no}/para{paragraph}",
+                }
+            )
+    return passages
+
+
+def chunk_upload(content: bytes, *, media: str, filename: str) -> list[dict[str, Any]]:
+    """Code chunking per upload media; image/audio have their own paths.
+
+    PDF pages are extracted with page addresses; text and markdown are
+    chunked as before; images are stored with no passages (until the
+    SAM/figure path lands) and audio waits for its transcription job,
+    so both return no passages here instead of garbage text.
+    """
+    if media == "pdf" or content[:4] == b"%PDF":
+        return extract_pdf_pages(content)
+    if media == "markdown":
+        return chunk_markdown(content.decode("utf-8", errors="replace"))
+    if media in ("text",):
+        return chunk_text(content.decode("utf-8", errors="replace"), kind="pdf")
+    if media in ("image", "audio"):
+        return []
+    raise UnsupportedMediaError(f"unsupported media: {media}")
 
 
 def chunk_text(text: str, *, kind: str = "pdf", page_of: int = 0) -> list[dict[str, Any]]:
@@ -179,9 +314,13 @@ async def ingest_passages(
     *,
     source_id: UUID,
     passages: list[dict[str, Any]],
-    ts_config: str,
+    ts_config: str | None = None,
 ) -> int:
-    """Write addressed passages; address_key is unique per source."""
+    """Write addressed passages; address_key is unique per source.
+
+    `ts_config` is a stored per-passage override; without one the
+    language is detected per passage by code heuristics (en/nb/uk).
+    """
     count = 0
     for passage in passages:
         await session.execute(
@@ -195,7 +334,7 @@ async def ingest_passages(
                 "text": passage["text"],
                 "address": json.dumps(passage["address"]),
                 "key": passage["address_key"],
-                "cfg": ts_config,
+                "cfg": ts_config_for_passage(passage["text"], ts_config),
             },
         )
         count += 1
@@ -211,9 +350,56 @@ def ts_config_for_language(language: str) -> str:
 
 
 async def approve_source(
-    session: AsyncSession, *, source_id: UUID, approved_by: UUID | None
+    session: AsyncSession,
+    *,
+    source_id: UUID,
+    approved_by: UUID | None,
+    course_id: UUID | None = None,
 ) -> None:
-    """Human approval moves a source from pending to approved."""
+    """Human approval moves a source binding from pending to approved.
+
+    With `course_id` only that course's binding is approved (404 when
+    the source is not bound to the course); without one every binding
+    is approved. The source row follows: runs only see passages whose
+    binding AND source are both approved for their own course.
+    """
+    if course_id is not None:
+        row = (
+            await session.execute(
+                sa.text(
+                    "UPDATE course_sources SET approval = 'approved',"
+                    " approved_by = :actor, approved_at = now()"
+                    " WHERE course_id = :course AND source_id = :source"
+                    " AND approval = 'pending' RETURNING id"
+                ),
+                {
+                    "actor": str(approved_by) if approved_by else None,
+                    "course": str(course_id),
+                    "source": str(source_id),
+                },
+            )
+        ).first()
+        if row is None:
+            bound = (
+                await session.execute(
+                    sa.text(
+                        "SELECT id FROM course_sources"
+                        " WHERE course_id = :course AND source_id = :source"
+                    ),
+                    {"course": str(course_id), "source": str(source_id)},
+                )
+            ).first()
+            if bound is None:
+                raise NotFoundError(f"source {source_id} is not pending approval")
+    else:
+        await session.execute(
+            sa.text(
+                "UPDATE course_sources SET approval = 'approved',"
+                " approved_by = :actor, approved_at = now()"
+                " WHERE source_id = :source AND approval = 'pending'"
+            ),
+            {"actor": str(approved_by) if approved_by else None, "source": str(source_id)},
+        )
     row = (
         await session.execute(
             sa.text(
@@ -224,7 +410,14 @@ async def approve_source(
         )
     ).first()
     if row is None:
-        raise NotFoundError(f"source {source_id} is not pending approval")
+        exists = (
+            await session.execute(
+                sa.text("SELECT id FROM sources WHERE id = :source"),
+                {"source": str(source_id)},
+            )
+        ).first()
+        if exists is None:
+            raise NotFoundError(f"source {source_id} not found")
 
 
 async def fetch_url(url: str, *, settings: Settings, client: Any | None = None) -> FetchedPage:
@@ -252,11 +445,15 @@ async def intake_url(
     url: str,
     course_id: UUID | None,
     client: Any | None = None,
+    parser_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """URL intake: robots-disallowed pages go to the human queue.
 
     Returns {"source_id": ...} for fetched pages or {"queued": ...}
     for robots-disallowed ones. Raises when the fetch is refused.
+    With `parser_spec` the declarative librarian spec is executed by
+    code (never generated code) and stored on the source for re-crawls;
+    otherwise the page text is chunked with web addresses.
     """
     if not await robots_allowed(url, settings=settings, client=client):
         row = (
@@ -285,6 +482,10 @@ async def intake_url(
         )
     ).first()
     if existing is not None:
+        if course_id is not None:
+            await bind_source_to_course(
+                session, course_id=course_id, source_id=UUID(str(existing[0]))
+            )
         return {"source_id": str(existing[0])}
     row = (
         await session.execute(
@@ -296,7 +497,57 @@ async def intake_url(
             {"digest": digest, "title": url},
         )
     ).one()
-    return {"source_id": str(row[0])}
+    source_id = UUID(str(row[0]))
+    if course_id is not None:
+        await bind_source_to_course(session, course_id=course_id, source_id=source_id)
+    if parser_spec is not None:
+        from app.agents import librarian
+
+        try:
+            records = librarian.execute_parser_spec(page.text, parser_spec)
+        except ValueError as exc:
+            raise ValidationError(f"invalid parser spec: {exc}") from exc
+        chunks = [
+            {
+                "text": record["body"],
+                "address": {"kind": "web", "anchor": record["address"] or record["title"]},
+                "address_key": record["address"] or f"title:{record['title']}",
+            }
+            for record in records
+        ]
+        await session.execute(
+            sa.text("UPDATE sources SET parser_spec = CAST(:spec AS jsonb) WHERE id = :source"),
+            {"spec": json.dumps(parser_spec), "source": str(source_id)},
+        )
+    else:
+        chunks = chunk_text(page.text, kind="web")
+    await ingest_passages(session, source_id=source_id, passages=chunks)
+    await set_source_as_of(session, source_id=source_id, as_of=date.today())
+    return {"source_id": str(source_id)}
+
+
+async def get_candidate(session: AsyncSession, *, candidate_id: UUID) -> dict[str, Any]:
+    """One web candidate with its course link (scope checks for approval)."""
+    row = (
+        await session.execute(
+            sa.text(
+                "SELECT id, course_id, query, url, title, snippet, status"
+                " FROM source_candidates WHERE id = :candidate"
+            ),
+            {"candidate": str(candidate_id)},
+        )
+    ).first()
+    if row is None:
+        raise NotFoundError(f"candidate {candidate_id} not found")
+    return {
+        "id": str(row[0]),
+        "course_id": str(row[1]) if row[1] is not None else None,
+        "query": row[2],
+        "url": row[3],
+        "title": row[4],
+        "snippet": row[5],
+        "status": row[6],
+    }
 
 
 async def add_web_candidate(
@@ -328,39 +579,80 @@ async def add_web_candidate(
 
 
 async def approve_candidate(
-    session: AsyncSession, *, candidate_id: UUID, approved_by: UUID | None
+    session: AsyncSession,
+    *,
+    candidate_id: UUID,
+    approved_by: UUID | None,
+    settings: Settings,
+    client: Any | None = None,
 ) -> UUID:
-    """Approve a web candidate: creates the pending URL source row."""
+    """Approve a web candidate: fetch + ingest first, then approve.
+
+    Approving a candidate fetches the URL (SSRF-guarded) and ingests
+    addressed passages, so the source never stands empty; the
+    candidate's course gets an approved binding. When the fetched
+    content already exists (ON CONFLICT) the existing row is returned
+    untouched: a conflict never flips another course's approval.
+    """
     candidate = (
         await session.execute(
-            sa.text("SELECT url, title, status FROM source_candidates WHERE id = :candidate"),
+            sa.text(
+                "SELECT url, title, status, course_id FROM source_candidates WHERE id = :candidate"
+            ),
             {"candidate": str(candidate_id)},
         )
     ).first()
     if candidate is None or candidate[2] != "pending":
         raise NotFoundError(f"candidate {candidate_id} is not pending approval")
-    await session.execute(
-        sa.text("UPDATE source_candidates SET status = 'approved' WHERE id = :candidate"),
-        {"candidate": str(candidate_id)},
-    )
-    digest = content_sha256(f"candidate:{candidate[0]}".encode())
+    url, title, _, course_id = candidate
+    page = await fetch_url(url, settings=settings, client=client)
+    if page.status != 200:
+        raise ValidationError(f"URL fetch failed with status {page.status}: {url!r}")
+    digest = content_sha256(page.text.encode("utf-8"))
     row = (
         await session.execute(
             sa.text(
                 "INSERT INTO sources (content_sha256, kind, media, title, approval,"
                 " approved_by, storage_path)"
                 " VALUES (:digest, 'url', 'text', :title, 'approved', :actor, '')"
-                " ON CONFLICT (content_sha256) DO UPDATE SET approval = 'approved'"
-                " RETURNING id"
+                " ON CONFLICT (content_sha256) DO NOTHING RETURNING id"
             ),
             {
                 "digest": digest,
-                "title": candidate[1] or candidate[0],
+                "title": title or url,
                 "actor": str(approved_by) if approved_by else None,
             },
         )
-    ).one()
-    return UUID(str(row[0]))
+    ).first()
+    if row is None:
+        existing = (
+            await session.execute(
+                sa.text("SELECT id FROM sources WHERE content_sha256 = :digest"),
+                {"digest": digest},
+            )
+        ).one()
+        source_id = UUID(str(existing[0]))
+    else:
+        source_id = UUID(str(row[0]))
+        await ingest_passages(
+            session,
+            source_id=source_id,
+            passages=chunk_text(page.text, kind="web"),
+        )
+        await set_source_as_of(session, source_id=source_id, as_of=date.today())
+    await session.execute(
+        sa.text("UPDATE source_candidates SET status = 'approved' WHERE id = :candidate"),
+        {"candidate": str(candidate_id)},
+    )
+    if course_id is not None:
+        await bind_source_to_course(session, course_id=UUID(str(course_id)), source_id=source_id)
+        await approve_source(
+            session,
+            source_id=source_id,
+            approved_by=approved_by,
+            course_id=UUID(str(course_id)),
+        )
+    return source_id
 
 
 def transcription_cost_usd(audio_hours: float) -> str:
@@ -400,12 +692,93 @@ async def transcribe_audio(
     ]
 
 
+def _stamp_seconds(stamp: str) -> float | None:
+    """Parse an H:MM:SS / MM:SS transcription stamp to seconds."""
+    try:
+        parts = [float(part) for part in str(stamp).split(":")]
+    except ValueError:
+        return None
+    total = 0.0
+    for part in parts:
+        total = total * 60.0 + part
+    return total
+
+
+async def queue_transcription(session: AsyncSession, *, source_id: UUID) -> UUID:
+    """Queue an audio source for transcription (its own ingest path)."""
+    row = (
+        await session.execute(
+            sa.text(
+                "INSERT INTO human_queue (kind, url, reason, payload)"
+                " VALUES ('transcribe_audio', '', 'audio transcription queued',"
+                " CAST(:payload AS jsonb)) RETURNING id"
+            ),
+            {"payload": json.dumps({"source_id": str(source_id)})},
+        )
+    ).one()
+    return UUID(str(row[0]))
+
+
+async def transcribe_source(
+    session: AsyncSession,
+    *,
+    source_id: UUID,
+    settings: Settings,
+    client: Any | None = None,
+) -> int:
+    """Transcribe an audio source: provider call, ledger row, passages.
+
+    The model key is read by the provider from settings; services
+    never touch it. The call is recorded in llm_calls (the ledger) at
+    the registry's audio-hour price, then timestamped passages are
+    ingested and the queued job is marked done.
+    """
+    row = (
+        await session.execute(
+            sa.text("SELECT storage_path, media FROM sources WHERE id = :source"),
+            {"source": str(source_id)},
+        )
+    ).first()
+    if row is None:
+        raise NotFoundError(f"source {source_id} not found")
+    if row[1] != "audio":
+        raise ValidationError(f"source {source_id} is not audio")
+    audio = await asyncio.to_thread(Path(row[0]).read_bytes)
+    segments = await transcribe_audio(audio, settings=settings, client=client)
+    passages = chunk_transcript(segments)
+    count = await ingest_passages(session, source_id=source_id, passages=passages)
+    ends = [_stamp_seconds(item.get("end", "")) for item in segments]
+    hours = (max([end for end in ends if end is not None] or [0.0])) / 3600.0
+    await session.execute(
+        sa.text(
+            "INSERT INTO llm_calls"
+            " (agent, model, prompt_version, tokens_input, tokens_output,"
+            " cost_usd, duration_ms, request)"
+            " VALUES ('transcriber', 'muse-voice-transcribe-1.0', 'transcribe:1',"
+            " 0, 0, :cost, 0, CAST(:request AS jsonb))"
+        ),
+        {
+            "cost": transcription_cost_usd(hours),
+            "request": json.dumps({"source_id": str(source_id), "segments": len(segments)}),
+        },
+    )
+    await session.execute(
+        sa.text(
+            "UPDATE human_queue SET status = 'done'"
+            " WHERE kind = 'transcribe_audio' AND status = 'open'"
+            " AND payload->>'source_id' = :source"
+        ),
+        {"source": str(source_id)},
+    )
+    return count
+
+
 async def set_source_as_of(session: AsyncSession, *, source_id: UUID, as_of: date) -> None:
     """Stamp the visible 'as of' date shown on every citation."""
     row = (
         await session.execute(
             sa.text("UPDATE sources SET as_of = :day WHERE id = :source RETURNING id"),
-            {"day": as_of.isoformat(), "source": str(source_id)},
+            {"day": as_of, "source": str(source_id)},
         )
     ).first()
     if row is None:

@@ -150,6 +150,7 @@ async def _course_with_source(session: AsyncSession) -> tuple[UUID, UUID]:
             b"Providers and deployers must ensure training.\n\n"
             b"Human oversight applies to high-risk systems."
         ),
+        course_id=course_id,
     )
     await library.ingest_passages(
         session,
@@ -353,10 +354,16 @@ async def test_generate_refuses_while_questions_open(t03_session: AsyncSession) 
         operations=[{"op": "set_constraint", "key": "scope_act", "answer": {"act": "AI Act"}}],
     )
     await t03_session.commit()
-    operation_id = await planruns.submit_generate(
-        t03_session, actor=actor, course_id=course_id, defer=None
-    )
-    assert isinstance(operation_id, UUID)
+    from app.errors import ConflictError, http_status_for
+
+    with pytest.raises(ConflictError, match="generation pipeline"):
+        await planruns.submit_generate(t03_session, actor=actor, course_id=course_id, defer=None)
+    try:
+        await planruns.submit_generate(t03_session, actor=actor, course_id=course_id, defer=None)
+    except ConflictError as exc:
+        assert http_status_for(exc) == 409
+    else:  # pragma: no cover - the raise above always fires
+        raise AssertionError("submit_generate must refuse with 409")
 
 
 async def test_plan_edit_and_idempotent_submit(t03_session: AsyncSession) -> None:
