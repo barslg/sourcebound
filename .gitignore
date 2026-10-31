@@ -1,0 +1,29 @@
+# Scratch & local
+tmp/
+.env
+.env.*
+!.env.example
+
+# OS & editors
+.DS_Store
+.idea/
+.vscode/
+
+# Stack not chosen yet: language ignores arrive with the stack.
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Docs stay local until the final publish (owner 2026-10-31); prompts and build tasks are product files
+*.md
+!prompts/**/*.md
+!build/**/*.md

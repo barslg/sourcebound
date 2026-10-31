@@ -1,0 +1,5 @@
+# Local development: one service. DB and queues join as separate services later.
+services:
+  app:
+    build: .
+    container_name: muse-dev
