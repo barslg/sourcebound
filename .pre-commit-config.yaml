@@ -1,0 +1,32 @@
+# Pre-commit: secrets, lint, and the three mechanical gates.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.28.0
+    hooks:
+      - id: gitleaks
+        args: ["detect", "--source", ".", "--config", ".gitleaks.toml", "--verbose", "--no-git"]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.13
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: check-layers
+        name: layer gate
+        entry: python scripts/check_layers.py
+        language: system
+        pass_filenames: false
+      - id: check-public-tree
+        name: public-tree gate
+        entry: python scripts/check_public_tree.py
+        language: system
+        pass_filenames: false
+      - id: check-routes
+        name: route gate
+        entry: python scripts/check_routes.py
+        language: system
+        pass_filenames: false
