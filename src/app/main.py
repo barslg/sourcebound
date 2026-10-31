@@ -82,6 +82,7 @@ def create_app(settings: Settings | None = None, *, sync_on_startup: bool = True
     app.include_router(t03_routes.runs_router, prefix="/api/v1")
     app.include_router(t03_routes.blocks_router, prefix="/api/v1")
     app.include_router(t03_routes.human_queue_router, prefix="/api/v1")
+    app.include_router(t03_routes.tags_router, prefix="/api/v1")
     return app
 
 

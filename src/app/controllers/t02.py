@@ -39,6 +39,14 @@ async def ban_user(ctx: RequestContext, *, user_id: str, reason: str) -> None:
     )
 
 
+async def unban_user(ctx: RequestContext, *, user_id: str) -> None:
+    from app.services.users import unban_user as unban_use_case
+
+    await unban_use_case(
+        ctx.db, actor=require_auth(ctx), user_id=parse_uuid_or_404(user_id, what="user")
+    )
+
+
 async def delete_user(
     ctx: RequestContext, *, user_id: str, heir_id: str | None, legacy: bool
 ) -> None:

@@ -32,6 +32,16 @@ async def ban_user(
     return {"ok": True}
 
 
+@users_router.post("/{user_id}/unban")
+async def unban_user(
+    user_id: str,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, bool]:
+    """Lift a ban: sign-in works again."""
+    await controller.unban_user(ctx, user_id=user_id)
+    return {"ok": True}
+
+
 @users_router.delete("/{user_id}")
 async def delete_user(
     user_id: str,

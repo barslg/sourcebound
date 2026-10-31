@@ -579,3 +579,11 @@ async def resolve_human_queue(ctx: RequestContext, *, item_id: str, body: Any) -
     )
     await ctx.db.commit()
     return result
+
+
+async def list_tags(ctx: RequestContext) -> list[dict[str, Any]]:
+    from app.services.courses import list_tags as list_use_case
+
+    actor = require_auth(ctx)
+    require(actor, "course.edit")
+    return await list_use_case(ctx.db, actor=actor)

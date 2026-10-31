@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.course.tree import ConstraintRow, CourseTree
 from app.errors import ConflictError, NotFoundError, UnprocessableError, ValidationError
+from app.rbac.principal import Principal
 
 PLAN_EDIT_OPS = (
     "rename_module",
@@ -794,6 +795,7 @@ async def list_courses(
         await session.execute(
             sa.text(
                 "SELECT c.id, c.title, c.language, c.status,"
+                " c.scope_tags,"
                 " EXISTS(SELECT 1 FROM course_profiles p WHERE p.course_id = c.id),"
                 " EXISTS(SELECT 1 FROM modules m WHERE m.course_id = c.id),"
                 " (SELECT count(*) FROM profile_constraints pc WHERE pc.course_id = c.id"
@@ -811,12 +813,30 @@ async def list_courses(
             "title": row[1],
             "language": row[2],
             "status": row[3],
-            "has_profile": bool(row[4]),
-            "has_plan": bool(row[5]),
-            "open_questions": int(row[6]),
+            "scope_tags": list(row[4] or []),
+            "has_profile": bool(row[5]),
+            "has_plan": bool(row[6]),
+            "open_questions": int(row[7]),
         }
         for row in rows
     ]
+
+
+async def list_tags(session: AsyncSession, *, actor: Principal) -> list[dict[str, Any]]:
+    """Existing scope tags with the visible courses carrying each, for the pickers.
+
+    Visibility follows the course library (superadmin: all, others: own);
+    a scoped caller sees only the tags inside its scope.
+    """
+    rows = await list_courses(session, owner_id=actor.user_id, is_superadmin=actor.is_superadmin)
+    scope = actor.scope_for("course.edit")
+    by_tag: dict[str, list[dict[str, str]]] = {}
+    for row in rows:
+        for tag in row["scope_tags"]:
+            if scope is not None and tag not in scope:
+                continue
+            by_tag.setdefault(tag, []).append({"id": row["id"], "title": row["title"]})
+    return [{"tag": tag, "courses": by_tag[tag]} for tag in sorted(by_tag)]
 
 
 async def course_estimate(session: AsyncSession, *, course_id: UUID) -> dict[str, Any]:

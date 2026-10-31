@@ -15,6 +15,7 @@ sources_router = APIRouter(prefix="/sources", tags=["sources"])
 runs_router = APIRouter(prefix="/runs", tags=["runs"])
 blocks_router = APIRouter(prefix="/blocks", tags=["blocks"])
 human_queue_router = APIRouter(prefix="/human-queue", tags=["human-queue"])
+tags_router = APIRouter(prefix="/tags", tags=["tags"])
 
 
 @courses_router.post("", status_code=201)
@@ -293,3 +294,11 @@ async def resolve_human_queue(
 ) -> dict[str, Any]:
     """Resolve one queued URL: approve ingests it, dismiss drops it."""
     return await controller.resolve_human_queue(ctx, item_id=item_id, body={"action": body.action})
+
+
+@tags_router.get("")
+async def list_tags(
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> list[dict[str, Any]]:
+    """Existing course labels with the courses carrying each (for pickers)."""
+    return await controller.list_tags(ctx)
