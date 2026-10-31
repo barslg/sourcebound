@@ -94,14 +94,15 @@ async def complete_background_call(
     model: str,
     duration_ms: int,
     response: dict[str, Any] | None,
+    status: str = "completed",
 ) -> None:
-    """Flip a pending background row to completed with usage and registry cost."""
+    """Flip a pending background row to completed (or rejected) with usage and registry cost."""
     cost = compute_cost_usd(model, input_tokens, cached_tokens, output_tokens, reasoning_tokens)
     await session.execute(
         llm_calls.update()
         .where(llm_calls.c.id == call_id)
         .values(
-            status="completed",
+            status=status,
             tokens_input=input_tokens,
             tokens_cached=cached_tokens,
             tokens_output=output_tokens,

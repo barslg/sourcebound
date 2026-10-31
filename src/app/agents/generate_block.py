@@ -95,10 +95,9 @@ def check_block_output(payload: dict[str, Any], block_type: str = "reading") -> 
             handle = str(c.get("passage_id", c.get("handle", ""))) if isinstance(c, dict) else ""
             if handle and _UUID_RE.fullmatch(handle):
                 errors.append(f"citations[{i}]: passage handle must be a P-handle, not a UUID")
-    if block_type == "choice":
-        opts = payload.get("options")
-        if not isinstance(opts, list) or len(opts) < 2:
-            errors.append("choice blocks need structured options")
+    # per-type shape is NOT rejected here: the executor validates the
+    # reply against its type schema and holds the block (M5) instead
+    # of stopping the run on a paid reply.
     return errors
 
 

@@ -332,13 +332,18 @@ def mock_demo_handler() -> Any:
         else:
             first = _section(prompt, "Approved sources")["sources"][0]
             quote = str(first["text"])[:40]
+            try:
+                wanted_type = str(_section(prompt, "Block skeleton").get("block_type", "reading"))
+            except Exception:
+                wanted_type = "reading"
             reply = {
-                "block_type": "reading",
+                "block_type": wanted_type,
                 "text": "Staff apply the cited passage at work.",
                 "citations": [{"passage_id": str(first.get("handle", "P1")), "quote": quote}],
                 "answer": "key",
                 "options": [{"text": "Yes", "correct": True}, {"text": "No", "correct": False}],
                 "pairs": [{"left": "a", "right": "b"}],
+                "numbers": [15, 35],
                 "blanks": ["x"],
                 "items": [{"text": "i", "passage_id": "P1", "tier": "high"}],
                 "sentences": ["Alpha shall apply.", "Beta shall apply."],
@@ -378,3 +383,72 @@ def _completed(text: str) -> dict[str, Any]:
 def fresh_email(prefix: str) -> str:
     """Unique synthetic address for demo users (never a real mailbox)."""
     return f"{prefix}-{uuid.uuid4().hex[:12]}@example.com"
+
+
+async def write_demo_tree(session: AsyncSession, *, course_id: UUID) -> None:
+    """Hand-written 4-block plan (b1..b4) for the 'other course' fixtures."""
+    from app.course.tree import BlockSkeleton, CourseTree, ModuleNode, SourceRef, TopicNode
+    from app.services.courses import write_tree
+
+    def block(node: str, role: str, btype: str, brief: str) -> BlockSkeleton:
+        return BlockSkeleton(
+            plan_node_id=node,
+            role=role,
+            block_type=btype,
+            brief=brief,
+            source_refs=[SourceRef(handle="P1")],
+        )
+
+    tree = CourseTree(
+        modules=[
+            ModuleNode(
+                plan_node_id="m1",
+                title="Duties and risk tiers",
+                purpose="Teach duties",
+                entry_knowledge="none",
+                exit_knowledge="duties",
+                topics=[
+                    TopicNode(
+                        plan_node_id="t1",
+                        kind="lesson",
+                        title="Who must ensure AI literacy",
+                        objectives=["name the duty"],
+                        through_line_note="case",
+                        blocks=[
+                            block("b1", "teach", "reading", "AI literacy duty"),
+                            block("b2", "check", "choice", "Who must ensure AI literacy?"),
+                        ],
+                    ),
+                    TopicNode(
+                        plan_node_id="t2",
+                        kind="lesson",
+                        title="Prohibitions and fines",
+                        objectives=["name prohibitions"],
+                        through_line_note="case",
+                        blocks=[
+                            block("b3", "teach", "reading", "Prohibited practices"),
+                            block("b4", "practice", "spot_the_error", "Find the error?"),
+                        ],
+                    ),
+                ],
+            )
+        ]
+    )
+    await write_tree(session, course_id=course_id, tree=tree, plan_digest="t05c")
+    await session.commit()
+
+
+async def clone_plan(session: AsyncSession, *, source: UUID, target: UUID) -> None:
+    """Write the source course's plan tree into another course (same plan ids)."""
+    from app.course.tree import CourseTree, ModuleNode
+    from app.services.courses import read_tree, write_tree
+
+    tree = await read_tree(session, course_id=source)
+    modules = [
+        ModuleNode.model_validate({**module, "plan_node_id": f"m{index}"})
+        for index, module in enumerate(tree["modules"], 1)
+    ]
+    await write_tree(
+        session, course_id=target, tree=CourseTree(modules=modules), plan_digest="clone"
+    )
+    await session.commit()

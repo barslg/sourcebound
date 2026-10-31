@@ -17,7 +17,15 @@ from app.course.errorspot import MUTATION_KINDS
 
 _GAP = "___"
 _MARKER = re.compile(r"\[P\d+\]|\[[A-Z][A-Za-z]*[ .]\d+\]")
-_NUMBER = re.compile(r"\d{1,3}(?:[ \u00a0]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?")
+_NUMBER = re.compile(r"\d{1,3}(?:[ \u00a0,.]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?")
+_MAGNITUDE = re.compile(
+    r"\d[\d .,\u00a0]*\s*(?:million\w*|milliard\w*|billion\w*|thousand|tusen|"
+    r"мільйон\w*|мільярд\w*|тисяч\w*)",
+    re.IGNORECASE,
+)
+
+_SOURCE_RELATED = 0.6
+_TRANSLATED_RELATED = 0.5
 
 _NEGATIONS = {
     "not",
@@ -75,16 +83,21 @@ _CAUSAL = {
 
 
 def _norm_number(raw: str) -> float:
+    """Value of one number token: thousands separators and decimal commas."""
     text = raw.replace("\u00a0", " ").replace(" ", "")
     if "," in text and "." in text:
         if text.rfind(",") > text.rfind("."):
             text = text.replace(".", "").replace(",", ".")
         else:
             text = text.replace(",", "")
+    elif text.count(".") > 1:
+        text = text.replace(".", "")
+    elif text.count(",") > 1:
+        text = text.replace(",", "")
     elif "," in text:
         head, _, tail = text.partition(",")
         # 35,000 reads as thousands; 1,5 reads as a decimal comma.
-        if len(tail) == 3 and "," not in tail and len(head) <= 3 and tail.isdigit():
+        if len(tail) == 3 and len(head) <= 3 and tail.isdigit():
             text = head + tail
         else:
             text = text.replace(",", ".")
@@ -120,7 +133,38 @@ def check_segment_pair(source: str, translated: str) -> list[str]:
     if markers_of(source) != markers_of(translated):
         errors.append(f"markers changed: {markers_of(source)} vs {markers_of(translated)}")
     if number_values(source) != number_values(translated):
-        errors.append(f"numbers changed: {number_values(source)} vs {number_values(translated)}")
+        if _MAGNITUDE.search(source) or _MAGNITUDE.search(translated):
+            errors.append(
+                "number written with a magnitude word cannot be compared with its digits;"
+                " keep the digits exactly as in the source"
+            )
+        else:
+            errors.append(
+                f"numbers changed: {number_values(source)} vs {number_values(translated)}"
+            )
+    return errors
+
+
+def untranslated_segments(
+    segments: list[dict[str, str]],
+    translations: dict[str, str],
+    kept_terms: set[str],
+) -> list[str]:
+    """Segments (content AND key) the model echoed instead of translating.
+
+    A translated segment equal to its source and holding letters is not
+    a translation unless the whole segment is a glossary-kept term.
+    A partial echo (one English option among translated ones) fails
+    the same way, because every segment is judged on its own.
+    """
+    errors: list[str] = []
+    for segment in segments:
+        source = " ".join(segment["text"].split())
+        translated = " ".join(str(translations.get(segment["id"], "")).split())
+        if not re.search(r"[^\W\d_]", source):
+            continue
+        if source.casefold() == translated.casefold() and source.casefold() not in kept_terms:
+            errors.append(f"segment {segment['id']}: not translated (equals its source)")
     return errors
 
 
@@ -173,11 +217,18 @@ def verify_block_translation(
     return errors
 
 
-def _contains_term(text: str, term: str) -> bool:
-    """Word-boundary term match; inflected suffixes still count."""
+def _contains_term(text: str, term: str, *, stem: bool = False) -> bool:
+    """Word-boundary term match; inflected suffixes still count.
+
+    `stem` (target-language terms) also accepts a changed ending of a
+    long term: Leverandører / leverandørene are the same glossary term.
+    """
     if not term.strip():
         return False
-    pattern = r"(?<!\w)" + re.escape(term.lower()) + r"\w*"
+    core = term.lower()
+    if stem and len(core) >= 7:
+        core = core[:-2]
+    pattern = r"(?<!\w)" + re.escape(core) + r"\w*"
     return re.search(pattern, text.lower()) is not None
 
 
@@ -194,7 +245,7 @@ def check_glossary_use(
         for source_term, target_term in glossary.items():
             if not _contains_term(source_text, source_term):
                 continue
-            if not _contains_term(target_text, target_term):
+            if not _contains_term(target_text, target_term, stem=True):
                 errors.append(
                     f"segment {segment['id']}: glossary term {target_term!r} missing in translation"
                 )
@@ -209,22 +260,118 @@ def _count_in(text: str, vocab: set[str]) -> int:
     return sum(1 for tok in _tokens(text) if tok in vocab)
 
 
+def _entity_diff(
+    planted: str,
+    partner: str,
+    glossary: dict[Any, Any],
+    source_pair: tuple[str, str] | None = None,
+) -> bool:
+    """Both sentences differ by tokens the other lacks; glossary targets must follow.
+
+    The swapped entity is the token diff of the pair. When the glossary
+    covers a token of the SOURCE diff, its target must stand in the
+    matching translated sentence; a glossary that does not cover the
+    entity decides nothing.
+    """
+    p_tokens, q_tokens = set(_tokens(planted)), set(_tokens(partner))
+    only_p, only_q = p_tokens - q_tokens, q_tokens - p_tokens
+    if not only_p or not only_q:
+        return False
+    if len(only_p) + len(only_q) > max(len(p_tokens | q_tokens) // 2, 2):
+        return False
+    if source_pair is not None:
+        s_planted, s_true = set(_tokens(source_pair[0])), set(_tokens(source_pair[1]))
+        covered = {str(term).lower(): str(target) for term, target in glossary.items()}
+        for token in s_planted - s_true:
+            if token in covered and not _contains_term(planted, covered[token], stem=True):
+                return False
+        for token in s_true - s_planted:
+            if token in covered and not _contains_term(partner, covered[token], stem=True):
+                return False
+    return True
+
+
+def _related(a: str, b: str, minimum: float) -> bool:
+    """Token overlap of two sentences: a mutation shares most of its words."""
+    left, right = set(_tokens(a)), set(_tokens(b))
+    if not left or not right:
+        return False
+    return len(left & right) / len(left | right) >= minimum
+
+
+def kind_difference(
+    kind: str,
+    planted: str,
+    partner: str,
+    glossary: dict[Any, Any] | None = None,
+    source_pair: tuple[str, str] | None = None,
+) -> bool | None:
+    """True when planted/partner differ the way `kind` says, False when not.
+
+    None when the kind cannot be decided on this pair. Language-neutral
+    vocabularies cover en/nb/uk; used on the SOURCE pair and again on
+    the translated pair.
+    """
+    glossary = glossary or {}
+    if kind == "negation":
+        return _count_in(planted, _NEGATIONS) != _count_in(partner, _NEGATIONS)
+    if kind == "scope":
+        p = sorted(t for t in _tokens(planted) if t in _SCOPE)
+        q = sorted(t for t in _tokens(partner) if t in _SCOPE)
+        return p != q and bool(p or q)
+    if kind == "number_date":
+        return number_values(planted) != number_values(partner)
+    if kind == "bad_citation":
+        return bool(markers_of(planted)) and markers_of(planted) != markers_of(partner)
+    if kind == "entity_swap":
+        return _entity_diff(planted, partner, glossary, source_pair)
+    if kind == "cause_reversal":
+
+        def clauses(text: str) -> tuple[set[str], set[str]] | None:
+            toks = _tokens(text)
+            idx = next((i for i, t in enumerate(toks) if t in _CAUSAL), None)
+            if idx is None:
+                return None
+            return (set(toks[:idx]), set(toks[idx + 1 :]))
+
+        a, b = clauses(planted), clauses(partner)
+        if a is None or b is None:
+            return None
+
+        def content(words: set[str]) -> set[str]:
+            return {tok for tok in words if tok not in _NEGATIONS and len(tok) > 2}
+
+        (pl, pr), (ql, qr) = a, b
+        return (
+            bool(content(pl) & content(qr))
+            and bool(content(pr) & content(ql))
+            and not (content(pl) == content(ql) and content(pr) == content(qr))
+        )
+    return None
+
+
 def verify_spot_error(
     source: dict[str, Any], translated: dict[str, Any], answer_key: dict[str, Any]
 ) -> list[str]:
     """Exactly one planted sentence of the same kind must remain.
 
-    Code re-derives the error by kind on the translated pair: the
-    planted sentence and the true sentence, both translated as separate
-    checked segments (the true translation arrives in the answer key as
-    `translated_true_sentence`, or as a companion sentence). When the
-    kind-specific check cannot be made the block is held, never ok.
+    The kind check runs on the SOURCE planted/true pair first: a source
+    pair that does not show the kind is held (the translation cannot
+    prove what the source never had). Then the translated planted
+    sentence and the translated true sentence must show the same kind
+    difference. A fully-correct block has no planted sentence: sentence
+    parity only. When a check cannot be made the block is held.
     """
-    errors: list[str] = []
     source_sentences = _as_list(source.get("sentences"))
     translated_sentences = _as_list(translated.get("sentences"))
     if len(translated_sentences) != len(source_sentences) or len(source_sentences) < 2:
         return ["sentence count changed in translation"]
+    if answer_key.get("fully_correct"):
+        if source.get("planted_index") not in (None, -1):
+            return ["a fully-correct block carries a planted index"]
+        if len(set(translated_sentences)) != len(set(source_sentences)):
+            return ["two sentences became one in translation"]
+        return []
     if translated.get("kind") != source.get("kind"):
         return [f"mutation kind changed: {source.get('kind')} vs {translated.get('kind')}"]
     kind = str(source.get("kind", ""))
@@ -237,93 +384,33 @@ def verify_spot_error(
         or translated.get("planted_index") != planted_index
     ):
         return ["planted index moved in translation"]
-    planted_text = str(translated_sentences[planted_index])
-    companions = [
-        str(sentence)
-        for index, sentence in enumerate(translated_sentences)
-        if index != planted_index
-    ]
-    if planted_text in companions:
-        return ["planted error lost in translation: no sentence differs"]
-    true_text = (
-        answer_key.get("translated_true_sentence")
-        or answer_key.get("true_sentence_translated")
-        or translated.get("translated_true_sentence")
-        or translated.get("true_sentence")
-    )
-    # A companion that is the translated true sentence may serve as the
-    # pair partner only when no explicit true translation was supplied
-    # and the key carries no source true sentence to translate-compare.
-    candidates: list[str] = []
-    if isinstance(true_text, str) and true_text.strip():
-        candidates.append(true_text)
-    if not candidates:
-        candidates = companions
-    if not candidates:
-        return [f"planted {kind} check cannot be made: no true sentence translation"]
     _raw_glossary: Any = answer_key.get("glossary")
     glossary: dict[Any, Any] = _raw_glossary if isinstance(_raw_glossary, dict) else {}
-
-    def pair_ok(partner: str) -> bool | None:
-        """True/False when the kind check is decidable on this pair, else None."""
-        if kind == "negation":
-            return _count_in(planted_text, _NEGATIONS) != _count_in(partner, _NEGATIONS)
-        if kind == "scope":
-            p = sorted(t for t in _tokens(planted_text) if t in _SCOPE)
-            q = sorted(t for t in _tokens(partner) if t in _SCOPE)
-            return p != q and bool(p or q)
-        if kind == "number_date":
-            return number_values(planted_text) != number_values(partner)
-        if kind == "bad_citation":
-            return bool(markers_of(planted_text)) and markers_of(planted_text) != markers_of(
-                partner
-            )
-        if kind == "entity_swap":
-            # Swapped entity: a glossary target term present in one, absent
-            # in the other; without a glossary, capitalised entity tokens.
-            for target in glossary.values():
-                if _contains_term(planted_text, str(target)) != _contains_term(
-                    partner, str(target)
-                ):
-                    return True
-            if glossary:
-                return False
-            cap_p = {t for t in re.findall(r"\b[A-ZÆØÅ][\wæøåÆØÅ]*", planted_text)}
-            cap_q = {t for t in re.findall(r"\b[A-ZÆØÅ][\wæøåÆØÅ]*", partner)}
-            # sentence-initial words are capitalised in both; compare sets
-            return cap_p != cap_q
-        if kind == "cause_reversal":
-            # Clauses around a causal connector must be swapped.
-            def clauses(text: str) -> tuple[set[str], set[str]] | None:
-                toks = _tokens(text)
-                idx = next((i for i, t in enumerate(toks) if t in _CAUSAL), None)
-                if idx is None:
-                    return None
-                return (set(toks[:idx]), set(toks[idx + 1 :]))
-
-            a, b = clauses(planted_text), clauses(partner)
-            if a is None or b is None:
-                return None
-            (pl, pr), (ql, qr) = a, b
-
-            def content_words(s: set[str]) -> set[str]:
-                return {tok for tok in s if tok not in _NEGATIONS and len(tok) > 2}
-
-            content = content_words
-            return (
-                bool(content(pl) & content(qr))
-                and bool(content(pr) & content(ql))
-                and not (
-                    content(pl) & content(ql)
-                    and content(pr) & content(qr)
-                    and content(pl) == content(ql)
-                )
-            )
-        return None
-
-    verdicts = [pair_ok(c) for c in candidates]
-    if any(v is True for v in verdicts):
-        return errors
-    if all(v is None for v in verdicts):
+    source_true = answer_key.get("true_sentence")
+    if not isinstance(source_true, str) or not source_true.strip():
+        return [f"planted {kind} check cannot be made: the key has no true sentence"]
+    source_planted = str(source_sentences[planted_index])
+    if not _related(source_planted, source_true, _SOURCE_RELATED):
+        return ["source planted/true pair is not one sentence and its mutation"]
+    source_verdict = kind_difference(kind, source_planted, source_true)
+    if source_verdict is None:
+        return [f"planted {kind} check cannot be made on the source pair"]
+    if not source_verdict:
+        return [f"source planted/true pair does not show a {kind} difference"]
+    true_text = answer_key.get("translated_true_sentence")
+    if not isinstance(true_text, str) or not true_text.strip():
+        return [f"planted {kind} check cannot be made: no true sentence translation"]
+    if not _related(str(translated_sentences[planted_index]), true_text, _TRANSLATED_RELATED):
+        return [f"translated planted/true pair is not one sentence and its {kind} mutation"]
+    translated_verdict = kind_difference(
+        kind,
+        str(translated_sentences[planted_index]),
+        true_text,
+        glossary,
+        (source_planted, source_true),
+    )
+    if translated_verdict is None:
         return [f"planted {kind} check cannot be made on the translated pair"]
-    return [f"planted {kind} error lost in translation"]
+    if not translated_verdict:
+        return [f"planted {kind} error lost in translation"]
+    return []

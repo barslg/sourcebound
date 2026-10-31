@@ -40,8 +40,17 @@ async def get_reply(session: AsyncSession, digest: str) -> dict[str, Any] | None
         sa.select(llm_replies.c.response).where(llm_replies.c.request_hash == digest)
     )
     reply = result.scalar()
-    assert reply is None or isinstance(reply, dict)
-    return reply
+    if isinstance(reply, str):  # the same decoder as the live path: JSON text -> object
+        try:
+            reply = json.loads(reply)
+        except ValueError:
+            return None
+    return reply if isinstance(reply, dict) else None
+
+
+async def delete_reply(session: AsyncSession, digest: str) -> None:
+    """Drop one stored reply (a rejected reply is never replayed)."""
+    await session.execute(sa.delete(llm_replies).where(llm_replies.c.request_hash == digest))
 
 
 async def put_reply(

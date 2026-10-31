@@ -67,6 +67,31 @@ class LLMError(AppError):
     error_code = "llm_unavailable"
 
 
+class UnparseableReplyError(LLMError):
+    """A paid reply that is not a strict JSON object: kept for the ledger.
+
+    The call completed and was billed, so the usage and the raw text
+    travel with the error and the provider logs them before re-raising.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        raw_text: str = "",
+        input_tokens: int = 0,
+        cached_tokens: int = 0,
+        output_tokens: int = 0,
+        reasoning_tokens: int = 0,
+    ) -> None:
+        super().__init__(message)
+        self.raw_text = raw_text
+        self.input_tokens = input_tokens
+        self.cached_tokens = cached_tokens
+        self.output_tokens = output_tokens
+        self.reasoning_tokens = reasoning_tokens
+
+
 class ConfigurationError(AppError):
     """The service is misconfigured (a missing key, a bad setting)."""
 
@@ -126,16 +151,18 @@ async def _render(request: Request, exc: Exception) -> JSONResponse:
 
     code = _error_code(exc)
     locale = _request_locale(request)
+    specific = str(exc) if isinstance(exc, AppError) and str(exc) else error_message(code, "en")
     if locale is not None and not (isinstance(exc, AppError) and exc.plain_message):
         # An explicit language gets the localised catalogue message; a guard sentence
         # written for the person at the screen (plain_message) is shown as written.
         message = error_message(code, locale)
     else:
-        message = str(exc) if isinstance(exc, AppError) else "internal error"
-    return JSONResponse(
-        status_code=http_status_for(exc),
-        content={"error": code, "message": message},
-    )
+        message = specific
+    content: dict[str, Any] = {"error": code, "message": message}
+    if locale is not None:
+        # The specific message rides beside the localised one.
+        content["localized_message"] = error_message(code, locale)
+    return JSONResponse(status_code=http_status_for(exc), content=content)
 
 
 def register_exception_handlers(app: FastAPI) -> None:

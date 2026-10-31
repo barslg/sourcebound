@@ -125,14 +125,12 @@ async def list_sources(ctx: RequestContext, *, course_id: str) -> list[dict[str,
     return await list_course_sources(ctx.db, course_id=UUID(course_id))
 
 
-async def reject_source(ctx: RequestContext, *, source_id: str) -> dict[str, bool]:
+async def _require_source_owner(ctx: RequestContext, actor: Any, source_id: str) -> None:
+    """A source bound to courses answers 404 unless the actor owns one of them."""
     from app.services.courses import get_course as get_course_use_case
     from app.services.courses import owns_any_course
-    from app.services.library import reject_source as reject_use_case
     from app.services.library import source_course_ids
 
-    actor = require_auth(ctx)
-    require(actor, "source.approve")
     bound = await source_course_ids(ctx.db, source_id=UUID(source_id))
     if bound and not actor.is_superadmin:
         if not await owns_any_course(ctx.db, owner_id=actor.user_id, course_ids=bound):
@@ -142,6 +140,14 @@ async def reject_source(ctx: RequestContext, *, source_id: str) -> dict[str, boo
         for course in bound:
             row = await get_course_use_case(ctx.db, course_id=course)
             _owner_or_404(row, actor.user_id, actor.is_superadmin)
+
+
+async def reject_source(ctx: RequestContext, *, source_id: str) -> dict[str, bool]:
+    from app.services.library import reject_source as reject_use_case
+
+    actor = require_auth(ctx)
+    require(actor, "source.approve")
+    await _require_source_owner(ctx, actor, source_id)
     await reject_use_case(ctx.db, source_id=UUID(source_id))
     await ctx.db.commit()
     return {"ok": True}
@@ -211,7 +217,18 @@ async def set_source_language(
     require(actor, "source.edit")
     import sqlalchemy as sa
 
+    await _require_source_owner(ctx, actor, source_id)
     if passage_id:
+        owned = (
+            await ctx.db.execute(
+                sa.text("SELECT 1 FROM passages WHERE id::text = :pid AND source_id = :source"),
+                {"pid": passage_id, "source": source_id},
+            )
+        ).first()
+        if owned is None:
+            from app.errors import NotFoundError
+
+            raise NotFoundError("passage not found")
         config = await set_passage_language_override(
             ctx.db, passage_id=passage_id, language=language
         )
@@ -662,3 +679,25 @@ async def list_tags(ctx: RequestContext) -> list[dict[str, Any]]:
     actor = require_auth(ctx)
     require(actor, "course.edit")
     return await list_use_case(ctx.db, actor=actor)
+
+
+async def get_report(
+    ctx: RequestContext, *, course_id: str, as_csv: bool = False
+) -> dict[str, Any] | str:
+    from app.services.courses import get_course as get_use_case
+    from app.services.report import course_report, report_csv
+
+    actor = require_auth(ctx)
+    require(actor, "course.edit")
+    course = await get_use_case(ctx.db, course_id=UUID(course_id))
+    _owner_or_404(course, actor.user_id, actor.is_superadmin)
+    report = await course_report(ctx.db, UUID(course_id), threshold=ctx.settings.mastery_threshold)
+    return report_csv(report) if as_csv else report
+
+
+async def list_methodologies(ctx: RequestContext) -> list[dict[str, Any]]:
+    from app.services.courses import list_methodologies as list_use_case
+
+    actor = require_auth(ctx)
+    require(actor, "course.edit")
+    return list_use_case()

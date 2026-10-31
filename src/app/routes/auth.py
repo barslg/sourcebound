@@ -10,6 +10,17 @@ from app.controllers import auth as controller
 from app.schemas import t02 as dto
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+public_router = APIRouter(prefix="/config", tags=["config"])
+
+
+@public_router.get("/public")
+def public_config(request: Request, lang: str | None = None) -> dict[str, str]:
+    """Signed-out config: the privacy line in ?lang= or Accept-Language."""
+    locale = lang
+    if locale is None:
+        header = str(request.headers.get("accept-language", ""))
+        locale = header.split(",")[0].strip().split("-")[0] if header else "en"
+    return controller.public_config(locale=locale or "en")
 
 
 def _set_session_cookie(response: Response, ctx: RequestContext, token: str) -> None:

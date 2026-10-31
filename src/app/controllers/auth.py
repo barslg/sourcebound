@@ -139,3 +139,10 @@ async def me(ctx: RequestContext, *, locale: str = "en") -> dto.MeResponse:
         scope_tags=list(principal.scope_tags),
         privacy_line=signin_privacy_line(locale),
     )
+
+
+def public_config(*, locale: str) -> dict[str, str]:
+    """Config a signed-out visitor may read: the sign-in privacy line."""
+    from app.i18n.privacy import signin_privacy_line
+
+    return {"locale": locale, "privacy_line": signin_privacy_line(locale)}

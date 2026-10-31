@@ -27,7 +27,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.clients.meta import MetaClient, build_request_body
 from app.config import Settings, get_settings
 from app.db import create_session_factory
-from app.errors import ConfigurationError, ForbiddenError, LLMError, ValidationError
+from app.errors import (
+    ConfigurationError,
+    ForbiddenError,
+    LLMError,
+    UnparseableReplyError,
+    ValidationError,
+)
 from app.llm import calls, prompts, replies
 from app.llm.registry import is_allowed, resolve_step
 from app.llm.schema import validate_strict_subset
@@ -147,6 +153,12 @@ class MetaProvider:
         digest = replies.request_hash(resolved_model, version, body, variant)
 
         cached = await replies.get_reply(self._session, digest)
+        if cached is not None and check is not None and list(check(cached)):
+            # a reply the checks reject is never replayed: evict and re-ask
+            async with self._ledger_factory() as ledger:
+                await replies.delete_reply(ledger, digest)
+                await ledger.commit()
+            cached = None
         if cached is not None:
             await self._record_call(
                 agent=agent,
@@ -168,14 +180,36 @@ class MetaProvider:
             return cached
 
         started = time.monotonic()
-        answered = await self._get_client().respond_json(
-            model=resolved_model,
-            prompt=prompt,
-            schema=schema,
-            prompt_cache_key=cache_key,
-            effort=resolved_effort,
-            max_output_tokens=resolved_tokens,
-        )
+        try:
+            answered = await self._get_client().respond_json(
+                model=resolved_model,
+                prompt=prompt,
+                schema=schema,
+                prompt_cache_key=cache_key,
+                effort=resolved_effort,
+                max_output_tokens=resolved_tokens,
+            )
+        except UnparseableReplyError as bad:
+            # The call completed and was billed: log it before failing.
+            await self._record_call(
+                agent=agent,
+                model=resolved_model,
+                version=version,
+                input_tokens=bad.input_tokens,
+                cached_tokens=bad.cached_tokens,
+                output_tokens=bad.output_tokens,
+                reasoning_tokens=bad.reasoning_tokens,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                body=body,
+                data={"raw_text": bad.raw_text},
+                run_id=run_id,
+                step_id=step_id,
+                variant=variant,
+                subject_user_id=subject_user_id,
+                store_reply=False,
+                status="rejected",
+            )
+            raise
         duration_ms = int((time.monotonic() - started) * 1000)
         errors: list[str] = list(check(answered.data)) if check is not None else []
         await self._record_call(
@@ -277,7 +311,23 @@ class MetaProvider:
             if row["status"] != "pending" or not row["response_id"]:
                 raise LLMError(f"call {call_id} is not resumable")
             started = time.monotonic()
-            answered = await self._get_client().retrieve_background(str(row["response_id"]))
+            try:
+                answered = await self._get_client().retrieve_background(str(row["response_id"]))
+            except UnparseableReplyError as bad:
+                await calls.complete_background_call(
+                    ledger,
+                    call_id=call_id,
+                    input_tokens=bad.input_tokens,
+                    cached_tokens=bad.cached_tokens,
+                    output_tokens=bad.output_tokens,
+                    reasoning_tokens=bad.reasoning_tokens,
+                    model=str(row["model"]),
+                    duration_ms=int((time.monotonic() - started) * 1000),
+                    response={"raw_text": bad.raw_text},
+                    status="rejected",
+                )
+                await ledger.commit()
+                raise
             duration_ms = int((time.monotonic() - started) * 1000)
             await calls.complete_background_call(
                 ledger,
@@ -323,6 +373,7 @@ class MetaProvider:
         subject_user_id: UUID | None,
         store_reply: bool,
         digest: str = "",
+        status: str = "completed",
     ) -> None:
         """Persist the ledger row (and fresh reply) in an autonomous session.
 
@@ -347,6 +398,7 @@ class MetaProvider:
                 step_id=step_id,
                 variant=variant,
                 subject_user_id=subject_user_id,
+                status=status,
             )
             if store_reply:
                 await replies.put_reply(ledger, digest, model, version, data)

@@ -61,6 +61,12 @@ def error_keys() -> set[str]:
     return set(ERROR_MESSAGES["en"])
 
 
+LANGUAGE_NAMES: dict[str, dict[str, str]] = {
+    "en": {"en": "English", "nb": "Norwegian", "uk": "Ukrainian"},
+    "nb": {"en": "engelsk", "nb": "norsk", "uk": "ukrainsk"},
+    "uk": {"en": "англійською", "nb": "норвезькою", "uk": "українською"},
+}
+
 FALLBACK_NOTICES: dict[str, str] = {
     "en": "This block is not yet translated into {target}; showing the {source} original.",
     "nb": "Denne blokken er ikke oversatt til {target} ennå; viser originalen på {source}.",
@@ -68,12 +74,18 @@ FALLBACK_NOTICES: dict[str, str] = {
 }
 
 
+def language_name(code: str, locale: str) -> str:
+    """Name of one language in one UI locale; an unknown code stays as written."""
+    names = LANGUAGE_NAMES.get(locale, LANGUAGE_NAMES["en"])
+    return names.get(code, code)
+
+
 def fallback_notice(*, target_language: str, source_language: str) -> str | None:
-    """Localised fallback notice; None when the chosen language is the source."""
+    """Localised fallback notice naming both languages; None when the language is the source."""
     if target_language == source_language:
         return None
-    template = FALLBACK_NOTICES.get(
-        target_language if target_language in FALLBACK_NOTICES else "en",
-        FALLBACK_NOTICES["en"],
+    locale = target_language if target_language in FALLBACK_NOTICES else "en"
+    return FALLBACK_NOTICES[locale].format(
+        target=language_name(target_language, locale),
+        source=language_name(source_language, locale),
     )
-    return template.format(target=target_language, source=source_language)

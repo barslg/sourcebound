@@ -57,6 +57,15 @@ CATALOGUE: tuple[PermissionDef, ...] = (
     PermissionDef("role.assign", "roles", "Assign roles", "Grant or revoke roles on users."),
     PermissionDef("invite.create", "invites", "Create invites", "Create invite links."),
     PermissionDef("invite.revoke", "invites", "Revoke invites", "Revoke invite links."),
+    PermissionDef(
+        "learn.read", "learning", "Read enrolled courses", "Read courses you are enrolled in."
+    ),
+    PermissionDef(
+        "learn.answer", "learning", "Answer blocks", "Submit answers in enrolled courses."
+    ),
+    PermissionDef(
+        "learn.ask", "learning", "Ask the tutor", "Ask questions answered from course sources."
+    ),
     PermissionDef("operation.run", "operations", "Run operations", "Submit long writes."),
     PermissionDef("operation.view", "operations", "View operations", "Inspect any operation."),
 )

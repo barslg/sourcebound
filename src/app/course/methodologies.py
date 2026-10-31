@@ -111,32 +111,6 @@ def prescription_for(codes: list[str]) -> dict[str, list[str]]:
     return merged
 
 
-def expand_merrill(
-    *, topic_kind: str, bloom_target: str = "apply", has_data: bool = False
-) -> list[tuple[str, str]]:
-    """Merrill block plan: (role, block_type) pairs for one topic.
-
-    Activation is one choice pre-question on the case; demonstration is
-    reading plus figure only when the passage holds data; application
-    follows the Bloom target (cloze/matching for remember-understand,
-    scenario_practice for apply-analyze); integration is spot_the_error.
-    A module_test is choice + matching + exactly one spot_the_error.
-    """
-    if topic_kind == "module_test":
-        return [("test", "choice"), ("test", "matching"), ("test", "spot_the_error")]
-    low = bloom_target.strip().lower() in ("remember", "understand")
-    plan: list[tuple[str, str]] = [("teach", "choice"), ("example", "reading")]
-    plan.append(("teach", "reading"))
-    if has_data:
-        plan.append(("teach", "figure"))
-    if low:
-        plan.extend([("practice", "cloze"), ("practice", "matching")])
-    else:
-        plan.extend([("practice", "scenario_practice"), ("check", "cloze")])
-    plan.append(("practice", "spot_the_error"))
-    return plan
-
-
 async def sync_methodologies(session: Any) -> None:
     """Upsert every declared methodology; never delete author rows."""
     import json

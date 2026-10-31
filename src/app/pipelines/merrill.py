@@ -139,7 +139,6 @@ def compile_generation_dag(
                     "step_key": sab_key,
                     "handler": "saboteur",
                     "depends_on": ["plan:plan"],
-                    "kind": "entity_swap",
                     "input_digest": input_digest_of(
                         {"kind": "saboteur", "node": node_id, "course": course_id}
                     ),

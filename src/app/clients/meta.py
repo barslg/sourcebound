@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 import httpx2
 
 from app.config import Settings, get_settings
-from app.errors import ConfigurationError, LLMError
+from app.errors import ConfigurationError, LLMError, UnparseableReplyError
 from app.llm.retry import RETRYABLE, backoff_ms, retry_after_ms, should_retry, use_background
 from app.llm.schema import validate_strict_subset
 from app.redact import redact
@@ -248,22 +248,32 @@ class MetaClient:
 
     @staticmethod
     def _parse(response: Any) -> LLMResponse:
+        """Strict JSON object plus usage; a paid unparseable reply keeps both."""
+        usage = getattr(response, "usage", None)
+        counts: dict[str, int] = {}
+        if usage is not None:
+            counts = {
+                "input_tokens": int(usage.input_tokens),
+                "cached_tokens": _tokens_details(usage, "input_tokens_details", "cached_tokens"),
+                "output_tokens": int(usage.output_tokens),
+                "reasoning_tokens": _tokens_details(
+                    usage, "output_tokens_details", "reasoning_tokens"
+                ),
+            }
+        raw = str(getattr(response, "output_text", "") or "")
         try:
-            data = json.loads(response.output_text)
-        except (ValueError, AttributeError) as exc:
-            raise LLMError("model did not return strict JSON") from exc
+            data = json.loads(raw)
+        except ValueError as exc:
+            raise UnparseableReplyError(
+                "model did not return strict JSON", raw_text=raw, **counts
+            ) from exc
         if not isinstance(data, dict):
-            raise LLMError("model did not return a JSON object")
-        usage = response.usage
+            raise UnparseableReplyError(
+                "model did not return a JSON object", raw_text=raw, **counts
+            )
         if usage is None:
             raise LLMError("model response carried no usage")
-        return LLMResponse(
-            data=data,
-            input_tokens=int(usage.input_tokens),
-            cached_tokens=_tokens_details(usage, "input_tokens_details", "cached_tokens"),
-            output_tokens=int(usage.output_tokens),
-            reasoning_tokens=_tokens_details(usage, "output_tokens_details", "reasoning_tokens"),
-        )
+        return LLMResponse(data=data, **counts)
 
 
 def _tokens_details(usage: Any, field: str, key: str) -> int:

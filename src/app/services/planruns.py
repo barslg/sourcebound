@@ -81,21 +81,6 @@ async def _submit(
     return operation_id
 
 
-async def _approved_passage_count(session: AsyncSession, *, course_id: UUID) -> int:
-    return int(
-        (
-            await session.execute(
-                sa.text(
-                    "SELECT count(*) FROM passages p JOIN course_sources cs"
-                    " ON cs.source_id = p.source_id"
-                    " WHERE cs.course_id = :course AND cs.approval = 'approved'"
-                ),
-                {"course": str(course_id)},
-            )
-        ).scalar_one()
-    )
-
-
 def researcher_node_id(query: str) -> str:
     """Stable plan node id for one researcher query (`<agent>:<plan_node_id>`).
 
@@ -103,6 +88,67 @@ def researcher_node_id(query: str) -> str:
     reordered queries keep their step keys and their reuse digests.
     """
     return "q" + hashlib.sha256(query.strip().encode("utf-8")).hexdigest()[:12]
+
+
+def frozen_plan(tree: dict[str, Any]) -> dict[str, Any]:
+    """The plan skeleton prompts may see: ids, titles, roles, briefs, handles.
+
+    Never status, hold reasons, current versions, or DB ids — mutable
+    state in a prompt changes every digest after run 1 and the second
+    identical run pays again.
+    """
+    modules: list[dict[str, Any]] = []
+    for module in tree.get("modules", []):
+        topics: list[dict[str, Any]] = []
+        for topic in module.get("topics", []):
+            blocks: list[dict[str, Any]] = []
+            for block in topic.get("blocks", []):
+                handles = block.get("source_handles") or [
+                    str(ref.get("handle", ""))
+                    for ref in block.get("source_refs", [])
+                    if isinstance(ref, dict)
+                ]
+                blocks.append(
+                    {
+                        "plan_node_id": str(block.get("plan_node_id", "")),
+                        "role": str(block.get("role", "")),
+                        "block_type": str(block.get("block_type", "")),
+                        "brief": str(block.get("brief", "")),
+                        "source_handles": [str(h) for h in handles if h],
+                    }
+                )
+            topics.append(
+                {
+                    "plan_node_id": str(topic.get("plan_node_id", "")),
+                    "kind": str(topic.get("kind", "")),
+                    "title": str(topic.get("title", "")),
+                    "blocks": blocks,
+                }
+            )
+        modules.append(
+            {
+                "plan_node_id": str(module.get("plan_node_id", "")),
+                "title": str(module.get("title", "")),
+                "topics": topics,
+            }
+        )
+    return {"modules": modules}
+
+
+async def _approved_passage_count(session: AsyncSession, *, course_id: UUID) -> int:
+    """Approved passages of one course (the submit guard's fact)."""
+    row = (
+        await session.execute(
+            sa.text(
+                "SELECT count(*) FROM passages p"
+                " JOIN course_sources cs ON cs.source_id = p.source_id"
+                " AND cs.course_id = :c AND cs.approval = 'approved'"
+                " JOIN sources s ON s.id = p.source_id AND s.approval = 'approved'"
+            ),
+            {"c": str(course_id)},
+        )
+    ).scalar()
+    return int(row or 0)
 
 
 async def submit_plan(
@@ -115,11 +161,12 @@ async def submit_plan(
     defer: Callable[[UUID], Awaitable[None]] | None = None,
 ) -> UUID:
     """Submit plan generation: researcher passes plus the architect."""
+
     require(actor, "course.plan")
     if not queries or not all(query.strip() for query in queries):
         raise ValidationError("queries must be a non-empty list of non-empty strings")
     if await _approved_passage_count(session, course_id=course_id) == 0:
-        raise UnprocessableError("Approve at least one source before building the plan")
+        raise UnprocessableError("Add and approve at least one source before building a plan.")
     return await _submit(
         session,
         actor=actor,
@@ -150,16 +197,19 @@ async def submit_generate(
             "generation refused: answer required questions first: "
             + ", ".join(question["key"] for question in open_questions)
         )
-    if await _approved_passage_count(session, course_id=course_id) == 0:
-        raise UnprocessableError("Approve at least one source before generating the course")
-    modules = (
+    block_count = (
         await session.execute(
-            sa.text("SELECT count(*) FROM modules WHERE course_id = :course"),
-            {"course": str(course_id)},
+            sa.text(
+                "SELECT count(*) FROM blocks b JOIN topics t ON t.id = b.topic_id"
+                " JOIN modules m ON m.id = t.module_id WHERE m.course_id = :c"
+            ),
+            {"c": str(course_id)},
         )
-    ).scalar_one()
-    if int(modules) == 0:
-        raise UnprocessableError("The plan is empty. Build the plan first")
+    ).scalar()
+    if int(block_count or 0) == 0:
+        raise UnprocessableError("Build a plan before generating blocks.")
+    if await _approved_passage_count(session, course_id=course_id) == 0:
+        raise UnprocessableError("Add and approve at least one source before generating blocks.")
     return await _submit(
         session,
         actor=actor,
@@ -290,6 +340,8 @@ async def run_translate_operation(
         finally:
             await _close_factory(provider_factory)
 
+    from app.translation.glossary import seed_glossary
+
     run_id = await translate_course(
         session,
         None,
@@ -298,7 +350,9 @@ async def run_translate_operation(
         source_language=str(course.get("language", "en")),
         target_languages=languages,
         blocks=blocks,
-        glossary={str(k): str(v) for k, v in dict(params.get("glossary", {})).items()},
+        glossary=seed_glossary(
+            blocks, {str(k): str(v) for k, v in dict(params.get("glossary", {})).items()}
+        ),
         driver=_driver,
     )
     return {"run_id": str(run_id)}
@@ -309,52 +363,28 @@ async def learner_course_view(
 ) -> dict[str, Any]:
     """Learner view of one course in the chosen language.
 
-    Every block goes through resolve_learner_block: translated ok
-    blocks serve their translation, everything else serves the source
-    with a localised notice (none when the chosen language is the
-    source). Citation chips carry the address formatted for the locale.
+    Every block goes through learner_block: translated ok blocks serve
+    their translation, everything else serves the source with a
+    localised notice (none when the chosen language is the source).
+    The answer key learner_block returns for the grader is dropped
+    here: the preview never carries a key. Citation chips carry the
+    address formatted for the locale.
     """
     from app.i18n.citations import format_citation_address
-    from app.translation.variants import available_languages, resolve_learner_block
+    from app.translation.variants import available_languages, learner_block
 
     course = await _course_for_learner(session, course_id=course_id)
     source_language = str(course.get("language", "en"))
     blocks = await _course_blocks(session, course_id=course_id)
-    version_row = (
-        await session.execute(
-            sa.text(
-                "SELECT id FROM course_versions WHERE course_id = :course"
-                " ORDER BY created_at DESC LIMIT 1"
-            ),
-            {"course": str(course_id)},
-        )
-    ).first()
-    version_id = UUID(str(version_row[0])) if version_row is not None else None
-    if course.get("published_version_id"):
-        version_id = UUID(str(course["published_version_id"]))
     out_blocks: list[dict[str, Any]] = []
     for block in blocks:
-        if version_id is not None:
-            resolved = await resolve_learner_block(
-                session,
-                course_id=course_id,
-                version_id=version_id,
-                language=language,
-                plan_node_id=str(block["plan_node_id"]),
-                source_content=dict(block["content"]),
-                source_language=source_language,
-            )
-        else:
-            from app.i18n.messages import fallback_notice
-
-            resolved = {
-                "content": dict(block["content"]),
-                "language": source_language,
-                "fallback_notice": fallback_notice(
-                    target_language=language, source_language=source_language
-                ),
-                "translated_answer_key": None,
-            }
+        resolved = await learner_block(
+            session,
+            course_id=course_id,
+            language=language,
+            block=block,
+            source_language=source_language,
+        )
         content = dict(resolved["content"])
         citations = await _citation_chips(
             session, content=content, locale=language, fmt=format_citation_address
@@ -369,14 +399,11 @@ async def learner_course_view(
                 "fallback_notice": resolved["fallback_notice"],
             }
         )
-    languages = (
-        await available_languages(session, version_id=version_id) if version_id is not None else []
-    )
     return {
         "course_id": str(course_id),
         "language": language,
         "source_language": source_language,
-        "available_languages": languages,
+        "available_languages": await available_languages(session, course_id=course_id),
         "blocks": out_blocks,
     }
 
@@ -622,6 +649,7 @@ async def run_plan_operation(
             await refresh_plan_estimate(fresh, run_id=run_id)
         async with session_factory() as fresh:
             await course_service.snapshot_version(fresh, course_id=course_id)
+            await course_service.mark_generated_if_complete(fresh, course_id=course_id)
             await fresh.commit()
     return {"run_id": str(run_id)}
 
@@ -683,6 +711,126 @@ async def run_resume_operation(
     return {"run_id": str(run_id)}
 
 
+async def run_rewrite_operation(
+    session: AsyncSession,
+    operation_id: UUID,
+    *,
+    provider_factory: Any | None = None,
+    session_factory: Any | None = None,
+) -> dict[str, Any]:
+    """Worker body for rewrite_block / rewrite_held_batch.
+
+    Regenerates ONLY the named blocks: variant = the block's existing
+    version count (a fresh draft, never the reply store's old one),
+    the hold reason rides in the skeleton prompt, and the affected
+    topics are read again. Other blocks keep their versions.
+    """
+    from app.pipelines.merrill import _role_agent
+    from app.services import courses as course_service
+
+    params = (
+        await session.execute(
+            sa.text("SELECT params FROM operations WHERE id = :op"),
+            {"op": str(operation_id)},
+        )
+    ).scalar_one()
+    course_id = UUID(str(params["course_id"]))
+    wanted: list[str] = []
+    if params.get("block_id"):
+        wanted.append(str(params["block_id"]))
+    wanted.extend(str(b) for b in params.get("block_ids", []))
+    course = await course_service.get_course(session, course_id=course_id)
+    tree = frozen_plan(await course_service.read_tree(session, course_id=course_id))
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT b.id, b.plan_node_id, b.block_type, b.role, b.brief,"
+                " b.hold_reason, t.plan_node_id,"
+                " (SELECT count(*) FROM block_versions bv WHERE bv.block_id = b.id)"
+                " FROM blocks b JOIN topics t ON t.id = b.topic_id"
+                " JOIN modules m ON m.id = t.module_id"
+                " WHERE m.course_id = :c AND b.id::text = ANY(:ids)"
+            ),
+            {"c": str(course_id), "ids": wanted},
+        )
+    ).all()
+    if not rows:
+        raise NotFoundError("no named blocks found for rewrite")
+    source_rows = (
+        await session.execute(
+            sa.text(
+                "SELECT p.id, p.source_id, p.address_key, p.text FROM passages p"
+                " JOIN course_sources cs ON cs.source_id = p.source_id AND cs.course_id = :c"
+                " AND cs.approval = 'approved' JOIN sources s ON s.id = p.source_id"
+                " AND s.approval = 'approved' ORDER BY p.source_id, p.address_key"
+            ),
+            {"c": str(course_id)},
+        )
+    ).all()
+    sources = [
+        {"passage_id": str(r[0]), "source_id": str(r[1]), "address": str(r[2]), "text": str(r[3])}
+        for r in source_rows
+    ]
+    dossier = {"thesis": "", "glossary": {}, "handoffs": []}
+    dag: list[dict[str, Any]] = []
+    gen_keys_by_topic: dict[str, list[str]] = {}
+    for _bid, node, btype, role, brief, hold_reason, topic_node, versions in rows:
+        agent = _role_agent(str(role))
+        key = f"{agent}:{node}"
+        gen_keys_by_topic.setdefault(str(topic_node), []).append(key)
+        reason = str(hold_reason or "")
+        dag.append(
+            {
+                "step_key": key,
+                "handler": "generate_block",
+                "depends_on": [],
+                "course_id": str(course_id),
+                "course_language": str(course.get("language", "en")),
+                "plan": tree,
+                "dossier": dossier,
+                "block_type": str(btype),
+                "sources": sources,
+                "variant_offset": int(versions or 0),
+                "skeleton": {
+                    "plan_node_id": str(node),
+                    "brief": f"{brief} Rewrite: {reason}" if reason else str(brief),
+                    "role": str(role),
+                    "block_type": str(btype),
+                    "hold_reason": reason,
+                },
+            }
+        )
+    for topic_node, keys in gen_keys_by_topic.items():
+        dag.append(
+            {
+                "step_key": f"reader:{topic_node}",
+                "handler": "read_topic",
+                "depends_on": keys,
+                "course_id": str(course_id),
+                "course_language": str(course.get("language", "en")),
+                "plan": tree,
+                "dossier": dossier,
+                "sources": sources,
+                "blocks": [],
+            }
+        )
+    from app.runs.executor import drive_run, new_run
+
+    run_id = await new_run(session, course_id=course_id, kind="generation", dag=dag)
+    await session.commit()
+    if provider_factory is not None and session_factory is not None:
+        try:
+            await drive_run(
+                session_factory,
+                run_id=run_id,
+                provider_factory=provider_factory,
+                handlers=plan_handlers(),
+            )
+        finally:
+            await _close_factory(provider_factory)
+    return {"run_id": str(run_id)}
+
+
 async def run_generate_operation(
     session: AsyncSession,
     operation_id: UUID,
@@ -700,8 +848,15 @@ async def run_generate_operation(
         )
     ).scalar_one()
     course_id = UUID(str(params["course_id"]))
+    if params.get("block_id") or params.get("block_ids"):
+        return await run_rewrite_operation(
+            session,
+            operation_id,
+            provider_factory=provider_factory,
+            session_factory=session_factory,
+        )
     course = await course_service.get_course(session, course_id=course_id)
-    tree = await course_service.read_tree(session, course_id=course_id)
+    tree = frozen_plan(await course_service.read_tree(session, course_id=course_id))
     profile = course.get("profile") or {}
     rows = (
         await session.execute(
@@ -802,6 +957,9 @@ async def run_generate_operation(
             )
         finally:
             await _close_factory(provider_factory)
+        async with session_factory() as fresh:
+            await course_service.mark_generated_if_complete(fresh, course_id=course_id)
+            await fresh.commit()
     return {"run_id": str(run_id)}
 
 

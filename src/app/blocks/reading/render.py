@@ -10,7 +10,10 @@ def render_for_learner(content: dict[str, Any]) -> dict[str, Any]:
     return {
         "body": str(content.get("body", "")),
         "citations": [
-            {"passage_id": str(item.get("passage_id", "")), "quote": str(item.get("quote", ""))}
+            {
+                "handle": str(item.get("handle", item.get("passage_id", ""))),
+                "quote": str(item.get("quote", "")),
+            }
             for item in content.get("citations", [])
             if isinstance(item, dict)
         ],

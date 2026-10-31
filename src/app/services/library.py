@@ -194,38 +194,100 @@ _UK_STOPWORDS = frozenset(
 )
 
 
+_NB_ONLY = frozenset({"av", "hva", "blir", "etter", "mellom", "gjennom", "gjelder", "våre"})
+_DA_ONLY = frozenset(
+    {
+        "af",
+        "hvad",
+        "bliver",
+        "blive",
+        "efter",
+        "mellem",
+        "gennem",
+        "nogle",
+        "noget",
+        "meget",
+        "jeg",
+        "sig",
+        "mig",
+        "dig",
+        "ved",
+        "hvilket",
+        "hvorfor",
+        "udsat",
+    }
+)
+# Function words Norwegian and Danish share: they are evidence for both,
+# so only the exclusive words and spellings can separate the two.
+_DA_STOPWORDS = (_NB_STOPWORDS - _NB_ONLY) | _DA_ONLY
+_SV_STOPWORDS = frozenset(
+    {"och", "att", "är", "inte", "ska", "för", "från", "också", "när", "vad", "ett", "alla", "vi"}
+)
+_RU_STOPWORDS = frozenset(
+    {"и", "что", "это", "как", "или", "от", "из", "также", "должны", "должен", "быть", "является"}
+)
+_NB_STEMS = ("arbeid", "veil", "opplær", "sikkerhet", "kunnskap")
+_DA_STEMS = ("arbejd", "medarbejd", "vejl", "oplær", "sikkerhed", "kundskab", "uddan")
+_UK_ONLY_LETTERS = re.compile("[іїєґ]")
+_RU_ONLY_LETTERS = re.compile("[ыэъё]")
+
+
+def _words_with(words: list[str], pattern: str) -> int:
+    return sum(1 for w in words if re.search(pattern, w))
+
+
 def language_scores(text: str) -> dict[str, int]:
-    """Stopword evidence per language; script is weak, never sole, evidence.
+    """Evidence per language; script is weak, never sole, evidence.
 
     One æøå/Cyrillic word (a place name like Tromsø inside an English
     sentence) scores nothing: script counts only from two or more
-    script-bearing words, and never outweighs clear stopword evidence.
+    script-bearing words. Ukrainian needs a Ukrainian-only letter and
+    no Russian-only letter; ä/ö rule Norwegian and Danish out;
+    Norwegian and Danish share function words, so their exclusive
+    words and spellings decide.
     """
-    words = re.findall(r"[^\W\d_]+", text.lower())
+    lowered = text.lower()
+    words = re.findall(r"[^\W\d_]+", lowered)
     word_set = set(words)
+    cyrillic = _words_with(words, "[Ѐ-џ]")
+    uk_letters = _UK_ONLY_LETTERS.search(lowered) is not None
+    ru_letters = _RU_ONLY_LETTERS.search(lowered) is not None
     scores = {
         "en": len(word_set & _EN_STOPWORDS),
-        "nb": len(word_set & _NB_STOPWORDS),
-        "uk": len(word_set & _UK_STOPWORDS),
+        "nb": len(word_set & _NB_STOPWORDS) + sum(1 for w in words if w.startswith(_NB_STEMS)),
+        "da": len(word_set & _DA_STOPWORDS) + sum(1 for w in words if w.startswith(_DA_STEMS)),
+        "sv": len(word_set & _SV_STOPWORDS),
+        "uk": 0,
+        "ru": len(word_set & _RU_STOPWORDS) if not uk_letters else 0,
     }
-    if sum(1 for w in words if re.search(r"[æøå]", w)) >= 2:
+    if uk_letters and not ru_letters:
+        scores["uk"] = len(word_set & _UK_STOPWORDS) + (3 if cyrillic >= 2 else 0)
+    if ru_letters and not uk_letters and cyrillic >= 2:
+        scores["ru"] += 3
+    if _words_with(words, "[æøå]") >= 2:
         scores["nb"] += 2
-    if sum(1 for w in words if re.search(r"[Ѐ-џ]", w)) >= 2:
-        scores["uk"] += 3
+        scores["da"] += 2
+    if _words_with(words, "[äö]") >= 2:
+        scores["sv"] += 3
+        scores["nb"] = 0
+        scores["da"] = 0
     return scores
 
 
 def detect_language(text: str) -> str:
-    """Code heuristics for en/nb/uk (BRIEF §9): stopwords plus script.
+    """Code heuristics for en/nb/uk plus da/sv/ru as rivals (BRIEF §9).
 
     Function words decide; script only reinforces. English is the
-    scoreless default. A stored override wins over this guess wherever
-    callers accept one.
+    scoreless default for Latin text; Cyrillic text without evidence is
+    `unknown`, never English. A tie is `unknown` (held), never a guess.
+    A stored override wins over this guess wherever callers accept one.
     """
     scores = language_scores(text)
     best = max(scores, key=lambda lang: scores[lang])
     if scores[best] == 0:
-        return "en"
+        return "unknown" if _words_with(re.findall(r"[^\W\d_]+", text.lower()), "[Ѐ-џ]") else "en"
+    if list(scores.values()).count(scores[best]) > 1:
+        return "unknown"
     return best
 
 
@@ -250,7 +312,10 @@ def ts_config_for_passage(text: str, override: str | None = None) -> str:
         if override not in TS_CONFIG_BY_LANGUAGE.values():
             raise ValidationError(f"unsupported ts_config: {override}")
         return override
-    return TS_CONFIG_BY_LANGUAGE[detect_language(text)]
+    detected = detect_language(text)
+    return TS_CONFIG_BY_LANGUAGE.get(
+        detected, "simple" if detected in ("da", "sv", "ru") else "english"
+    )
 
 
 async def bind_source_to_course(session: AsyncSession, *, course_id: UUID, source_id: UUID) -> None:
@@ -481,12 +546,15 @@ async def ingest_passages(
     `ts_config` is a stored per-passage override; without one the
     language is detected per passage by code heuristics (en/nb/uk).
     """
+    from app.course.errorspot import is_content_text
+
     count = 0
     for passage in passages:
         await session.execute(
             sa.text(
-                "INSERT INTO passages (source_id, text, address, address_key, ts_config)"
-                " VALUES (:source, :text, CAST(:address AS jsonb), :key, :cfg)"
+                "INSERT INTO passages (source_id, text, address, address_key, ts_config,"
+                " is_content)"
+                " VALUES (:source, :text, CAST(:address AS jsonb), :key, :cfg, :content)"
                 " ON CONFLICT (source_id, address_key) DO NOTHING"
             ),
             {
@@ -495,6 +563,7 @@ async def ingest_passages(
                 "address": json.dumps(passage["address"]),
                 "key": passage["address_key"],
                 "cfg": ts_config_for_passage(passage["text"], ts_config),
+                "content": bool(passage.get("is_content", is_content_text(passage["text"]))),
             },
         )
         count += 1

@@ -43,6 +43,8 @@ def check_language(text: str, *, course_language: str) -> list[str]:
     best = max(scores, key=lambda lang: scores[lang])
     if scores[best] == 0:
         return []
+    if list(scores.values()).count(scores[best]) > 1:
+        return []
     if wanted not in scores and wanted not in ("en", "nb", "uk"):
         # unknown target language: only hold on strong script mismatch handled above
         return []

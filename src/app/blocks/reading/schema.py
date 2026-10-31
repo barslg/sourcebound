@@ -18,8 +18,8 @@ def validate(content: dict[str, Any]) -> list[str]:
         if not isinstance(citation, dict):
             errors.append(f"citations[{index}]: must be an object")
             continue
-        if not citation.get("passage_id"):
-            errors.append(f"citations[{index}]: passage_id is required")
+        if not (citation.get("handle") or citation.get("passage_id")):
+            errors.append(f"citations[{index}]: passage handle is required")
         if not citation.get("quote"):
             errors.append(f"citations[{index}]: quote is required")
     return errors

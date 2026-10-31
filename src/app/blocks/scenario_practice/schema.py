@@ -15,6 +15,10 @@ def validate(content: dict[str, Any]) -> list[str]:
         errors.append("items must be a non-empty list")
         return errors
     for index, item in enumerate(items):
-        if not isinstance(item, dict) or not item.get("text") or not item.get("passage_id"):
-            errors.append(f"items[{index}]: text and passage_id are required")
+        if (
+            not isinstance(item, dict)
+            or not item.get("text")
+            or not (item.get("handle") or item.get("passage_id"))
+        ):
+            errors.append(f"items[{index}]: text and passage handle are required")
     return errors
