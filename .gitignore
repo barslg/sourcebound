@@ -32,3 +32,4 @@ build/logs/
 prompts/
 .agents/
 AGENTS.md
+!tests/fixtures/**/*.md
