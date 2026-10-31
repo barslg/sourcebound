@@ -97,15 +97,16 @@ async def new_run(
     row = (
         await session.execute(
             sa.text(
-                "INSERT INTO runs (status, course_id, compiled_dag, dag_digest, estimate)"
+                "INSERT INTO runs (status, course_id, compiled_dag, dag_digest, estimate, kind)"
                 " VALUES ('running', :course, CAST(:dag AS jsonb), :digest,"
-                " CAST(:estimate AS jsonb)) RETURNING id"
+                " CAST(:estimate AS jsonb), :kind) RETURNING id"
             ),
             {
                 "course": str(course_id),
                 "dag": json.dumps(dag),
                 "digest": digest,
                 "estimate": json.dumps(estimate) if estimate is not None else None,
+                "kind": kind,
             },
         )
     ).one()
@@ -236,7 +237,7 @@ async def get_run(session: AsyncSession, *, run_id: UUID) -> dict[str, Any]:
     row = (
         await session.execute(
             sa.text(
-                "SELECT status, course_id, compiled_dag, dag_digest, estimate, stop_marker"
+                "SELECT status, course_id, compiled_dag, dag_digest, estimate, stop_marker, kind"
                 " FROM runs WHERE id = :run"
             ),
             {"run": str(run_id)},
@@ -285,6 +286,7 @@ async def get_run(session: AsyncSession, *, run_id: UUID) -> dict[str, Any]:
         "dag_digest": row[3],
         "estimate": row[4],
         "stop_marker": safe_marker,
+        "kind": row[6] if len(row) > 6 else None,
         "cost_so_far": str(spent),
         "topics": await _run_topics(session, course_id=row[1]),
         "steps": [
@@ -1489,16 +1491,27 @@ async def translate_glossary_step(
         output = dict(claim["reused_output"])
     else:
         expected = set(terms)
-        reply = await provider.generate_json(
-            agent="translator",
-            prompt=prompt,
-            schema=translator.schema(),
-            cache_key=cache_key("translator", "glossary", course_id or target_language),
-            run_id=run_id,
-            step_id=claim["step_id"],
-            variant=int(claim["attempt"]) - 1,
-            check=lambda answer: translator.check_translator_output(answer, expected_ids=expected),
-        )
+        try:
+            reply = await provider.generate_json(
+                agent="translator",
+                prompt=prompt,
+                schema=translator.schema(),
+                cache_key=cache_key("translator", "glossary", course_id or target_language),
+                run_id=run_id,
+                step_id=claim["step_id"],
+                variant=int(claim["attempt"]) - 1,
+                check=lambda answer: translator.check_translator_output(
+                    answer, expected_ids=expected
+                ),
+            )
+        except Exception as exc:  # one bad reply holds, never fails the run
+            await finish_step(
+                session,
+                step_id=claim["step_id"],
+                output={"terms": {}, "error": f"{type(exc).__name__}: {exc}"[:500]},
+            )
+            await session.commit()
+            return
         output = {
             "terms": {str(item["id"]): str(item["text"]) for item in reply.get("segments", [])}
         }
@@ -1533,6 +1546,7 @@ async def translate_block_step(
     node_id = str(entry.get("plan_node_id", step_key))
     glossary = await _translation_glossary(session, run_id=run_id, target_language=target_language)
     wanted = segments.extract_segments(block_type, content)
+    key_segs = segments.key_segments(block_type, dict(entry.get("answer_key", {})))
     planted_id = segments.planted_segment_id(content, dict(entry.get("answer_key", {})))
     cached: dict[str, str] = {}
     missing: list[dict[str, str]] = []
@@ -1544,6 +1558,7 @@ async def translate_block_step(
             source_text=segment["text"],
             source_language=source_language,
             target_language=target_language,
+            course_id=course_id,
         )
         if hit is None:
             missing.append(segment)
@@ -1552,6 +1567,29 @@ async def translate_block_step(
     batches = [missing] if missing else []
     if planted_id is not None:
         batches.append([seg for seg in wanted if seg["id"] == planted_id])
+    if key_segs:
+        batches.append(key_segs)
+    # A block held by an earlier translation run re-asks the model with
+    # variant+1: the reply store would otherwise re-serve the held reply.
+    variant_offset = 0
+    if entry.get("version_id"):
+        held_row = (
+            await session.execute(
+                sa.text(
+                    "SELECT tb.status FROM translation_blocks tb"
+                    " JOIN course_translations ct ON ct.id = tb.translation_id"
+                    " WHERE ct.course_version_id = :version AND ct.language = :lang"
+                    " AND tb.plan_node_id = :node"
+                ),
+                {
+                    "version": str(entry["version_id"]),
+                    "lang": target_language,
+                    "node": node_id,
+                },
+            )
+        ).first()
+        if held_row is not None and str(held_row[0]) in ("held", "failed"):
+            variant_offset = 1
     if not batches:
         claim = await claim_step(
             session,
@@ -1597,20 +1635,33 @@ async def translate_block_step(
         def _check_batch(answer: dict[str, Any], expected: set[str]) -> list[str]:
             return translator.check_translator_output(answer, expected_ids=expected)
 
-        for batch, prompt in zip(batches, prompts, strict=True):
-            expected = {segment["id"] for segment in batch}
-            reply = await provider.generate_json(
-                agent="translator",
-                prompt=prompt,
-                schema=translator.schema(),
-                cache_key=cache_key("translator", block_type, course_id or node_id),
-                run_id=run_id,
+        try:
+            for batch, prompt in zip(batches, prompts, strict=True):
+                expected = {segment["id"] for segment in batch}
+                reply = await provider.generate_json(
+                    agent="translator",
+                    prompt=prompt,
+                    schema=translator.schema(),
+                    cache_key=cache_key("translator", block_type, course_id or node_id),
+                    run_id=run_id,
+                    step_id=claim["step_id"],
+                    variant=int(claim["attempt"]) - 1 + variant_offset,
+                    check=lambda answer, want=expected: _check_batch(answer, want),
+                )
+                for item in reply.get("segments", []):
+                    fresh[str(item["id"])] = str(item["text"])
+        except Exception as exc:  # a bad reply holds this block only
+            await finish_step(
+                session,
                 step_id=claim["step_id"],
-                variant=int(claim["attempt"]) - 1,
-                check=lambda answer, want=expected: _check_batch(answer, want),
+                output={
+                    "translations": {**cached, **fresh},
+                    "planted_ids": [planted_id] if planted_id else [],
+                    "error": f"{type(exc).__name__}: {exc}"[:500],
+                },
             )
-            for item in reply.get("segments", []):
-                fresh[str(item["id"])] = str(item["text"])
+            await session.commit()
+            return
         output = {
             "translations": {**cached, **fresh},
             "planted_ids": [planted_id] if planted_id else [],
@@ -1655,4 +1706,18 @@ def generation_handlers() -> dict[str, Any]:
         "read_continuity": read_continuity_step,
         "rework_blocks": rework_blocks_step,
         "saboteur": saboteur_step,
+    }
+
+
+TRANSLATION_HANDLERS: dict[str, str] = {
+    "translate_block": "translate_block_step",
+    "translate_glossary": "translate_glossary_step",
+}
+
+
+def translation_handlers() -> dict[str, Any]:
+    """Resolved translation handler map (worker + resume drive these)."""
+    return {
+        "translate_block": translate_block_step,
+        "translate_glossary": translate_glossary_step,
     }

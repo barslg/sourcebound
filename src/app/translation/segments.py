@@ -14,7 +14,12 @@ def extract_segments(block_type: str, content: dict[str, Any]) -> list[dict[str,
     code: only the human-readable strings below reach the translator.
     """
     if block_type == "reading":
-        return [{"id": "body", "text": str(content["body"])}]
+        segments = [{"id": "body", "text": str(content["body"])}]
+        # Generation persists the same text under `text`; every
+        # text-bearing key the type declares is translated.
+        if isinstance(content.get("text"), str) and content["text"].strip():
+            segments.append({"id": "text", "text": str(content["text"])})
+        return segments
     if block_type == "figure":
         return [{"id": "caption", "text": str(content["caption"])}]
     if block_type == "choice":
@@ -58,6 +63,30 @@ def extract_segments(block_type: str, content: dict[str, Any]) -> list[dict[str,
     raise ValidationError(f"unknown block type: {block_type}")
 
 
+def key_segments(block_type: str, answer_key: dict[str, Any]) -> list[dict[str, str]]:
+    """Answer-key texts translated as their own checked segments.
+
+    Cloze blanks and the spot-the-error true sentence live only in the
+    key; they are translated separately (ids under `key:`), checked like
+    any segment, and never enter translation memory.
+    """
+    if block_type == "cloze":
+        blanks = answer_key.get("blanks")
+        if isinstance(blanks, list):
+            return [
+                {"id": f"key:blanks[{i}]", "text": str(b)}
+                for i, b in enumerate(blanks)
+                if str(b).strip() and str(b) != "___"
+            ]
+        return []
+    if block_type == "spot_the_error":
+        true_sentence = answer_key.get("true_sentence")
+        if isinstance(true_sentence, str) and true_sentence.strip():
+            return [{"id": "key:true_sentence", "text": true_sentence}]
+        return []
+    return []
+
+
 def segment_ids(block_type: str, content: dict[str, Any]) -> set[str]:
     """Stable id set of one block (the translator must return it whole)."""
     return {segment["id"] for segment in extract_segments(block_type, content)}
@@ -90,6 +119,8 @@ def reassemble(
 
     if block_type == "reading":
         rebuilt["body"] = take("body")
+        if "text" in rebuilt and isinstance(rebuilt["text"], str) and rebuilt["text"].strip():
+            rebuilt["text"] = take("text")
     elif block_type == "figure":
         rebuilt["caption"] = take("caption")
     elif block_type == "choice":

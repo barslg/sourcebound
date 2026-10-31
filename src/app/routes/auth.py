@@ -89,6 +89,11 @@ async def csrf(ctx: RequestContext = Depends(get_ctx)) -> dto.CsrfResponse:  # n
 
 
 @router.get("/me", response_model=dto.MeResponse)
-async def me(ctx: RequestContext = Depends(get_ctx)) -> dto.MeResponse:  # noqa: B008 - FastAPI dependency injection idiom
+async def me(
+    request: Request,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dto.MeResponse:
     """The signed-in account with its permissions for the UI guards."""
-    return await controller.me(ctx)
+    header = request.headers.get("accept-language", "en")
+    locale = header.split(",")[0].strip().split("-")[0] or "en"
+    return await controller.me(ctx, locale=locale)

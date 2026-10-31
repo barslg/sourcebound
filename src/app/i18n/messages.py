@@ -59,3 +59,21 @@ def error_message(code: str, locale: str) -> str:
 def error_keys() -> set[str]:
     """Message keys every locale must carry (parity gate)."""
     return set(ERROR_MESSAGES["en"])
+
+
+FALLBACK_NOTICES: dict[str, str] = {
+    "en": "This block is not yet translated into {target}; showing the {source} original.",
+    "nb": "Denne blokken er ikke oversatt til {target} ennå; viser originalen på {source}.",
+    "uk": "Цей блок ще не перекладено мовою {target}; показано оригінал мовою {source}.",
+}
+
+
+def fallback_notice(*, target_language: str, source_language: str) -> str | None:
+    """Localised fallback notice; None when the chosen language is the source."""
+    if target_language == source_language:
+        return None
+    template = FALLBACK_NOTICES.get(
+        target_language if target_language in FALLBACK_NOTICES else "en",
+        FALLBACK_NOTICES["en"],
+    )
+    return template.format(target=target_language, source=source_language)

@@ -100,12 +100,38 @@ def _error_code(exc: Exception) -> str:
     return "internal"
 
 
+def _request_locale(request: Request) -> str | None:
+    """Explicit request language: ?lang= wins, then Accept-Language."""
+    try:
+        lang = request.query_params.get("lang")
+    except Exception:
+        lang = None
+    if lang:
+        return str(lang).split("-")[0].lower()
+    header = ""
+    try:
+        header = str(request.headers.get("accept-language", ""))
+    except Exception:
+        header = ""
+    first = header.split(",")[0].strip().split(";")[0].strip()
+    if not first or first == "*":
+        return None
+    return first.split("-")[0].lower()
+
+
 async def _render(request: Request, exc: Exception) -> JSONResponse:
-    del request
-    message = str(exc) if isinstance(exc, AppError) else "internal error"
+    from app.i18n.messages import error_message
+
+    code = _error_code(exc)
+    locale = _request_locale(request)
+    if locale is not None:
+        # An explicit language gets the localised catalogue message.
+        message = error_message(code, locale)
+    else:
+        message = str(exc) if isinstance(exc, AppError) else "internal error"
     return JSONResponse(
         status_code=http_status_for(exc),
-        content={"error": _error_code(exc), "message": message},
+        content={"error": code, "message": message},
     )
 
 

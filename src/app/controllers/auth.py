@@ -106,8 +106,10 @@ async def logout(ctx: RequestContext) -> None:
         await destroy_session(ctx.db, ctx.session_token)
 
 
-async def me(ctx: RequestContext) -> dto.MeResponse:
+async def me(ctx: RequestContext, *, locale: str = "en") -> dto.MeResponse:
     """The signed-in account with roles, permissions, and scope tags."""
+    from app.i18n.privacy import signin_privacy_line
+
     principal = require_auth(ctx)
     row = (
         await ctx.db.execute(
@@ -124,4 +126,5 @@ async def me(ctx: RequestContext) -> dto.MeResponse:
         roles=list(principal.roles),
         permissions=sorted(principal.permissions),
         scope_tags=list(principal.scope_tags),
+        privacy_line=signin_privacy_line(locale),
     )

@@ -145,6 +145,256 @@ async def submit_generate(
     )
 
 
+OPERATION_KIND_SUBMIT_TRANSLATE = "submit_translate"
+
+
+async def submit_translate(
+    session: AsyncSession,
+    *,
+    actor: Principal,
+    course_id: UUID,
+    languages: list[str],
+    glossary: dict[str, str] | None = None,
+    idempotency_key: str | None = None,
+    defer: Callable[[UUID], Awaitable[None]] | None = None,
+) -> UUID:
+    """Submit course translation as an operation (202; worker drives it)."""
+    require(actor, "course.generate")
+    cleaned = [str(lang).strip() for lang in languages if str(lang).strip()]
+    if not cleaned:
+        raise ValidationError("languages must be a non-empty list")
+    return await _submit(
+        session,
+        actor=actor,
+        kind=OPERATION_KIND_SUBMIT_TRANSLATE,
+        course_id=course_id,
+        params={"languages": cleaned, "glossary": dict(glossary or {})},
+        idempotency_key=idempotency_key,
+        defer=defer,
+        required_code="course.generate",
+    )
+
+
+async def _latest_version_id(session: AsyncSession, *, course_id: UUID) -> UUID:
+    """Published version when present, else the newest snapshot."""
+    from app.services import courses as course_service
+
+    course = await course_service.get_course(session, course_id=course_id)
+    if course.get("published_version_id"):
+        return UUID(str(course["published_version_id"]))
+    row = (
+        await session.execute(
+            sa.text(
+                "SELECT id FROM course_versions WHERE course_id = :course"
+                " ORDER BY created_at DESC LIMIT 1"
+            ),
+            {"course": str(course_id)},
+        )
+    ).first()
+    if row is not None:
+        return UUID(str(row[0]))
+    version_id = await course_service.snapshot_version(session, course_id=course_id)
+    await session.commit()
+    return version_id
+
+
+async def _course_blocks(session: AsyncSession, *, course_id: UUID) -> list[dict[str, Any]]:
+    """Current block contents and answer keys of one course, in plan order."""
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT b.plan_node_id, b.block_type, bv.content, bv.answer_key"
+                " FROM blocks b JOIN topics t ON t.id = b.topic_id"
+                " JOIN modules m ON m.id = t.module_id"
+                " LEFT JOIN block_versions bv ON bv.id = b.current_version_id"
+                " WHERE m.course_id = :course ORDER BY m.ordinal, t.ordinal, b.ordinal"
+            ),
+            {"course": str(course_id)},
+        )
+    ).all()
+    return [
+        {
+            "plan_node_id": str(row[0]),
+            "block_type": str(row[1]),
+            "content": dict(row[2] or {}),
+            "answer_key": dict(row[3] or {}),
+        }
+        for row in rows
+        if row[2]
+    ]
+
+
+async def run_translate_operation(
+    session: AsyncSession,
+    operation_id: UUID,
+    *,
+    provider_factory: Any | None = None,
+    session_factory: Any | None = None,
+) -> dict[str, Any]:
+    """Worker body for submit_translate: run, drive, judge, store."""
+    from app.translation.pipeline import translate_course
+
+    params = (
+        await session.execute(
+            sa.text("SELECT params FROM operations WHERE id = :op"),
+            {"op": str(operation_id)},
+        )
+    ).scalar_one()
+    course_id = UUID(str(params["course_id"]))
+    languages = [str(lang) for lang in params.get("languages", [])]
+    from app.services import courses as course_service
+
+    course = await course_service.get_course(session, course_id=course_id)
+    version_id = await _latest_version_id(session, course_id=course_id)
+    blocks = await _course_blocks(session, course_id=course_id)
+
+    async def _driver(run_id: UUID) -> Any:
+        if provider_factory is None or session_factory is None:
+            return None
+        from app.runs.executor import drive_run
+
+        try:
+            return await drive_run(
+                session_factory,
+                run_id=run_id,
+                provider_factory=provider_factory,
+                handlers=plan_handlers(),
+            )
+        finally:
+            await _close_factory(provider_factory)
+
+    run_id = await translate_course(
+        session,
+        None,
+        course_id=course_id,
+        version_id=version_id,
+        source_language=str(course.get("language", "en")),
+        target_languages=languages,
+        blocks=blocks,
+        glossary={str(k): str(v) for k, v in dict(params.get("glossary", {})).items()},
+        driver=_driver,
+    )
+    return {"run_id": str(run_id)}
+
+
+async def learner_course_view(
+    session: AsyncSession, *, course_id: UUID, language: str
+) -> dict[str, Any]:
+    """Learner view of one course in the chosen language.
+
+    Every block goes through resolve_learner_block: translated ok
+    blocks serve their translation, everything else serves the source
+    with a localised notice (none when the chosen language is the
+    source). Citation chips carry the address formatted for the locale.
+    """
+    from app.i18n.citations import format_citation_address
+    from app.translation.variants import available_languages, resolve_learner_block
+
+    course = await _course_for_learner(session, course_id=course_id)
+    source_language = str(course.get("language", "en"))
+    blocks = await _course_blocks(session, course_id=course_id)
+    version_row = (
+        await session.execute(
+            sa.text(
+                "SELECT id FROM course_versions WHERE course_id = :course"
+                " ORDER BY created_at DESC LIMIT 1"
+            ),
+            {"course": str(course_id)},
+        )
+    ).first()
+    version_id = UUID(str(version_row[0])) if version_row is not None else None
+    if course.get("published_version_id"):
+        version_id = UUID(str(course["published_version_id"]))
+    out_blocks: list[dict[str, Any]] = []
+    for block in blocks:
+        if version_id is not None:
+            resolved = await resolve_learner_block(
+                session,
+                course_id=course_id,
+                version_id=version_id,
+                language=language,
+                plan_node_id=str(block["plan_node_id"]),
+                source_content=dict(block["content"]),
+                source_language=source_language,
+            )
+        else:
+            from app.i18n.messages import fallback_notice
+
+            resolved = {
+                "content": dict(block["content"]),
+                "language": source_language,
+                "fallback_notice": fallback_notice(
+                    target_language=language, source_language=source_language
+                ),
+                "translated_answer_key": None,
+            }
+        content = dict(resolved["content"])
+        citations = await _citation_chips(
+            session, content=content, locale=language, fmt=format_citation_address
+        )
+        out_blocks.append(
+            {
+                "plan_node_id": str(block["plan_node_id"]),
+                "block_type": str(block["block_type"]),
+                "content": content,
+                "citations": citations,
+                "language": resolved["language"],
+                "fallback_notice": resolved["fallback_notice"],
+            }
+        )
+    languages = (
+        await available_languages(session, version_id=version_id) if version_id is not None else []
+    )
+    return {
+        "course_id": str(course_id),
+        "language": language,
+        "source_language": source_language,
+        "available_languages": languages,
+        "blocks": out_blocks,
+    }
+
+
+async def _course_for_learner(session: AsyncSession, *, course_id: UUID) -> dict[str, Any]:
+    from app.services import courses as course_service
+
+    return await course_service.get_course(session, course_id=course_id)
+
+
+async def _citation_chips(
+    session: AsyncSession, *, content: dict[str, Any], locale: str, fmt: Any
+) -> list[dict[str, Any]]:
+    """Citation chips: passage quote plus its address in the locale."""
+    chips: list[dict[str, Any]] = []
+    raw = content.get("citations")
+    if isinstance(content.get("citation"), dict):
+        raw = [content["citation"]]
+    if not isinstance(raw, list):
+        return chips
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        passage_id = str(item.get("passage_id", ""))
+        address: dict[str, Any] = {}
+        if passage_id:
+            row = (
+                await session.execute(
+                    sa.text("SELECT address, address_key FROM passages WHERE id::text = :pid"),
+                    {"pid": passage_id},
+                )
+            ).first()
+            if row is not None and isinstance(row[0], dict):
+                address = dict(row[0])
+                address.setdefault("address_key", row[1])
+        chips.append(
+            {
+                "passage_id": passage_id,
+                "quote": str(item.get("quote", "")),
+                "address": fmt(address, locale) if address else str(item.get("address", "")),
+            }
+        )
+    return chips
+
+
 OPERATION_KIND_RESUME_RUN = "resume_run"
 
 
@@ -178,6 +428,7 @@ def plan_handlers() -> dict[str, Any]:
         "researcher": executor.plan_researcher_step,
         "architect": executor.plan_architect_step,
         **executor.generation_handlers(),
+        **executor.translation_handlers(),
     }
 
 
@@ -383,6 +634,18 @@ async def run_resume_operation(
         )
     finally:
         await _close_factory(provider_factory)
+    async with session_factory() as fresh:
+        run_row = (
+            await fresh.execute(
+                sa.text("SELECT kind FROM runs WHERE id = :run"), {"run": str(run_id)}
+            )
+        ).first()
+    if run_row is not None and run_row[0] == "translation":
+        from app.translation.pipeline import finalize_translation_run
+
+        async with session_factory() as fresh:
+            await finalize_translation_run(fresh, run_id=run_id)
+        return {"run_id": str(run_id)}
     async with session_factory() as fresh:
         await refresh_plan_estimate(fresh, run_id=run_id)
     async with session_factory() as fresh:

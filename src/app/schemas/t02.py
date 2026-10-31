@@ -16,6 +16,7 @@ class MeResponse(BaseModel):
     roles: list[str]
     permissions: list[str]
     scope_tags: list[str]
+    privacy_line: str = ""
 
 
 class CsrfResponse(BaseModel):

@@ -28,7 +28,7 @@ async def resolve_learner_block(
     row = (
         await session.execute(
             sa.text(
-                "SELECT tb.content, tb.status, ct.source_language"
+                "SELECT tb.content, tb.status, ct.source_language, tb.translated_answer_key"
                 " FROM translation_blocks tb"
                 " JOIN course_translations ct ON ct.id = tb.translation_id"
                 " WHERE ct.course_version_id = :version AND ct.language = :lang"
@@ -40,19 +40,22 @@ async def resolve_learner_block(
     resolved_source = source_language or await _course_language(
         session, course_id=course_id, version_id=version_id
     )
+    from app.i18n.messages import fallback_notice
+
     if row is not None and str(row[1]) == "ok":
         return {
             "content": row[0],
             "language": language,
             "fallback_notice": None,
+            "translated_answer_key": row[3] if len(row) > 3 else None,
         }
     return {
         "content": source_content,
         "language": resolved_source,
-        "fallback_notice": (
-            f"This block is not yet translated into {language};"
-            f" showing the {resolved_source} original."
+        "fallback_notice": fallback_notice(
+            target_language=language, source_language=resolved_source
         ),
+        "translated_answer_key": None,
     }
 
 

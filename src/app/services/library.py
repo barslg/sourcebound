@@ -75,94 +75,156 @@ _EN_STOPWORDS = frozenset(
     {
         "the",
         "and",
-        "must",
-        "staff",
+        "of",
+        "to",
+        "in",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
         "with",
-        "from",
+        "for",
+        "on",
         "that",
         "this",
-        "have",
-        "will",
+        "it",
+        "as",
+        "by",
+        "an",
+        "a",
+        "or",
+        "not",
+        "must",
         "shall",
+        "will",
+        "have",
+        "has",
+        "from",
         "their",
-        "ensure",
-        "which",
+        "they",
+        "you",
+        "we",
+        "if",
+        "when",
+        "who",
         "what",
-        "about",
-        "because",
-        "between",
-        "through",
-        "during",
-        "requires",
-        "article",
+        "which",
     }
 )
-_NB_STOPWORDS = _NB_MARKERS | frozenset(
+_NB_STOPWORDS = frozenset(
     {
         "og",
-        "må",
-        "som",
+        "i",
+        "er",
+        "det",
+        "at",
+        "av",
+        "til",
+        "på",
         "med",
-        "blir",
+        "for",
+        "en",
+        "et",
+        "som",
+        "ikke",
+        "skal",
+        "må",
+        "kan",
+        "vil",
+        "har",
         "være",
         "eller",
-        "sørge",
-        "får",
-        "opplæring",
-        "arbeidsgivere",
-        "skal",
-        "sine",
+        "men",
+        "om",
+        "når",
+        "hvem",
+        "hva",
+        "hvilke",
         "denne",
+        "dette",
+        "også",
+        "derfor",
+        "fordi",
+        "mellom",
+        "gjennom",
+        "gjelder",
+        "blir",
+        "våre",
+        "deres",
+        "samtidig",
+        "etter",
+        "før",
+        "hos",
     }
 )
 _UK_STOPWORDS = frozenset(
     {
         "та",
-        "для",
+        "і",
+        "в",
+        "у",
+        "є",
         "що",
+        "на",
+        "з",
+        "із",
+        "до",
+        "для",
+        "не",
+        "це",
+        "як",
+        "або",
+        "але",
         "який",
         "яка",
         "які",
+        "також",
+        "тому",
+        "коли",
+        "хто",
         "повинні",
         "можуть",
         "цього",
-        "також",
-        "або",
-        "працівників",
-        "працівники",
-        "навчання",
-        "проходять",
-        "курс",
-        "доступний",
-        "тому",
+        "при",
+        "про",
+        "від",
     }
 )
 
 
-def detect_language(text: str) -> str:
-    """Code heuristics for en/nb/uk (BRIEF §9): script plus stopwords.
+def language_scores(text: str) -> dict[str, int]:
+    """Stopword evidence per language; script is weak, never sole, evidence.
 
-    Cyrillic script is uk, æøå is nb; otherwise the text scores
-    against per-language stopword lists and the winner takes it, with
-    English as the scoreless default. A stored override wins over this
-    guess wherever callers accept one.
+    One æøå/Cyrillic word (a place name like Tromsø inside an English
+    sentence) scores nothing: script counts only from two or more
+    script-bearing words, and never outweighs clear stopword evidence.
     """
-    if re.search(r"[Ѐ-џ]", text):
-        return "uk"
-    if re.search(r"[æøåÆØÅ]", text):
-        return "nb"
-    words = set(re.findall(r"[^\W\d_]+", text.lower()))
+    words = re.findall(r"[^\W\d_]+", text.lower())
+    word_set = set(words)
     scores = {
-        "en": len(words & _EN_STOPWORDS),
-        "nb": len(words & _NB_STOPWORDS),
-        "uk": len(words & _UK_STOPWORDS),
+        "en": len(word_set & _EN_STOPWORDS),
+        "nb": len(word_set & _NB_STOPWORDS),
+        "uk": len(word_set & _UK_STOPWORDS),
     }
+    if sum(1 for w in words if re.search(r"[æøå]", w)) >= 2:
+        scores["nb"] += 2
+    if sum(1 for w in words if re.search(r"[Ѐ-џ]", w)) >= 2:
+        scores["uk"] += 3
+    return scores
+
+
+def detect_language(text: str) -> str:
+    """Code heuristics for en/nb/uk (BRIEF §9): stopwords plus script.
+
+    Function words decide; script only reinforces. English is the
+    scoreless default. A stored override wins over this guess wherever
+    callers accept one.
+    """
+    scores = language_scores(text)
     best = max(scores, key=lambda lang: scores[lang])
     if scores[best] == 0:
-        return "en"
-    if best == "nb" and scores["nb"] < scores["en"]:
-        return "en"
-    if best == "uk" and max(scores["en"], scores["nb"]) >= scores["uk"]:
         return "en"
     return best
 
@@ -171,7 +233,10 @@ async def set_passage_language_override(
     session: AsyncSession, *, passage_id: str, language: str
 ) -> str:
     """Store a human language override on one passage; return its ts_config."""
-    config = ts_config_for_language(language)
+    if language in TS_CONFIG_BY_LANGUAGE.values():
+        config = language
+    else:
+        config = ts_config_for_language(language)
     await session.execute(
         sa.text("UPDATE passages SET ts_config = :cfg WHERE id = :pid"),
         {"cfg": config, "pid": passage_id},

@@ -196,7 +196,14 @@ def grade_spot_error(planted: dict[str, Any], *, submission: dict[str, Any]) -> 
             },
         }
     parts = 0.0
-    if submission.get("sentence") == planted.get("planted_sentence"):
+    named_index = submission.get("sentence_index", submission.get("planted_index"))
+    if isinstance(named_index, str) and named_index.isdigit():
+        named_index = int(named_index)
+    if submission.get("sentence") == planted.get("planted_sentence") or (
+        isinstance(named_index, int)
+        and named_index == planted.get("planted_index")
+        and named_index >= 0
+    ):
         parts += 0.4
     if submission.get("kind") == planted.get("kind"):
         parts += 0.25

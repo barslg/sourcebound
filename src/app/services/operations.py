@@ -30,6 +30,7 @@ OPERATION_KIND_TRANSCRIBE_AUDIO = "transcribe_audio"
 OPERATION_CODES = {
     "submit_plan": "course.plan",
     "submit_generate": "course.generate",
+    "submit_translate": "course.generate",
     "resume_run": "run.retry",
     "rewrite_block": "course.generate",
     "rewrite_held_batch": "course.generate",
@@ -305,6 +306,15 @@ async def _run_kind(
         from app.services.planruns import real_provider_factory, run_generate_operation
 
         return await run_generate_operation(
+            session,
+            operation_id,
+            provider_factory=real_provider_factory(get_settings()),
+            session_factory=factory,
+        )
+    if kind == "submit_translate":
+        from app.services.planruns import real_provider_factory, run_translate_operation
+
+        return await run_translate_operation(
             session,
             operation_id,
             provider_factory=real_provider_factory(get_settings()),

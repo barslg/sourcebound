@@ -51,15 +51,55 @@ def mock_translation_handler(language: str, *, break_planted: bool = False) -> A
         raw = prompt.split("## Segments\n", 1)[1]
         segments = json.loads(raw)
         out = []
+        prefix = {
+            "nb": "Dette er og skal være slik at det ikke bare gjelder: ",
+            "uk": "Це є та що повинно бути так коли хто працює і не тільки: ",
+        }.get(language, "")
+        word_map = {
+            "the": "det",
+            "and": "og",
+            "must": "må",
+            "shall": "skal",
+            "is": "er",
+            "are": "er",
+            "of": "av",
+            "to": "til",
+            "with": "med",
+            "that": "at",
+            "this": "dette",
+            "not": "ikke",
+            "for": "for",
+            "in": "i",
+            "on": "på",
+            "a": "en",
+            "an": "en",
+            "be": "være",
+            "by": "av",
+            "from": "fra",
+            "or": "eller",
+            "if": "om",
+            "when": "når",
+            "who": "hvem",
+            "what": "hva",
+            "which": "hvilke",
+        }
+        import re as _re
+
         for seg in segments:
             text = str(seg["text"])
+            if language == "nb":
+                text = _re.sub(
+                    r"[A-Za-z]+",
+                    lambda m: word_map.get(m.group(0).lower(), m.group(0)),
+                    text,
+                )
             for source, target in glossary.items():
                 if source.lower() in text.lower():
                     text = text.replace(source, target)
             if break_planted and seg["id"].startswith("sentences["):
-                text = "Anvendere må lære opp ansatte."
+                text = "Anvendere må lære opp ansatte og dette er riktig."
             else:
-                text = f"{text} [{language}]"
+                text = f"{prefix}{text} [{language}]"
             out.append({"id": seg["id"], "text": text})
         return httpx2.Response(200, json=_completed(json.dumps({"segments": out})))
 
