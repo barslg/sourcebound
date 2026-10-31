@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from conftest import requires_private_prompts
+
 # --- unit: language detection -------------------------------------------
 
 
@@ -404,10 +406,11 @@ def test_error_render_uses_request_language() -> None:
     assert body["localized_message"] == "Her ble det ikke funnet noe."
 
 
+@requires_private_prompts
 def test_translator_prompt_has_no_course_facts() -> None:
-    import pathlib
+    from app.agents.base import system_prompt
 
-    text = pathlib.Path("prompts/translator/system.md").read_text(encoding="utf-8")
+    text = system_prompt("translator")
     for fact in ("AI Act", "GDPR", "municipal"):
         assert fact not in text
 

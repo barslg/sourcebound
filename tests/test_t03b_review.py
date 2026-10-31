@@ -19,6 +19,7 @@ from uuid import UUID
 import httpx
 import pytest
 import sqlalchemy as sa
+from conftest import requires_private_prompts
 from sqlalchemy.ext.asyncio import AsyncSession
 from transport_guard import guarded_client
 
@@ -1197,12 +1198,13 @@ def test_language_in_every_agent_prompt() -> None:
     assert '"course_language": "nb"' in librarian_prompt
 
 
+@requires_private_prompts
 def test_every_system_prompt_carries_a_language_rule() -> None:
     """No prompt ships without its language rule (BRIEF §9)."""
-    from pathlib import Path
+    from app.agents.base import system_prompt
 
     for agent in ("researcher", "architect", "librarian"):
-        text = (Path("prompts") / agent / "system.md").read_text(encoding="utf-8")
+        text = system_prompt(agent)
         assert "course_language" in text
 
 

@@ -260,8 +260,7 @@ def test_wrong_language_block_held_and_glossary_per_language() -> None:
 
 
 def test_all_t05_agents_have_prompts_and_registry_steps() -> None:
-    from pathlib import Path
-
+    from app.agents import base
     from app.llm.registry import STEPS
 
     for agent in (
@@ -274,7 +273,7 @@ def test_all_t05_agents_have_prompts_and_registry_steps() -> None:
         "saboteur",
         "continuity",
     ):
-        assert (Path("prompts") / agent / "system.md").exists(), agent
+        assert (base.PROMPT_ROOT / agent / "system.md").exists(), agent
         assert agent in STEPS, agent
     assert STEPS["reader"].model == "muse-wonder-1.0" and STEPS["reader"].effort == "high"
     assert STEPS["saboteur"].model == "muse-wonder-1.0" and STEPS["saboteur"].effort == "medium"

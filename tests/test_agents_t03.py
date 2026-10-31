@@ -32,7 +32,7 @@ def test_prompt_version_is_the_content_hash() -> None:
 
 def test_prompt_files_carry_role_rules_contract_and_refusals() -> None:
     for agent in ("researcher", "architect", "librarian"):
-        text = (Path("prompts") / agent / "system.md").read_text(encoding="utf-8").lower()
+        text = base.system_prompt(agent).lower()
         assert "role" in text
         assert "refusal" in text
         assert "output contract" in text
@@ -76,7 +76,7 @@ def test_architect_replay_on_stored_real_input() -> None:
         raw_input["prescription"],
         raw_input["passages"],
     )
-    assert prompt.startswith(Path("prompts/architect/system.md").read_text()[:50])
+    assert prompt.startswith(base.system_prompt("architect")[:50])
     assert "Article 4" in prompt
     assert architect.check_output(output, raw_input["prescription"]) == []
 

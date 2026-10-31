@@ -16,6 +16,7 @@ import pathlib
 from typing import Any
 
 import pytest
+from conftest import requires_private_prompts
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
@@ -430,6 +431,9 @@ def test_fallback_notice_names_languages_not_codes() -> None:
     assert fallback_notice(target_language="nb", source_language="nb") is None
 
 
+@requires_private_prompts
 def test_translator_prompt_translates_words_around_numbers() -> None:
-    text = pathlib.Path("prompts/translator/system.md").read_text(encoding="utf-8")
+    from app.agents.base import system_prompt
+
+    text = system_prompt("translator")
     assert "Article" in text and "Section" in text and "translate" in text.lower()
