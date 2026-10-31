@@ -2,6 +2,8 @@
 
 from app.redact import REDACTED, constant_time_equal, redact
 
+SK_FIXTURE = "sk-" + "1234567890abcdef"
+
 
 def test_known_secrets_are_masked() -> None:
     secret = "s3cr3t-value-xyz"
@@ -29,7 +31,7 @@ def test_log_pipeline_redacts_nested_strings() -> None:
         {
             "event": "call",
             "auth": "Bearer abcdefghijklmnop",
-            "nested": {"key": "sk-1234567890abcdef"},
+            "nested": {"key": SK_FIXTURE},
             "items": ["LLM_SYNTHETICKEY0123456789", 42, None],
         },
     )
@@ -38,7 +40,7 @@ def test_log_pipeline_redacts_nested_strings() -> None:
     assert event["items"][0] == REDACTED
     dumped = str(event)
     assert "abcdefghijklmnop" not in dumped
-    assert "sk-1234567890abcdef" not in dumped
+    assert SK_FIXTURE not in dumped
     assert "LLM_SYNTHETICKEY0123456789" not in dumped
     assert event["items"][1:] == [42, None]
     assert event["event"] == "call"

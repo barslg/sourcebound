@@ -19,12 +19,20 @@ description = "Meta Model API key token"
 regex = '''LLM-[A-Za-z0-9_\-]{24,}'''
 tags = ["api-key", "meta"]
 
-# ... or MODEL_API_KEY carrying a real-looking value (fixture words excluded).
+# ... or MODEL_API_KEY carrying a real-looking value. gitleaks uses RE2 (no
+# lookahead), so the fixture words are excluded by the rule allowlist below.
 [[rules]]
 id = "meta-model-api-key-assignment"
 description = "Meta Model API key assignment"
-regex = '''(?i)model[_-]?api[_-]?key['"]?\s*[:=]\s*['"]?(?!synthetic|test|fake|dummy|example|placeholder|xxx|redacted)([A-Za-z0-9_\-.~+/=]{16,})'''
+regex = '''(?i)model[_-]?api[_-]?key['"]?[ \t]*[:=][ \t]*['"]?([A-Za-z0-9_\-.~+/=]{16,})'''
+secretGroup = 1
 tags = ["api-key", "meta"]
+
+# Values that start with a fixture word are not keys.
+[[rules.allowlists]]
+description = "fixture words in a MODEL_API_KEY assignment"
+regexTarget = "secret"
+regexes = ['''(?i)^(synthetic|test|fake|dummy|example|placeholder|xxx|redacted)''']
 
 # The gate scripts and their tests name these shapes on purpose.
 [[allowlists]]
@@ -33,4 +41,13 @@ paths = [
   '''\.gitleaks\.toml$''',
   '''scripts/check_public_tree\.py$''',
   '''tests/gates/''',
+]
+
+# Two historical fixtures that look like keys. Both were rewritten in the tree
+# (built at runtime); history is not rewritten, so the exact commits are named.
+[[allowlists]]
+description = "fixture values in the first test_redact.py and the Google OAuth redaction test (not keys)"
+commits = [
+  "bc6453b009523da2466ccafb7a88e97b70134061",
+  "ccecef1c07c50f19a7620a88248a40642bade399",
 ]
