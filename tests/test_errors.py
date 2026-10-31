@@ -43,3 +43,24 @@ def test_handler_renders_json_without_leaking() -> None:
     body = response.json()
     assert body["error"] == "forbidden"
     assert "section.plan" in body["message"]
+
+
+def test_a_plain_sentence_survives_a_request_language() -> None:
+    """A browser always sends Accept-Language; the guard sentences written for people stay."""
+    import asyncio
+    import json
+
+    from app.errors import UnprocessableError, ValidationError, _render
+
+    class Req:
+        headers = {"accept-language": "en-US,en;q=0.9"}
+        query_params: dict[str, str] = {}
+
+    def body(exc: Exception) -> dict[str, str]:
+        resp = asyncio.new_event_loop().run_until_complete(_render(Req(), exc))  # type: ignore[arg-type]
+        return json.loads(bytes(resp.body))  # type: ignore[attr-defined,no-any-return]
+
+    assert body(UnprocessableError("The plan is empty. Build the plan first"))["message"] == (
+        "The plan is empty. Build the plan first"
+    )
+    assert body(ValidationError("db column x.y missing"))["message"] == "The request is invalid."

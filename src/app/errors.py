@@ -17,6 +17,7 @@ class AppError(Exception):
 
     status_code: int = 500
     error_code: str = "internal"
+    plain_message: bool = False
 
 
 class ValidationError(AppError):
@@ -49,6 +50,7 @@ class UnprocessableError(AppError):
 
     status_code = 422
     error_code = "unprocessable"
+    plain_message = True
 
 
 class UnsupportedMediaError(AppError):
@@ -124,8 +126,9 @@ async def _render(request: Request, exc: Exception) -> JSONResponse:
 
     code = _error_code(exc)
     locale = _request_locale(request)
-    if locale is not None:
-        # An explicit language gets the localised catalogue message.
+    if locale is not None and not (isinstance(exc, AppError) and exc.plain_message):
+        # An explicit language gets the localised catalogue message; a guard sentence
+        # written for the person at the screen (plain_message) is shown as written.
         message = error_message(code, locale)
     else:
         message = str(exc) if isinstance(exc, AppError) else "internal error"
