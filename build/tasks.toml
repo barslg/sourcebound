@@ -118,10 +118,19 @@ max_steps = 600
 depends = ["T05"]
 
 [[task]]
+id = "T07b"
+title = "make translation real: product route+worker, target-language check, planted error re-derived by kind, translated answer keys, memory after checks, hold not fail, killed mutants"
+prompt = "build/tasks/T07b.md"
+model = "muse-wonder-1.0"
+effort = "high"
+max_steps = 600
+depends = ["T05b"]
+
+[[task]]
 id = "T06a"
 title = "learner and teacher API: enrolment views, learner serializers without keys, code-graded answers, find-the-error attempts, module test, teacher report, quotes-only tutor"
 prompt = "build/tasks/T06a.md"
 model = "muse-spark-1.3"
 effort = "high"
 max_steps = 500
-depends = ["T05b"]
+depends = ["T05b", "T07b"]

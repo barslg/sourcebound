@@ -80,10 +80,9 @@ def _reader_reply() -> dict[str, Any]:
             {
                 "plan_node_id": "b1",
                 "verdict": "pass",
-                "items": [
-                    {"item": item, "status": "pass", "evidence": f"quote {item}"}
-                    for item in RUBRIC_ITEMS
-                ],
+                "items": {
+                    item: {"verdict": "pass", "evidence": f"quote {item}"} for item in RUBRIC_ITEMS
+                },
             }
         ]
     }

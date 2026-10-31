@@ -159,6 +159,7 @@ def plant_spot_error(passages: list[dict[str, Any]]) -> dict[str, Any]:
         verified=[{"sentence": prohibition["text"], "passage": prohibition["id"]}],
         reader_holds=[],
         seed=3,
+        kind="negation",
     )
 
 
@@ -218,6 +219,8 @@ def demo_dag(
             enriched["blocks"] = [
                 {"plan_node_id": block["plan_node_id"]} for block in blocks_by_topic[topic_id]
             ]
+        elif handler == "saboteur":
+            enriched["sources"] = sources
         elif handler == "read_continuity":
             enriched["handoffs"] = dossier["handoffs"]
         elif handler == "rework_blocks":
@@ -235,6 +238,7 @@ def generation_handlers() -> dict[str, Any]:
         "read_topic": executor.read_topic_step,
         "read_continuity": executor.read_continuity_step,
         "rework_blocks": executor.rework_blocks_step,
+        "saboteur": executor.saboteur_step,
     }
 
 
@@ -299,17 +303,26 @@ def mock_demo_handler() -> Any:
         body = json.loads(request.content.decode("utf-8"))
         prompt = str(body.get("input", ""))
         seen.append(prompt[:20])
-        if prompt.startswith("# Reader"):
+        if prompt.startswith("# Saboteur"):
+            task = json.loads(prompt.split("## Task input (typed, assembled by code)\n", 1)[1])
+            reply = {
+                "sentence": task["sentence"],
+                "kind": task["kind"],
+                "mutated": str(task["sentence"]).replace("shall", "shall not", 1),
+            }
+            if reply["mutated"] == reply["sentence"]:
+                reply["mutated"] = "It is not the case that " + reply["sentence"]
+        elif prompt.startswith("# Reader"):
             blocks = _section(prompt, "Block skeleton")["blocks"]
             reply = {
                 "verdicts": [
                     {
                         "plan_node_id": block["plan_node_id"],
                         "verdict": "pass",
-                        "items": [
-                            {"item": item, "status": "pass", "evidence": f"quoted {item}"}
+                        "items": {
+                            item: {"verdict": "pass", "evidence": f"quoted {item}"}
                             for item in RUBRIC_ITEMS
-                        ],
+                        },
                     }
                     for block in blocks
                 ]
@@ -322,8 +335,13 @@ def mock_demo_handler() -> Any:
             reply = {
                 "block_type": "reading",
                 "text": "Staff apply the cited passage at work.",
-                "citations": [{"passage_id": str(first["passage_id"]), "quote": quote}],
+                "citations": [{"passage_id": str(first.get("handle", "P1")), "quote": quote}],
                 "answer": "key",
+                "options": [{"text": "Yes", "correct": True}, {"text": "No", "correct": False}],
+                "pairs": [{"left": "a", "right": "b"}],
+                "blanks": ["x"],
+                "items": [{"text": "i", "passage_id": "P1", "tier": "high"}],
+                "sentences": ["Alpha shall apply.", "Beta shall apply."],
             }
         return httpx2.Response(200, json=_completed(json.dumps(reply)))
 

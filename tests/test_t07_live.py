@@ -51,9 +51,13 @@ def _demo_blocks(passages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     literacy = next(item for item in passages if "literacy" in item["text"])
     prohibition = next(item for item in passages if "prohibited" in item["text"])
     planted = plant_error(
-        verified=[{"sentence": prohibition["text"], "passage": prohibition["id"]}],
+        verified=[
+            {"sentence": prohibition["text"], "passage": prohibition["id"]},
+            {"sentence": literacy["text"], "passage": literacy["id"]},
+        ],
         reader_holds=[],
         seed=3,
+        kind="negation",
     )
     return [
         {
@@ -86,13 +90,11 @@ def _demo_blocks(passages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         {
             "plan_node_id": "t2-b2",
             "block_type": "spot_the_error",
-            "content": {
-                "sentences": list(planted["sentences"]),
-                "planted_index": int(planted["planted_index"]),
-                "kind": str(planted["kind"]),
-            },
+            "content": {"sentences": list(planted["sentences"])},
             "answer_key": {
                 "planted_sentence": str(planted["planted_sentence"]),
+                "planted_index": int(planted["planted_index"]),
+                "kind": str(planted["kind"]),
                 "true_sentence": str(planted["true_sentence"]),
             },
         },
@@ -154,7 +156,8 @@ async def test_live_translation_nb_and_uk(t03_session: AsyncSession) -> None:
         rows = (
             await t03_session.execute(
                 sa.text(
-                    "SELECT plan_node_id, status, reason, content FROM translation_blocks"
+                    "SELECT plan_node_id, translation_blocks.status, reason, content"
+                    " FROM translation_blocks"
                     " JOIN course_translations ON translation_id = course_translations.id"
                     " WHERE course_version_id = :version AND language = :lang"
                 ),
@@ -168,7 +171,14 @@ async def test_live_translation_nb_and_uk(t03_session: AsyncSession) -> None:
             if str(node_id) != "t2-b2":
                 assert str(content) != str(source), f"{node_id} [{language}] untranslated"
         translated_spot = next(row[3] for row in rows if str(row[0]) == "t2-b2")
-        assert verify_spot_error(by_node["t2-b2"]["content"], translated_spot, {}) == [], language
+        _key = by_node["t2-b2"]["answer_key"]
+        _src = {
+            **by_node["t2-b2"]["content"],
+            "planted_index": _key["planted_index"],
+            "kind": _key["kind"],
+        }
+        _tr = {**translated_spot, "planted_index": _key["planted_index"], "kind": _key["kind"]}
+        assert verify_spot_error(_src, _tr, _key) == [], language
         stored_glossary = (
             await t03_session.execute(
                 sa.text(

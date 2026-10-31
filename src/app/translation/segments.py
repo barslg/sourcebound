@@ -63,10 +63,12 @@ def segment_ids(block_type: str, content: dict[str, Any]) -> set[str]:
     return {segment["id"] for segment in extract_segments(block_type, content)}
 
 
-def planted_segment_id(content: dict[str, Any]) -> str | None:
+def planted_segment_id(
+    content: dict[str, Any], answer_key: dict[str, Any] | None = None
+) -> str | None:
     """Segment id of the planted sentence; code re-derives it by index."""
     sentences = content.get("sentences")
-    planted = content.get("planted_index")
+    planted = (answer_key or content).get("planted_index")
     if isinstance(sentences, list) and isinstance(planted, int) and 0 <= planted < len(sentences):
         return f"sentences[{planted}]"
     return None

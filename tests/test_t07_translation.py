@@ -113,9 +113,13 @@ def test_spot_error_postcheck_holds_fixed_or_reshaped_blocks() -> None:
     from app.translation.checks import verify_spot_error
 
     planted = plant_error(
-        verified=[{"sentence": "Deployers must train staff.", "passage": "P1"}],
+        verified=[
+            {"sentence": "Deployers must train staff.", "passage": "P1"},
+            {"sentence": "Providers shall keep records.", "passage": "P1"},
+        ],
         reader_holds=[],
         seed=3,
+        kind="negation",
     )
     kind = str(planted["kind"])
     source = {
@@ -127,8 +131,11 @@ def test_spot_error_postcheck_holds_fixed_or_reshaped_blocks() -> None:
     translated_true = "Anvendere må lære opp ansatte."
     translated_planted = "Anvendere må lære opp ansatte under GDPR, ikke AI-forordningen."
     translated = {
-        "sentences": [translated_planted, translated_true],
-        "planted_index": 0,
+        "sentences": [
+            translated_planted if i == int(planted["planted_index"]) else translated_true
+            for i in range(len(planted["sentences"]))
+        ],
+        "planted_index": int(planted["planted_index"]),
         "kind": kind,
     }
     assert verify_spot_error(source, translated, key) == []
@@ -136,7 +143,7 @@ def test_spot_error_postcheck_holds_fixed_or_reshaped_blocks() -> None:
     assert verify_spot_error(source, fixed, key) != []
     reshaped = dict(translated, sentences=[translated_planted])
     assert verify_spot_error(source, reshaped, key) != []
-    rekinded = dict(translated, kind="negation")
+    rekinded = dict(translated, kind="scope" if kind != "scope" else "negation")
     assert verify_spot_error(source, rekinded, key) != []
 
 

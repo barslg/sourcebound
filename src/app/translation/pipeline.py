@@ -54,6 +54,7 @@ def compile_translation_dag(
                     "plan_node_id": block["plan_node_id"],
                     "block_type": block["block_type"],
                     "content": block["content"],
+                    "answer_key": dict(block.get("answer_key", {})),
                     "source_language": source_language,
                     "target_language": language,
                 }
@@ -161,7 +162,7 @@ async def _judge_block(
     translations = output.get("translations")
     if not isinstance(translations, dict):
         return _verdict(block, "failed", "translator step produced no segments")
-    planted_id = segments.planted_segment_id(content)
+    planted_id = segments.planted_segment_id(content, dict(block.get("answer_key", {})))
     fresh = {seg_id: text for seg_id, text in translations.items() if seg_id != planted_id}
     for seg_id, text in fresh.items():
         await memory.tm_store(
@@ -189,7 +190,18 @@ async def _judge_block(
         segments.extract_segments(block_type, content), translations, term_table
     )
     if block_type == "spot_the_error":
-        problems += checks.verify_spot_error(content, rebuilt, dict(block.get("answer_key", {})))
+        key = dict(block.get("answer_key", {}))
+        spot_source = {
+            **content,
+            "planted_index": key.get("planted_index"),
+            "kind": key.get("kind"),
+        }
+        spot_rebuilt = {
+            **rebuilt,
+            "planted_index": key.get("planted_index"),
+            "kind": key.get("kind"),
+        }
+        problems += checks.verify_spot_error(spot_source, spot_rebuilt, key)
     if problems:
         return _verdict(block, "held", "; ".join(problems), rebuilt)
     return _verdict(block, "ok", "", rebuilt)

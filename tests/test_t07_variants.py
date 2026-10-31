@@ -72,9 +72,13 @@ def _blocks(passages: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     prohibition = next(item for item in passages if "prohibited" in item["text"])
     planted = plant_error(
-        verified=[{"sentence": prohibition["text"], "passage": prohibition["id"]}],
+        verified=[
+            {"sentence": prohibition["text"], "passage": prohibition["id"]},
+            {"sentence": "Providers shall keep records.", "passage": prohibition["id"]},
+        ],
         reader_holds=[],
         seed=3,
+        kind="negation",
     )
     return [
         {
@@ -98,13 +102,11 @@ def _blocks(passages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         {
             "plan_node_id": "b3",
             "block_type": "spot_the_error",
-            "content": {
-                "sentences": list(planted["sentences"]),
-                "planted_index": int(planted["planted_index"]),
-                "kind": str(planted["kind"]),
-            },
+            "content": {"sentences": list(planted["sentences"])},
             "answer_key": {
                 "planted_sentence": str(planted["planted_sentence"]),
+                "planted_index": int(planted["planted_index"]),
+                "kind": str(planted["kind"]),
                 "true_sentence": str(planted["true_sentence"]),
             },
         },

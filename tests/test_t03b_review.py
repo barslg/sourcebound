@@ -1309,7 +1309,7 @@ async def test_code_error_stops_run_with_marker(t03_session: AsyncSession) -> No
         handlers={"boom": boom},
     )
     assert final["status"] == "stopped"
-    assert "boom" in (final["stop_marker"] or "")
+    assert "ValidationError" in (final["stop_marker"] or "")
     assert final["steps"][0]["status"] == "failed"
 
 

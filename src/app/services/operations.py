@@ -302,9 +302,14 @@ async def _run_kind(
             session_factory=factory,
         )
     if kind == "submit_generate":
-        from app.errors import ConflictError
+        from app.services.planruns import real_provider_factory, run_generate_operation
 
-        raise ConflictError("block generation is not available until the generation pipeline lands")
+        return await run_generate_operation(
+            session,
+            operation_id,
+            provider_factory=real_provider_factory(get_settings()),
+            session_factory=factory,
+        )
     if kind == "resume_run":
         from app.services.planruns import real_provider_factory, run_resume_operation
 
@@ -315,9 +320,14 @@ async def _run_kind(
             session_factory=factory,
         )
     if kind in ("rewrite_block", "rewrite_held_batch"):
-        from app.errors import ConflictError
+        from app.services.planruns import real_provider_factory, run_generate_operation
 
-        raise ConflictError("block rewriting is not available until the generation pipeline lands")
+        return await run_generate_operation(
+            session,
+            operation_id,
+            provider_factory=real_provider_factory(get_settings()),
+            session_factory=factory,
+        )
     if kind == OPERATION_KIND_TRANSCRIBE_AUDIO:
         from app.services.library import transcribe_source
 

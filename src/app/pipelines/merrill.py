@@ -57,7 +57,12 @@ def compile_generation_dag(
             ),
         }
     )
-    _ = profile
+    methodology = str(
+        profile.get("methodology") or profile.get("methodologies", [""])[0]
+        if isinstance(profile.get("methodologies"), list)
+        else methodology
+    )
+    method = methodology
     for module in tree.get("modules", []):
         module_id = str(module.get("plan_node_id", "module"))
         for topic in module.get("topics", []):
@@ -77,7 +82,13 @@ def compile_generation_dag(
                             "handler": "generate_block",
                             "depends_on": ["plan:plan"],
                             "input_digest": input_digest_of(
-                                {"kind": "block", "node": node_id, "course": course_id}
+                                {
+                                    "kind": "block",
+                                    "node": node_id,
+                                    "course": course_id,
+                                    "methodology": method,
+                                    "block": block,
+                                }
                             ),
                         }
                     )
@@ -90,16 +101,57 @@ def compile_generation_dag(
                     continue
                 agent = _role_agent(role)
                 key = f"{agent}:{node_id}"
+                deps = ["plan:plan"] if method == "backward_design" else ["plan:plan", *wave_a]
                 dag.append(
                     {
                         "step_key": key,
                         "handler": "generate_block",
-                        "depends_on": ["plan:plan", *wave_a],
+                        "depends_on": deps,
                         "input_digest": input_digest_of(
-                            {"kind": "block", "node": node_id, "course": course_id}
+                            {
+                                "kind": "block",
+                                "node": node_id,
+                                "course": course_id,
+                                "methodology": method,
+                                "profile": profile,
+                                "block": block,
+                            }
                         ),
                     }
                 )
+            if method == "kolb_experiential":
+                dag.append(
+                    {
+                        "step_key": f"reflection:{topic_id}",
+                        "handler": "read_continuity",
+                        "depends_on": [*wave_a, *wave_b],
+                        "input_digest": input_digest_of(
+                            {"kind": "reflection", "node": topic_id, "course": course_id}
+                        ),
+                    }
+                )
+            for block in topic.get("blocks", []):
+                if str(block.get("block_type", "")) != "spot_the_error":
+                    continue
+                node_id = str(block.get("plan_node_id", "block"))
+                sab_key = f"saboteur:{node_id}"
+                sab_entry = {
+                    "step_key": sab_key,
+                    "handler": "saboteur",
+                    "depends_on": ["plan:plan"],
+                    "kind": "entity_swap",
+                    "input_digest": input_digest_of(
+                        {"kind": "saboteur", "node": node_id, "course": course_id}
+                    ),
+                }
+                for index, step in enumerate(dag):
+                    is_gen = step["handler"] == "generate_block"
+                    if is_gen and step["step_key"].endswith(f":{node_id}"):
+                        step["depends_on"] = [*step["depends_on"], sab_key]
+                        dag.insert(index, sab_entry)
+                        break
+                else:
+                    dag.append(sab_entry)
             reader_key = f"reader:{topic_id}"
             dag.append(
                 {

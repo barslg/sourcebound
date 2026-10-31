@@ -626,6 +626,16 @@ async def intake_url(
     source_id = UUID(str(row[0]))
     if course_id is not None:
         await bind_source_to_course(session, course_id=course_id, source_id=source_id)
+    if parser_spec is None:
+        from app.agents import librarian as _lib
+
+        derived = _lib.derive_parser_spec(page.text)
+        if derived is not None:
+            try:
+                if _lib.execute_parser_spec(page.text, derived):
+                    parser_spec = derived
+            except ValueError:
+                parser_spec = None
     if parser_spec is not None:
         from app.agents import librarian
 

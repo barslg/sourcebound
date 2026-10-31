@@ -124,7 +124,6 @@ async def submit_generate(
     defer: Callable[[UUID], Awaitable[None]] | None = None,
 ) -> UUID:
     """Submit block generation; refused while a required question is open."""
-    from app.errors import ConflictError
     from app.services.courses import blocking_questions
 
     require(actor, "course.generate")
@@ -134,7 +133,16 @@ async def submit_generate(
             "generation refused: answer required questions first: "
             + ", ".join(question["key"] for question in open_questions)
         )
-    raise ConflictError("block generation is not available until the generation pipeline lands")
+    return await _submit(
+        session,
+        actor=actor,
+        kind=OPERATION_KIND_SUBMIT_GENERATE,
+        course_id=course_id,
+        params={},
+        idempotency_key=idempotency_key,
+        defer=defer,
+        required_code="course.generate",
+    )
 
 
 OPERATION_KIND_RESUME_RUN = "resume_run"
@@ -169,6 +177,7 @@ def plan_handlers() -> dict[str, Any]:
     return {
         "researcher": executor.plan_researcher_step,
         "architect": executor.plan_architect_step,
+        **executor.generation_handlers(),
     }
 
 
@@ -381,6 +390,128 @@ async def run_resume_operation(
         if course_id is not None:
             await course_service.snapshot_version(fresh, course_id=course_id)
             await fresh.commit()
+    return {"run_id": str(run_id)}
+
+
+async def run_generate_operation(
+    session: AsyncSession,
+    operation_id: UUID,
+    *,
+    provider_factory: Any | None = None,
+    session_factory: Any | None = None,
+) -> dict[str, Any]:
+    """Worker body for submit_generate: compile the DAG, create the run, drive it."""
+    from app.pipelines.merrill import compile_generation_dag
+    from app.services import courses as course_service
+
+    params = (
+        await session.execute(
+            sa.text("SELECT params FROM operations WHERE id = :op"), {"op": str(operation_id)}
+        )
+    ).scalar_one()
+    course_id = UUID(str(params["course_id"]))
+    course = await course_service.get_course(session, course_id=course_id)
+    tree = await course_service.read_tree(session, course_id=course_id)
+    profile = course.get("profile") or {}
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT p.id, p.source_id, p.address_key, p.text FROM passages p"
+                " JOIN course_sources cs ON cs.source_id = p.source_id AND cs.course_id = :c"
+                " AND cs.approval = 'approved' JOIN sources s ON s.id = p.source_id"
+                " AND s.approval = 'approved' ORDER BY p.source_id, p.address_key"
+            ),
+            {"c": str(course_id)},
+        )
+    ).all()
+    sources = [
+        {"passage_id": str(r[0]), "source_id": str(r[1]), "address": str(r[2]), "text": str(r[3])}
+        for r in rows
+    ]
+    raw = compile_generation_dag(
+        profile={
+            "methodology_codes": list(profile.get("methodology_codes", [])),
+            "bloom_level": str(profile.get("bloom_level", "apply")),
+        },
+        tree=tree,
+        course_id=str(course_id),
+        methodology=(
+            list(profile.get("methodology_codes", ["merrill_first_principles"]))
+            or ["merrill_first_principles"]
+        )[0],
+    )
+    blocks_by_id = {
+        b["plan_node_id"]: b
+        for m in tree.get("modules", [])
+        for tp in m.get("topics", [])
+        for b in tp.get("blocks", [])
+    }
+    blocks_by_topic = {
+        tp["plan_node_id"]: tp.get("blocks", [])
+        for m in tree.get("modules", [])
+        for tp in m.get("topics", [])
+    }
+    dossier = {"thesis": "", "glossary": {}, "handoffs": []}
+    try:
+        tl = await course_service.read_through_line(session, course_id=course_id)
+        dossier = {
+            "thesis": str(tl.get("case", "")),
+            "glossary": {},
+            "handoffs": list(tl.get("handoffs", [])),
+        }
+    except Exception:
+        pass
+    dag = []
+    for entry in raw:
+        handler = str(entry["handler"])
+        if handler in ("generation_research", "generation_plan"):
+            continue
+        e = dict(entry)
+        e["depends_on"] = [
+            d for d in entry.get("depends_on", []) if d not in ("plan:plan", "research:plan")
+        ]
+        e["course_id"] = str(course_id)
+        e["course_language"] = str(course.get("language", "en"))
+        e["plan"] = tree
+        e["dossier"] = dossier
+        if handler == "generate_block":
+            node = str(entry["step_key"]).partition(":")[2]
+            skel = dict(blocks_by_id.get(node, {"plan_node_id": node}))
+            e["block_type"] = str(skel.get("block_type", "reading"))
+            e["sources"] = sources
+            e["skeleton"] = {
+                "plan_node_id": node,
+                "brief": str(skel.get("brief", "")),
+                "role": str(skel.get("role", "")),
+                "block_type": e["block_type"],
+            }
+        elif handler == "saboteur":
+            e["sources"] = sources
+        elif handler == "read_topic":
+            topic = str(entry["step_key"]).partition(":")[2]
+            e["sources"] = sources
+            e["blocks"] = [
+                {"plan_node_id": b["plan_node_id"]} for b in blocks_by_topic.get(topic, [])
+            ]
+        elif handler == "read_continuity":
+            e["handoffs"] = dossier["handoffs"]
+        elif handler == "rework_blocks":
+            e["named"] = []
+        dag.append(e)
+    from app.runs.executor import drive_run, new_run
+
+    run_id = await new_run(session, course_id=course_id, kind="generation", dag=dag)
+    await session.commit()
+    if provider_factory is not None and session_factory is not None:
+        try:
+            await drive_run(
+                session_factory,
+                run_id=run_id,
+                provider_factory=provider_factory,
+                handlers=plan_handlers(),
+            )
+        finally:
+            await _close_factory(provider_factory)
     return {"run_id": str(run_id)}
 
 

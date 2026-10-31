@@ -1100,7 +1100,7 @@ async def test_worker_checks_operation_own_code(t03_session: AsyncSession) -> No
             )
         ).one()
     assert status == "failed"
-    assert "generation pipeline" in (error or "")
+    assert error, "worker reached the submit_generate body"
 
 
 def test_provider_factory_reuses_one_engine() -> None:
@@ -1221,13 +1221,14 @@ async def test_rewrite_submit_enqueues(t03_session: AsyncSession) -> None:
 
 
 async def test_rewrite_worker_answers_409(t03_session: AsyncSession) -> None:
-    """Until T05 the worker refuses rewrite work with 409, never silently."""
-    from app.errors import ConflictError
+    """Rewrite work drives generation; a missing operation fails loudly."""
+    from sqlalchemy.exc import NoResultFound
+
     from app.services.operations import _run_kind
 
-    with pytest.raises(ConflictError, match="generation pipeline"):
+    with pytest.raises(NoResultFound):
         await _run_kind(t03_session, "rewrite_block", uuid.uuid4())
-    with pytest.raises(ConflictError, match="generation pipeline"):
+    with pytest.raises(NoResultFound):
         await _run_kind(t03_session, "rewrite_held_batch", uuid.uuid4())
 
 
