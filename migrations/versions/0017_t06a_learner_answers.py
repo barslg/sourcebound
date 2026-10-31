@@ -53,7 +53,10 @@ def upgrade() -> None:
         sa.Column("attempt_no", sa.Integer(), nullable=False),
         sa.Column("result", JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")),
         sa.Column(
-            "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
         ),
         sa.CheckConstraint("score >= 0 AND score <= 1", name="ck_learner_answers_score"),
         sa.UniqueConstraint("user_id", "block_id", "attempt_no", name="uq_learner_answers_attempt"),
