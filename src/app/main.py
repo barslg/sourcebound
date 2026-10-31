@@ -24,6 +24,7 @@ from app.redact import settings_secrets
 from app.routes import auth as auth_routes
 from app.routes import ops as ops_routes
 from app.routes import t02 as t02_routes
+from app.routes import t03 as t03_routes
 
 
 @asynccontextmanager
@@ -37,6 +38,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     validate_step_registry()
     prompts.validate_registered_schemas()
     prompts.validate_prompt_files()
+    from app.agents.base import validate_agents
+
+    validate_agents()
     listener: asyncio.Task[None] | None = None
     if app.state.sync_on_startup:
         session_factory = get_session_factory()
@@ -71,6 +75,9 @@ def create_app(settings: Settings | None = None, *, sync_on_startup: bool = True
     app.include_router(ops_routes.invites_accept_router, prefix="/api/v1")
     app.include_router(ops_routes.operations_router, prefix="/api/v1")
     app.include_router(ops_routes.events_router, prefix="/api/v1")
+    app.include_router(t03_routes.courses_router, prefix="/api/v1")
+    app.include_router(t03_routes.sources_router, prefix="/api/v1")
+    app.include_router(t03_routes.runs_router, prefix="/api/v1")
     return app
 
 

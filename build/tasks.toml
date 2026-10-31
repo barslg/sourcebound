@@ -35,3 +35,30 @@ model = "muse-spark-1.3"
 effort = "high"
 max_steps = 300
 depends = ["T02"]
+
+[[task]]
+id = "T05"
+title = "Merrill pipeline end to end: methodology registry, seven block types, generators, reader, saboteur, resumable executor, find-the-error, prompts"
+prompt = "build/tasks/T05.md"
+model = "muse-spark-1.3"
+effort = "high"
+max_steps = 700
+depends = ["T03", "T02b"]
+
+[[task]]
+id = "T07"
+title = "full multilinguality: segment translation with code-owned structure, glossary-first, planted-error invariant, locale discipline"
+prompt = "build/tasks/T07.md"
+model = "muse-spark-1.3"
+effort = "high"
+max_steps = 500
+depends = ["T05"]
+
+[[task]]
+id = "T02b"
+title = "security fixes from the T02 review: sub-keyed accounts, verified superadmin, escalation on assign, student-only invites, scope enforcement, hashed tokens, worker imports, bans table"
+prompt = "build/tasks/T02b.md"
+model = "muse-spark-1.3"
+effort = "high"
+max_steps = 500
+depends = ["T03"]

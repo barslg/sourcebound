@@ -92,6 +92,18 @@ MODELS: dict[str, ModelSpec] = {
         unit_priced_on="2026-10-31",
         price_note="$2.50 per 1,000 searches",
     ),
+    "muse-voice-transcribe-1.0": ModelSpec(
+        model_id="muse-voice-transcribe-1.0",
+        input_per_1m_usd=None,
+        cached_per_1m_usd=None,
+        output_per_1m_usd=None,
+        priced_on="",
+        context_window=None,
+        unit="audio_hour",
+        unit_price_usd=Decimal("0.18"),
+        unit_priced_on="2026-10-31",
+        price_note="$0.18 per audio hour",
+    ),
     "muse-spark-1.3-contributor": ModelSpec(
         model_id="muse-spark-1.3-contributor",
         input_per_1m_usd=Decimal("0.10"),
@@ -121,6 +133,7 @@ class StepSpec:
 
 STEPS: dict[str, StepSpec] = {
     "intake": StepSpec(model="muse-spark-1.3", effort="medium", max_output_tokens=4000),
+    "librarian": StepSpec(model="muse-spark-1.3", effort="medium", max_output_tokens=2000),
     "researcher": StepSpec(model="muse-spark-1.3", effort="low", max_output_tokens=4000),
     "architect": StepSpec(model="muse-wonder-1.0", effort="high", max_output_tokens=8000),
     "block_teach": StepSpec(model="muse-spark-1.3", effort="medium", max_output_tokens=4000),

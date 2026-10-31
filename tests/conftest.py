@@ -104,6 +104,52 @@ def _test_database() -> Iterator[str]:
     yield url
 
 
+T03_TABLES = [
+    "retrieval_pairs",
+    "citations",
+    "passages",
+    "source_candidates",
+    "human_queue",
+    "sources",
+    "profile_constraints",
+    "course_profiles",
+    "block_versions",
+    "blocks",
+    "topics",
+    "modules",
+    "course_versions",
+    "courses",
+    "course_groups",
+    "methodologies",
+    "llm_calls",
+    "llm_replies",
+    "run_steps",
+    "runs",
+    "operations",
+    "notifications",
+]
+
+
+@pytest.fixture()
+async def t03_session() -> Iterator[object]:
+    """Isolated session with course/library/run tables truncated."""
+    import sqlalchemy as sa
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from t02_helpers import make_session_factory
+
+    factory = make_session_factory()
+    async with factory() as session:
+        session_: AsyncSession = session
+        for table in T03_TABLES:
+            try:
+                await session_.execute(sa.text(f'DELETE FROM "{table}"'))
+            except Exception:
+                await session_.rollback()
+        await session_.commit()
+        yield session_
+        await session_.rollback()
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _session_http_guard() -> Iterator[None]:
     """Forbid off-allowlist HTTP for every test in this session."""

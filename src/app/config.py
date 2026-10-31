@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     oidc_allowed_domains: str = ""
     oidc_http_timeout_s: float = 10.0
     sse_ping_s: float = 20.0
+    source_store_path: str = "var/sources"
+    source_fetch_timeout_s: float = 15.0
+    source_fetch_max_bytes: int = 2000000
 
     @property
     def superadmin_email_set(self) -> set[str]:

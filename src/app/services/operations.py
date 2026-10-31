@@ -229,6 +229,10 @@ async def execute_operation(
 
 async def _run_kind(session: AsyncSession, kind: str, operation_id: UUID) -> dict[str, Any]:
     """Do the kind-specific work; echo returns its submitted message."""
+    if kind in ("submit_plan", "submit_generate"):
+        from app.services.planruns import run_plan_operation
+
+        return await run_plan_operation(session, operation_id)
     if kind == OPERATION_KIND_ECHO:
         params = (
             await session.execute(
