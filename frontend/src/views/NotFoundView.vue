@@ -5,7 +5,8 @@ const { t } = useI18n()
 
 <template>
   <main class="centered state">
-    <h1 class="page-title">{{ t('common.emptyPage') }}</h1>
-    <router-link to="/">{{ t('invite.open') }}</router-link>
+    <h1 class="page-title">{{ t('notFound.title') }}</h1>
+    <p class="muted" data-testid="page-help">{{ t('notFound.help') }}</p>
+    <router-link to="/">{{ t('notFound.open') }}</router-link>
   </main>
 </template>

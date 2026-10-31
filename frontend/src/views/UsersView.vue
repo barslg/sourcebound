@@ -12,7 +12,10 @@ import Textarea from 'primevue/textarea'
 import { ApiError, request } from '@/api/client'
 import { ENDPOINTS, roleAssign, userBan, userItem } from '@/api/endpoints'
 import type { Role, UserRow } from '@/api/types'
+import GuardedButton from '@/components/GuardedButton.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import ResourceState from '@/components/ResourceState.vue'
+import { firstReason, lacking } from '@/composables/reasons'
 import { notify } from '@/composables/notify'
 import { parseTags } from '@/composables/tags'
 import { useResource } from '@/composables/useResource'
@@ -118,7 +121,9 @@ const dialogTitle = computed(() => {
 </script>
 
 <template>
-  <h1 class="page-title">{{ t('users.title') }}</h1>
+  <PageHeader :title="t('users.title')" :help="t('users.help')">
+    <template #actions><router-link to="/invites" data-testid="users-invites">{{ t('users.invitePeople') }}</router-link></template>
+  </PageHeader>
   <ResourceState
     :loading="users.loading.value"
     :error="users.error.value"
@@ -138,7 +143,7 @@ const dialogTitle = computed(() => {
       <DataTable
         :value="rows"
         data-key="id"
-        paginator
+        :paginator="rows.length > PAGE_SIZE"
         :rows="PAGE_SIZE"
         :first="first"
         :sort-field="sortField"
@@ -152,6 +157,12 @@ const dialogTitle = computed(() => {
         <Column field="display_name" :header="t('users.name')" sortable />
         <Column field="email" :header="t('users.email')" sortable>
           <template #body="{ data }"><span class="mono">{{ (data as UserRow).email }}</span></template>
+        </Column>
+        <Column :header="t('users.roles')">
+          <template #body="{ data }">
+            <span v-if="((data as UserRow).roles ?? []).length === 0" class="muted">{{ t('users.noRoles') }}</span>
+            <router-link v-for="g in (data as UserRow).roles ?? []" :key="g.name" class="chip" :to="`/roles#role-${g.name}`">{{ g.name }}<template v-if="g.scope_tags.length > 0"> ({{ g.scope_tags.join(', ') }})</template></router-link>
+          </template>
         </Column>
         <Column :header="t('users.status')">
           <template #body="{ data }">
@@ -167,31 +178,9 @@ const dialogTitle = computed(() => {
         <Column :header="t('common.actions')">
           <template #body="{ data }">
             <div class="row">
-              <Button
-                :label="t('users.assign')"
-                size="small"
-                severity="secondary"
-                :disabled="!session.can('role.assign')"
-                :title="session.can('role.assign') ? undefined : t('common.reason', { code: 'role.assign' })"
-                @click="open('assign', data as UserRow)"
-              />
-              <Button
-                :label="t('users.ban')"
-                size="small"
-                severity="secondary"
-                :disabled="!session.can('user.ban') || Boolean((data as UserRow).banned_at)"
-                :title="session.can('user.ban') ? undefined : t('common.reason', { code: 'user.ban' })"
-                @click="open('ban', data as UserRow)"
-              />
-              <Button
-                :label="t('users.delete')"
-                size="small"
-                severity="danger"
-                outlined
-                :disabled="!session.can('user.delete')"
-                :title="session.can('user.delete') ? undefined : t('common.reason', { code: 'user.delete' })"
-                @click="open('delete', data as UserRow)"
-              />
+              <GuardedButton :label="t('users.assign')" size="small" severity="secondary" :reason="lacking('role.assign')" @click="open('assign', data as UserRow)" />
+              <GuardedButton :label="t('users.ban')" size="small" severity="secondary" :reason="firstReason(lacking('user.ban'), (data as UserRow).banned_at && t('users.alreadyBanned'), (data as UserRow).id === session.me?.id && t('users.itsYou'))" @click="open('ban', data as UserRow)" />
+              <GuardedButton :label="t('users.delete')" size="small" severity="danger" outlined :reason="firstReason(lacking('user.delete'), (data as UserRow).id === session.me?.id && t('users.itsYou'))" @click="open('delete', data as UserRow)" />
             </div>
           </template>
         </Column>
@@ -205,6 +194,7 @@ const dialogTitle = computed(() => {
         <div class="field">
           <label for="assign-role">{{ t('users.role') }}</label>
           <Select v-model="roleName" input-id="assign-role" :options="roles" option-label="name" option-value="name" :placeholder="t('users.rolePlaceholder')" />
+          <span class="hint">{{ t('users.roleHint') }}</span>
         </div>
         <div class="field">
           <label for="assign-scope">{{ t('users.scope') }}</label>
@@ -231,18 +221,20 @@ const dialogTitle = computed(() => {
           <Checkbox v-model="legacy" input-id="delete-legacy" binary :disabled="heirId !== null" />
           <label for="delete-legacy">{{ t('users.legacyOption') }}</label>
         </div>
+        <div class="field">
+          <span class="hint">{{ t('users.legacyHint') }}</span>
+        </div>
       </template>
       <p v-if="formError" class="mono danger-text" role="alert" data-testid="form-error">{{ formError }}</p>
       <div class="row">
         <Button type="button" :label="t('common.cancel')" severity="secondary" text @click="close" />
-        <Button
+        <GuardedButton
           type="submit"
           class="row-end"
           :label="mode === 'delete' ? t('users.delete') : mode === 'ban' ? t('users.ban') : t('users.assign')"
           :severity="mode === 'delete' ? 'danger' : undefined"
           :loading="busy"
-          :aria-busy="busy"
-          :disabled="!canSubmit"
+          :reason="canSubmit ? null : mode === 'assign' ? t('users.pickRole') : t('users.typeReason')"
           data-testid="dialog-submit"
         />
       </div>

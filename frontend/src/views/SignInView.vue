@@ -9,7 +9,7 @@ const href = loginUrl()
 <template>
   <main class="centered stack">
     <h1 class="page-title">{{ t('app.name') }}</h1>
-    <p class="muted">{{ t('app.tagline') }}</p>
+    <p class="muted" data-testid="page-help">{{ t('app.tagline') }}</p>
     <section class="state">
       <h2>{{ t('signin.title') }}</h2>
       <p>{{ t('signin.body') }}</p>

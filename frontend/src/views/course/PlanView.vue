@@ -3,24 +3,29 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import Button from 'primevue/button'
+import Checkbox from 'primevue/checkbox'
 import Dialog from 'primevue/dialog'
+import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
 import Tree, { type TreeNodeDropEvent } from 'primevue/tree'
 import { ApiError, request } from '@/api/client'
 import { courseEstimate, courseGenerate, coursePlan, coursePlanSubmit, courseProfile } from '@/api/endpoints'
 import type { CourseDoc, Estimate } from '@/api/types'
 import CourseHeader from '@/components/CourseHeader.vue'
+import GuardedButton from '@/components/GuardedButton.vue'
+import SectionHeading from '@/components/SectionHeading.vue'
+import { BLOOM_LEVELS, METHODOLOGY_CODES } from '@/composables/methodologies'
+import { firstReason, lacking } from '@/composables/reasons'
+import { humanize, usd } from '@/composables/labels'
+import { useQueued } from '@/composables/useQueued'
 import ResourceState from '@/components/ResourceState.vue'
 import { notify } from '@/composables/notify'
 import { applyOps, findTopic, moveTarget, sourceHandles, titleOf, toNodes, toWire, type PlanOp, type PlanTree } from '@/composables/planTree'
-import { parseTags } from '@/composables/tags'
 import { dropCached, useResource } from '@/composables/useResource'
 import { useOperationsStore } from '@/stores/operations'
-import { useSessionStore } from '@/stores/session'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const route = useRoute()
-const session = useSessionStore()
 const operations = useOperationsStore()
 const courseId = computed(() => String(route.params.id))
 const header = ref<InstanceType<typeof CourseHeader> | null>(null)
@@ -83,14 +88,24 @@ function removeSelected(): void {
   confirmDelete.value = false
   select(null)
 }
-function answer(key: string): void {
+async function answer(key: string, course: CourseDoc): Promise<void> {
   const text = (answers.value[key] ?? '').trim()
   if (!text) return
   ops.value = [...ops.value.filter((o) => !(o.op === 'set_constraint' && o.key === key)), { op: 'set_constraint', key, answer: { value: text } }]
+  await save(course)
 }
-function staged(key: string): boolean {
-  return ops.value.some((o) => o.op === 'set_constraint' && o.key === key)
-}
+const siblingsOfSelected = computed(() => {
+  const t0 = tree.value
+  if (!t0 || !selectedKey.value) return []
+  return isModule.value ? t0.modules : (t0.modules.find((m) => m.topics.some((x) => x.id === selectedKey.value))?.topics ?? [])
+})
+const position = computed(() => siblingsOfSelected.value.findIndex((x) => x.id === selectedKey.value))
+const upReason = computed(() => (position.value <= 0 ? t('plan.alreadyFirst') : null))
+const downReason = computed(() => (position.value >= siblingsOfSelected.value.length - 1 ? t('plan.alreadyLast') : null))
+const moduleOf = computed(() => (tree.value && selectedKey.value ? (tree.value.modules.find((m) => m.id === selectedKey.value) ?? null) : null))
+const blockTypeLabel = (type: string): string => (te(`plan.blockType.${type}`) ? t(`plan.blockType.${type}`) : humanize(type))
+const answeredRows = (course: CourseDoc | null): Array<{ label: string; value: string }> =>
+  (course?.constraints ?? []).filter((c) => c.answer !== null).map((c) => ({ label: c.question ?? humanize(c.key), value: String((c.answer as Record<string, unknown>).value ?? '') }))
 
 async function save(course: CourseDoc, keepMine = false): Promise<void> {
   saving.value = true
@@ -119,17 +134,21 @@ async function reloadTheirs(): Promise<void> {
   await Promise.all([plan.reload(), header.value?.reload()])
 }
 
-const profileCodes = ref('')
+const methodologies = ref<string[]>([])
+const bloom = ref('understand')
 const audience = ref('')
 const queriesText = ref('')
 const building = ref(false)
+const planQueue = useQueued(async () => { await Promise.all([plan.reload(true), estimate.reload(true), header.value?.reload()]) })
+const genQueue = useQueued(async () => { await header.value?.reload() })
 const buildError = ref<string | null>(null)
 async function buildPlan(): Promise<void> {
   building.value = true
   buildError.value = null
   try {
-    await request(courseProfile(courseId.value), { method: 'POST', body: { methodology_codes: parseTags(profileCodes.value), audience: audience.value.trim() } })
-    await request(coursePlanSubmit(courseId.value), { method: 'POST', body: { queries: queriesText.value.split('\n').map((q) => q.trim()).filter(Boolean), idempotency_key: crypto.randomUUID() } })
+    await request(courseProfile(courseId.value), { method: 'POST', body: { methodology_codes: methodologies.value, bloom_level: bloom.value, audience: audience.value.trim() } })
+    const made = await request<{ operation_id: string }>(coursePlanSubmit(courseId.value), { method: 'POST', body: { queries: queriesText.value.split('\n').map((q) => q.trim()).filter(Boolean), idempotency_key: crypto.randomUUID() } })
+    planQueue.track(made.operation_id)
     await header.value?.reload()
   } catch (cause) {
     buildError.value = cause instanceof ApiError ? cause.message : String(cause)
@@ -143,6 +162,7 @@ async function generate(): Promise<void> {
   try {
     const made = await request<{ operation_id: string }>(courseGenerate(courseId.value), { method: 'POST', body: { idempotency_key: crypto.randomUUID() } })
     generateOp.value = made.operation_id
+    genQueue.track(made.operation_id)
   } catch (cause) {
     notify('error', cause instanceof ApiError ? cause.message : String(cause))
   } finally {
@@ -165,11 +185,11 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnUnload))
 </script>
 
 <template>
-  <CourseHeader ref="header" :course-id="courseId">
+  <CourseHeader ref="header" :course-id="courseId" page="plan">
     <template #default="{ course, validation }">
       <div class="row">
         <span v-if="dirty" class="chip chip-warn" data-testid="unsaved">{{ t('plan.unsaved') }}</span>
-        <Button class="row-end" :label="t('plan.save')" :loading="saving" :aria-busy="saving" :disabled="!dirty || !course || !session.can('course.edit')" data-testid="plan-save" @click="course && save(course)" />
+        <GuardedButton class="row-end" :label="t('plan.save')" :loading="saving" :reason="firstReason(lacking('course.edit'), !dirty && t('plan.nothingToSave'))" data-testid="plan-save" @click="course && save(course)" />
       </div>
       <div v-if="conflict" class="confirm-bar stack" role="alert" data-testid="conflict">
         <p>{{ t('plan.conflict') }}</p>
@@ -181,84 +201,101 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnUnload))
       <p v-else-if="saveError" class="mono danger-text" role="alert" data-testid="save-error">{{ saveError }}</p>
       <div class="plan-grid">
         <section class="stack" :aria-label="t('plan.treeLabel')">
+          <SectionHeading :title="t('plan.treeLabel')" :help="t('plan.treeHelp')" />
           <ResourceState :loading="plan.loading.value" :error="plan.error.value" :empty="nodes.length === 0" :empty-text="t('plan.empty')" @retry="plan.reload()">
+            <template #empty-actions><router-link to="#build-plan">{{ t('plan.emptyAction') }}</router-link></template>
             <Tree v-model:selection-keys="selectionKeys" :value="nodes" selection-mode="single" draggable-nodes droppable-nodes draggable-scope="plan" droppable-scope="plan" :pt="treePt" data-testid="plan-tree" @node-select="(n) => select(String(n.key))" @node-drop="onDrop" />
           </ResourceState>
         </section>
         <section class="stack" :aria-label="t('plan.topicLabel')" data-testid="plan-centre">
+          <SectionHeading :title="t('plan.topicLabel')" :help="t('plan.topicHelp')" />
           <p v-if="!selectedKey" class="muted">{{ t('plan.pick') }}</p>
           <template v-else>
             <div class="field">
               <label for="p-title">{{ t('plan.nodeTitle') }}</label>
               <InputText id="p-title" v-model="renameText" @keydown.enter.prevent="rename" />
+              <span class="hint">{{ t('plan.nodeTitleHint') }}</span>
             </div>
             <div class="row">
-              <Button :label="t('plan.rename')" size="small" :disabled="!renameText.trim() || renameText.trim() === selectedTitle" data-testid="plan-rename" @click="rename" />
-              <Button :label="t('plan.moveUp')" size="small" severity="secondary" data-testid="plan-up" @click="shift(-1)" />
-              <Button :label="t('plan.moveDown')" size="small" severity="secondary" data-testid="plan-down" @click="shift(1)" />
-              <Button :label="t('common.delete')" size="small" severity="danger" outlined data-testid="plan-delete" @click="confirmDelete = true" />
+              <GuardedButton :label="t('plan.rename')" size="small" :reason="!renameText.trim() || renameText.trim() === selectedTitle ? t('plan.renameFirst') : null" data-testid="plan-rename" @click="rename" />
+              <GuardedButton :label="t('plan.moveUp')" size="small" severity="secondary" :reason="upReason" data-testid="plan-up" @click="shift(-1)" />
+              <GuardedButton :label="t('plan.moveDown')" size="small" severity="secondary" :reason="downReason" data-testid="plan-down" @click="shift(1)" />
+              <Button :label="t('plan.deleteButton')" size="small" severity="danger" outlined data-testid="plan-delete" @click="confirmDelete = true" />
             </div>
+            <template v-if="moduleOf">
+              <SectionHeading :title="t('plan.purpose')" :help="t('plan.purposeHelp')" />
+              <p>{{ moduleOf.purpose }}</p>
+              <ul class="plain-list">
+                <li v-for="x in moduleOf.topics" :key="x.id"><a href="#" @click.prevent="select(x.id)">{{ x.title }}</a> <span class="count">{{ t('count.block', x.blocks.length) }}</span></li>
+              </ul>
+            </template>
             <template v-if="topic">
-              <h2>{{ t('plan.objectives') }}</h2>
+              <SectionHeading :title="t('plan.objectives')" :help="t('plan.objectivesHelp')" />
               <ul><li v-for="o in topic.objectives" :key="o">{{ o }}</li></ul>
-              <h2>{{ t('plan.blocks') }}</h2>
+              <SectionHeading :title="t('plan.blocks')" :help="t('plan.blocksHelp')" />
               <ul class="plain-list">
                 <li v-for="b in topic.blocks" :key="b.id" class="bell-item stack" data-testid="plan-block">
                   <div class="row">
-<strong>{{ t(`plan.role.${b.role}`) }}</strong><span class="chip mono">{{ b.block_type }}</span>
-                    <span v-for="h in sourceHandles(b)" :key="h" class="chip mono">{{ h }}</span>
-</div>
+                    <strong>{{ t(`plan.role.${b.role}`) }}</strong><span class="chip">{{ blockTypeLabel(b.block_type) }}</span>
+                    <router-link v-for="h in sourceHandles(b)" :key="h" class="chip mono" :to="`/courses/${courseId}/sources#sources-list`" :title="t('plan.handleTitle', { handle: h })">{{ h }}</router-link>
+                  </div>
                   <span>{{ b.brief }}</span>
                 </li>
               </ul>
             </template>
           </template>
-          <h2>{{ t('plan.constraints') }}</h2>
-          <p v-if="(course?.constraints ?? []).length === 0" class="muted">{{ t('plan.noConstraints') }}</p>
-          <ul class="plain-list">
-            <li v-for="c in course?.constraints ?? []" :key="c.key" class="bell-item row" data-testid="constraint-row">
-              <span class="mono">{{ c.key }}</span><span class="chip">{{ c.kind }}</span>
-              <span v-if="c.required" class="chip chip-warn">{{ t('plan.required') }}</span>
-              <span class="muted">{{ c.answer ? JSON.stringify(c.answer) : t('plan.unanswered') }}</span>
-            </li>
-          </ul>
+          <template v-if="answeredRows(course).length > 0">
+            <SectionHeading :title="t('plan.answered')" :help="t('plan.answeredHelp')" />
+            <ul class="plain-list">
+              <li v-for="r in answeredRows(course)" :key="r.label" class="bell-item" data-testid="constraint-row"><strong>{{ r.label }}</strong> <span>{{ r.value }}</span></li>
+            </ul>
+          </template>
         </section>
         <aside class="stack" :aria-label="t('plan.before')" data-testid="before-card">
-          <h2>{{ t('plan.before') }}</h2>
+          <SectionHeading id="questions" :title="t('plan.before')" :help="t('plan.beforeHelp')" />
           <ResourceState :loading="false" :error="null" :empty="(validation?.blocking_questions ?? []).length === 0" :empty-text="t('plan.noQuestions')">
             <ul class="plain-list">
-              <li v-for="q in validation?.blocking_questions ?? []" :key="q.key" class="bell-item stack" data-testid="question">
-                <label :for="`q-${q.key}`">{{ q.question ?? q.key }}</label>
+              <li v-for="q in validation?.blocking_questions ?? []" :id="`question-${q.key}`" :key="q.key" class="bell-item stack" data-testid="question">
+                <label :for="`q-${q.key}`">{{ q.question ?? humanize(q.key) }}</label>
                 <InputText :id="`q-${q.key}`" v-model="answers[q.key]" />
                 <span class="hint">{{ t('plan.answerHint') }}</span>
-                <div class="row">
-                  <Button :label="t('plan.answer')" size="small" :disabled="!(answers[q.key] ?? '').trim()" @click="answer(q.key)" />
-                  <span v-if="staged(q.key)" class="chip chip-warn">{{ t('plan.answerStaged') }}</span>
-                </div>
+                <GuardedButton :label="t('plan.answer')" size="small" :loading="saving" :reason="firstReason(lacking('course.edit'), !(answers[q.key] ?? '').trim() && t('plan.typeAnswer'))" @click="course && answer(q.key, course)" />
               </li>
             </ul>
           </ResourceState>
-          <h3>{{ t('plan.forecast') }}</h3>
+          <SectionHeading :title="t('plan.estimate')" :help="t('plan.forecastNote')" />
           <ResourceState :loading="estimate.loading.value" :error="estimate.error.value" :empty="false" @retry="estimate.reload()">
-            <p data-testid="forecast">{{ t('plan.forecastLine', { blocks: estimate.data.value?.blocks ?? 0, cost: estimate.data.value?.cost_usd ?? '0' }) }}</p>
+            <p data-testid="forecast">{{ t('plan.forecastLine', { blocks: t('count.block', estimate.data.value?.blocks ?? 0), cost: usd(estimate.data.value?.cost_usd ?? '0') }) }}</p>
           </ResourceState>
-          <Button :label="t('plan.generate')" :loading="generating" :aria-busy="generating" :disabled="!validation?.can_generate || dirty || !session.can('run.start')" data-testid="generate" @click="generate" />
-          <p v-if="dirty || (validation && !validation.can_generate)" class="hint">{{ dirty ? t('plan.saveFirst') : t('plan.questionsOpen') }}</p>
+          <SectionHeading id="generate" :title="t('plan.generateTitle')" :help="t('plan.generateHelp')" />
+          <GuardedButton :label="t('plan.generate')" :loading="generating" :reason="firstReason(lacking('run.start'), dirty && t('plan.saveFirst'), validation && !validation.can_generate && t('plan.questionsOpen'), genQueue.queued.value && t('plan.alreadyQueued'))" data-testid="generate" @click="generate" />
+          <p v-if="genQueue.queued.value" class="chip" data-testid="queued-line">{{ t('op.queuedToast') }}</p>
           <router-link v-if="runId" :to="`/runs/${runId}`" data-testid="open-run">{{ t('plan.openRun') }}</router-link>
-          <h3 v-if="!course?.profile || nodes.length === 0">{{ t('plan.build') }}</h3>
-          <form v-if="!course?.profile || nodes.length === 0" class="stack" @submit.prevent="buildPlan">
-            <div class="field"><label for="b-code">{{ t('plan.methodology') }}</label><InputText id="b-code" v-model="profileCodes" /><span class="hint">{{ t('plan.methodologyHint') }}</span></div>
-            <div class="field"><label for="b-aud">{{ t('plan.audience') }}</label><InputText id="b-aud" v-model="audience" /><span class="hint">{{ t('plan.audienceHint') }}</span></div>
-            <div class="field"><label for="b-q">{{ t('plan.queries') }}</label><textarea id="b-q" v-model="queriesText" rows="3"></textarea><span class="hint">{{ t('plan.queriesHint') }}</span></div>
-            <p v-if="buildError" class="mono danger-text" role="alert" data-testid="build-error">{{ buildError }}</p>
-            <Button type="submit" :label="t('plan.buildButton')" :loading="building" :aria-busy="building" :disabled="parseTags(profileCodes).length === 0 || queriesText.trim().length === 0" data-testid="plan-build" />
-          </form>
+          <template v-if="!course?.profile || nodes.length === 0">
+            <SectionHeading id="build-plan" :title="t('plan.build')" :help="t('plan.buildHelp')" />
+            <form class="stack" @submit.prevent="buildPlan">
+              <fieldset class="field">
+                <legend>{{ t('plan.methodology') }}</legend>
+                <div v-for="code in METHODOLOGY_CODES" :key="code" class="perm-check">
+                  <Checkbox v-model="methodologies" :input-id="`m-${code}`" :value="code" />
+                  <label :for="`m-${code}`"><strong>{{ t(`methodology.${code}.name`) }}</strong> <span class="hint">{{ t(`methodology.${code}.line`) }}</span></label>
+                </div>
+                <span class="hint">{{ t('plan.methodologyHint') }}</span>
+              </fieldset>
+              <div class="field"><label for="b-bloom">{{ t('plan.bloom') }}</label><Select v-model="bloom" input-id="b-bloom" :options="BLOOM_LEVELS.map((c) => ({ code: c, label: t(`bloom.${c}`) }))" option-label="label" option-value="code" /><span class="hint">{{ t('plan.bloomHint') }}</span></div>
+              <div class="field"><label for="b-aud">{{ t('plan.audience') }}</label><InputText id="b-aud" v-model="audience" /><span class="hint">{{ t('plan.audienceHint') }}</span></div>
+              <div class="field"><label for="b-q">{{ t('plan.queries') }}</label><textarea id="b-q" v-model="queriesText" rows="3"></textarea><span class="hint">{{ t('plan.queriesHint') }}</span></div>
+              <p v-if="buildError" class="mono danger-text" role="alert" data-testid="build-error">{{ buildError }}</p>
+              <GuardedButton type="submit" :label="t('plan.buildButton')" :loading="building" :reason="firstReason(lacking('course.plan'), methodologies.length === 0 && t('plan.pickMethodology'), queriesText.trim().length === 0 && t('plan.typeQueries'), planQueue.queued.value && t('plan.alreadyQueued'))" data-testid="plan-build" />
+              <p v-if="planQueue.queued.value" class="chip" data-testid="queued-line">{{ t('op.queuedToast') }}</p>
+            </form>
+          </template>
         </aside>
       </div>
       <Dialog v-model:visible="confirmDelete" modal :header="t('plan.deleteTitle', { name: selectedTitle })" :style="{ width: 'min(460px, 92vw)' }">
         <p>{{ t('plan.deleteBody', { name: selectedTitle }) }}</p>
         <div class="row">
-          <Button :label="t('common.delete')" severity="danger" data-testid="dialog-submit" @click="removeSelected" />
+          <Button :label="t('plan.deleteButton')" severity="danger" data-testid="dialog-submit" @click="removeSelected" />
           <Button :label="t('common.cancel')" severity="secondary" text @click="confirmDelete = false" />
         </div>
       </Dialog>

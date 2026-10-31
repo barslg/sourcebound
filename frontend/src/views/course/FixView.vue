@@ -4,32 +4,40 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import Button from 'primevue/button'
 import { ApiError, request } from '@/api/client'
-import { blockAccept, blockItem, blockRewrite, courseHeld, courseRewriteHeld } from '@/api/endpoints'
+import { blockAccept, blockItem, blockRewrite, courseHeld, coursePlan, courseRewriteHeld } from '@/api/endpoints'
 import type { HeldBlock, HeldDoc } from '@/api/types'
 import CourseHeader from '@/components/CourseHeader.vue'
+import GuardedButton from '@/components/GuardedButton.vue'
 import ResourceState from '@/components/ResourceState.vue'
+import SectionHeading from '@/components/SectionHeading.vue'
+import { usd } from '@/composables/labels'
 import { notify } from '@/composables/notify'
+import type { PlanTree } from '@/composables/planTree'
+import { lacking } from '@/composables/reasons'
+import { useQueued } from '@/composables/useQueued'
 import { useResource } from '@/composables/useResource'
-import { useSessionStore } from '@/stores/session'
 
 const { t } = useI18n()
 const route = useRoute()
-const session = useSessionStore()
 const courseId = computed(() => String(route.params.id))
+const header = ref<InstanceType<typeof CourseHeader> | null>(null)
 const held = useResource<HeldDoc>(`held:${courseId.value}`, (signal) => request<HeldDoc>(courseHeld(courseId.value), { signal }))
+const plan = useResource<PlanTree>(`plan:${courseId.value}`, (signal) => request<PlanTree>(coursePlan(courseId.value), { signal }))
+const generated = computed(() => (plan.data.value?.modules ?? []).some((m) => m.topics.some((x) => x.blocks.some((b) => b.status !== 'draft'))))
 const working = ref<string | null>(null)
 const editing = ref<string | null>(null)
 const draft = ref('')
+const queue = useQueued(async () => { await Promise.all([held.reload(true), plan.reload(true), header.value?.reload()]) })
 
 async function act(block: HeldBlock, kind: 'rewrite' | 'accept' | 'edit'): Promise<void> {
   working.value = `${kind}:${block.id}`
   try {
-    if (kind === 'rewrite') await request(blockRewrite(block.id), { method: 'POST' })
+    if (kind === 'rewrite') queue.track((await request<{ operation_id: string }>(blockRewrite(block.id), { method: 'POST' })).operation_id)
     else if (kind === 'accept') await request(blockAccept(block.id), { method: 'POST' })
     else await request(blockItem(block.id), { method: 'PATCH', body: { brief: draft.value } })
     notify('success', t(`fix.done.${kind}`))
     editing.value = null
-    await held.reload(true)
+    await Promise.all([held.reload(true), header.value?.reload()])
   } catch (cause) {
     notify('error', cause instanceof ApiError ? cause.message : String(cause))
   } finally {
@@ -39,7 +47,7 @@ async function act(block: HeldBlock, kind: 'rewrite' | 'accept' | 'edit'): Promi
 async function rewriteAll(): Promise<void> {
   working.value = 'batch'
   try {
-    await request(courseRewriteHeld(courseId.value), { method: 'POST' })
+    queue.track((await request<{ operation_id: string }>(courseRewriteHeld(courseId.value), { method: 'POST' })).operation_id)
     notify('success', t('fix.done.batch'))
     await held.reload(true)
   } catch (cause) {
@@ -55,36 +63,45 @@ function startEdit(block: HeldBlock): void {
 </script>
 
 <template>
-  <CourseHeader :course-id="courseId">
-    <h2>{{ t('fix.title') }}</h2>
-    <ResourceState :loading="held.loading.value" :error="held.error.value" :empty="(held.data.value?.blocks ?? []).length === 0" :empty-text="t('fix.empty')" @retry="held.reload()">
-      <div v-if="held.data.value?.batch_quote_usd" class="row">
-        <Button :label="t('fix.batch', { count: held.data.value.blocks.length, price: held.data.value.batch_quote_usd })" :loading="working === 'batch'" :aria-busy="working === 'batch'" :disabled="!session.can('course.edit')" data-testid="fix-batch" @click="rewriteAll" />
-      </div>
-      <ul class="plain-list">
-        <li v-for="b in held.data.value?.blocks ?? []" :key="b.id" class="held-row" data-testid="held-row">
-          <div class="stack">
-            <strong>{{ b.topic_title }}</strong>
-            <span>{{ b.hold_reason }}</span>
-            <template v-if="editing === b.id">
-              <textarea v-model="draft" rows="3" :aria-label="t('fix.editLabel')"></textarea>
-              <div class="row">
-                <Button :label="t('common.save')" size="small" :loading="working === `edit:${b.id}`" :aria-busy="working === `edit:${b.id}`" @click="act(b, 'edit')" />
-                <Button :label="t('common.cancel')" size="small" severity="secondary" text @click="editing = null" />
+  <CourseHeader ref="header" :course-id="courseId" page="fix">
+    <div id="held-list" class="stack">
+      <SectionHeading :title="t('fix.title')" :help="t('fix.help')" />
+      <ResourceState :loading="held.loading.value" :error="held.error.value" :empty="(held.data.value?.blocks ?? []).length === 0" :empty-text="generated ? t('fix.empty') : t('fix.notGenerated')" @retry="held.reload()">
+        <template #empty-actions>
+          <router-link :to="generated ? `/courses/${courseId}/publish` : `/courses/${courseId}/plan#generate`">{{ generated ? t('fix.goPublish') : t('fix.goGenerate') }}</router-link>
+        </template>
+        <div v-if="held.data.value?.batch_quote_usd" class="row">
+          <GuardedButton :label="t('fix.batch', { count: held.data.value.blocks.length, price: usd(held.data.value.batch_quote_usd) })" :loading="working === 'batch'" :reason="lacking('course.generate')" data-testid="fix-batch" @click="rewriteAll" />
+        </div>
+        <p v-if="queue.queued.value" class="chip" data-testid="queued-line">{{ t('op.queuedToast') }}</p>
+        <ul class="plain-list">
+          <li v-for="b in held.data.value?.blocks ?? []" :id="`held-${b.id}`" :key="b.id" class="held-row" data-testid="held-row">
+            <div class="stack">
+              <router-link :to="`/courses/${courseId}/plan`"><strong>{{ b.topic_title }}</strong></router-link>
+              <span>{{ b.hold_reason }}</span>
+              <template v-if="editing === b.id">
+                <label :for="`brief-${b.id}`">{{ t('fix.editLabel') }}</label>
+                <textarea :id="`brief-${b.id}`" v-model="draft" rows="3"></textarea>
+                <span class="hint">{{ t('fix.editHint') }}</span>
+                <div class="row">
+                  <Button :label="t('fix.saveBrief')" size="small" :loading="working === `edit:${b.id}`" :aria-busy="working === `edit:${b.id}`" @click="act(b, 'edit')" />
+                  <Button :label="t('common.cancel')" size="small" severity="secondary" text @click="editing = null" />
+                </div>
+              </template>
+              <div v-else class="row">
+                <GuardedButton :label="t('fix.rewrite')" size="small" :loading="working === `rewrite:${b.id}`" :reason="lacking('course.generate')" @click="act(b, 'rewrite')" />
+                <GuardedButton :label="t('fix.edit')" size="small" severity="secondary" :reason="lacking('course.edit')" @click="startEdit(b)" />
+                <GuardedButton :label="t('fix.accept')" size="small" severity="secondary" :loading="working === `accept:${b.id}`" :reason="lacking('course.edit')" @click="act(b, 'accept')" />
               </div>
-            </template>
-            <div v-else class="row">
-              <Button :label="t('fix.rewrite')" size="small" :loading="working === `rewrite:${b.id}`" :aria-busy="working === `rewrite:${b.id}`" :disabled="!session.can('course.edit')" @click="act(b, 'rewrite')" />
-              <Button :label="t('fix.edit')" size="small" severity="secondary" :disabled="!session.can('course.edit')" @click="startEdit(b)" />
-              <Button :label="t('fix.accept')" size="small" severity="secondary" :loading="working === `accept:${b.id}`" :aria-busy="working === `accept:${b.id}`" :disabled="!session.can('course.edit')" @click="act(b, 'accept')" />
             </div>
-          </div>
-          <blockquote class="passage">
-            <p>{{ b.passage || t('fix.noPassage') }}</p>
-            <cite v-if="b.address" class="mono">{{ b.address }}</cite>
-          </blockquote>
-        </li>
-      </ul>
-    </ResourceState>
+            <blockquote class="passage">
+              <p>{{ b.passage || t('fix.noPassage') }}</p>
+              <cite v-if="b.address" class="mono">{{ b.address }}</cite>
+              <router-link :to="`/courses/${courseId}/sources#sources-list`">{{ t('fix.openSources') }}</router-link>
+            </blockquote>
+          </li>
+        </ul>
+      </ResourceState>
+    </div>
   </CourseHeader>
 </template>

@@ -30,7 +30,7 @@ async function signOut(): Promise<void> {
   <main class="centered stack">
     <section class="state">
       <h1 class="page-title">{{ t('waiting.title') }}</h1>
-      <p>{{ t('waiting.body') }}</p>
+      <p data-testid="page-help">{{ t('waiting.body') }}</p>
       <p v-if="session.me" class="mono">{{ session.me.email }}</p>
       <p v-if="still" role="status" class="muted">{{ t('waiting.stillWaiting') }}</p>
       <div class="row">

@@ -37,6 +37,7 @@ onMounted(() => { if (session.signedIn) void accept() })
 <template>
   <main class="centered stack">
     <h1 class="page-title">{{ t('invite.title') }}</h1>
+    <p class="muted" data-testid="page-help">{{ t('invite.help') }}</p>
     <section v-if="!session.signedIn" class="state" data-view="signin">
       <p>{{ t('invite.signinBody') }}</p>
       <a class="p-button p-component" :href="signinHref" data-testid="invite-signin">{{ t('invite.signin') }}</a>
@@ -44,7 +45,7 @@ onMounted(() => { if (session.signedIn) void accept() })
     <ResourceState v-else :loading="loading" :error="error" :empty="false" @retry="accept">
       <section class="state" data-view="accepted">
         <h2>{{ t('invite.accepted') }}</h2>
-        <p v-if="scopes && scopes.length > 0" class="mono">{{ t('invite.scopes', { scopes: scopes.join(', ') }) }}</p>
+        <p v-if="scopes && scopes.length > 0">{{ t('invite.scopes') }}</p>
         <p v-else>{{ t('invite.noScopes') }}</p>
         <router-link to="/" data-testid="invite-open">{{ t('invite.open') }}</router-link>
       </section>
