@@ -65,19 +65,20 @@ async function publish(): Promise<void> {
 
 <template>
   <CourseHeader ref="header" :course-id="courseId">
-    <template #default="{ course, validation, heldCount }">
+    <template #default="{ course, validation, heldCount, draftCount }">
       <section class="stack">
         <Section id="summary" :title="t('publish.summary')" :help="t('publish.summaryHelp')" />
         <ul class="plain-list" data-testid="publish-summary">
           <li>{{ t('publish.reviewStatus', { status: t(`course.status.${course?.status ?? 'draft'}`) }) }}</li>
           <li>{{ t('publish.topics', { count: t('count.topic', topics) }) }}</li>
           <li>{{ t('publish.held', { count: t('count.block', heldCount) }) }} <router-link v-if="heldCount > 0" :to="`/courses/${courseId}/fix#held-list`">{{ t('publish.fixThem') }}</router-link></li>
+          <li v-if="draftCount > 0" data-testid="publish-unread">{{ t('publish.unread', { count: t('count.block', draftCount) }) }} <router-link :to="`/courses/${courseId}/fix#held-list`">{{ t('publish.fixThem') }}</router-link></li>
           <li>{{ t('publish.questions', { count: t('count.question', validation?.blocking_questions.length ?? 0) }) }}</li>
         </ul>
         <p v-if="course?.published_version_id" class="muted" data-testid="published-note">{{ t('publish.published') }}</p>
         <Section id="publish" :title="t('publish.title')" :help="t('publish.help')" />
         <div class="row">
-          <ActionButton action="publish" :label="t('publish.button')" :reason="firstReason(lacking('course.publish'), heldCount > 0 && t('publish.heldFirst', { count: t('count.block', heldCount) }))" data-testid="publish-open" @click="review = true" />
+          <ActionButton action="publish" :label="t('publish.button')" :reason="firstReason(lacking('course.publish'), heldCount > 0 && t('publish.heldFirst', { count: t('count.block', heldCount) }), draftCount > 0 && t('publish.unreadFirst', { count: t('count.block', draftCount) }))" data-testid="publish-open" @click="review = true" />
           <span id="publish-open" />
         </div>
         <Section id="translate" :title="t('translate.title')" :help="t('translate.help')" />
@@ -101,6 +102,8 @@ async function publish(): Promise<void> {
           <li>{{ t('publish.reviewStatus', { status: t(`course.status.${course?.status ?? 'draft'}`) }) }}</li>
           <li>{{ t('publish.questions', { count: t('count.question', validation?.blocking_questions.length ?? 0) }) }}</li>
           <li>{{ t('publish.reviewVisible') }}</li>
+          <li v-if="(course?.translations ?? []).length > 0" data-testid="publish-translations">{{ t('publish.translationsKept', { languages: (course?.translations ?? []).map((x) => x.language).join(', ') }) }}</li>
+          <li v-for="x in (course?.translations ?? []).filter((y) => y.status !== 'ready')" :key="x.language" class="danger-text" data-testid="publish-translation-warning">{{ t('publish.translationHeld', { language: x.language, held: x.held, failed: x.failed }) }}</li>
         </ul>
       </ConfirmDialog>
     </template>

@@ -22,6 +22,7 @@ export const ENDPOINTS = {
 
 export const userBan = (id: string): string => `${ENDPOINTS.users}/${encodeURIComponent(id)}/ban`
 export const userUnban = (id: string): string => `${ENDPOINTS.users}/${encodeURIComponent(id)}/unban`
+export const userRole = (id: string, name: string): string => `${ENDPOINTS.users}/${encodeURIComponent(id)}/roles/${encodeURIComponent(name)}`
 export const userItem = (id: string): string => `${ENDPOINTS.users}/${encodeURIComponent(id)}`
 export const roleItem = (name: string): string => `${ENDPOINTS.roles}/${encodeURIComponent(name)}`
 export const roleAssign = (name: string): string => `${roleItem(name)}/assign`

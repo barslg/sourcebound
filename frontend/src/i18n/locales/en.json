@@ -166,7 +166,11 @@
     "moreFor": "More actions for {name}",
     "unbanTitle": "Unban {name}?",
     "unbanBody": "{name} can sign in again. Their earlier sessions and invites stay revoked.",
-    "unbanned": "User unbanned"
+    "unbanned": "User unbanned",
+    "removeRole": "Delete role {name}",
+    "removeRoleTitle": "Remove role {role} from {name}?",
+    "removeRoleBody": "The person loses what this role allows, at once. The role itself stays.",
+    "roleRemoved": "Role removed."
   },
   "roles": {
     "title": "Roles",
@@ -465,7 +469,9 @@
     "tabPlan": "Plan",
     "tabs": "Plan sections",
     "addSourceFirst": "Add and approve a source first",
-    "goSources": "Go to Sources"
+    "goSources": "Go to Sources",
+    "regenerateTitle": "Generate the course again?",
+    "regenerateBody": "The course was generated already. Every block of the plan is written and checked again, which costs about {cost}. To change one block only, rewrite it on the What to fix page."
   },
   "run": {
     "title": "Generation run",
@@ -545,7 +551,8 @@
     "notGenerated": "Nothing to fix yet: generate the course first.",
     "openSources": "Open the sources",
     "saveBrief": "Save brief",
-    "typeBrief": "Write the brief to save it."
+    "typeBrief": "Write the brief to save it.",
+    "unread": "Nothing is held, but {count} are still waiting to be read. Generate again to finish them."
   },
   "publish": {
     "title": "Publish",
@@ -567,7 +574,11 @@
     "shareLink": "Create an invite link for this course",
     "summary": "Summary",
     "summaryHelp": "What you are about to publish.",
-    "topics": "Topics: {count}"
+    "topics": "Topics: {count}",
+    "unread": "{count} are written but not read yet.",
+    "unreadFirst": "{count} are not read yet. Finish the generation first.",
+    "translationsKept": "Existing translations ({languages}) are carried over: every block whose source text did not change keeps its translation.",
+    "translationHeld": "Translation {language}: {held} held and {failed} failed blocks. They stay as they are until you translate again."
   },
   "notification": {
     "kind": {
@@ -696,7 +707,8 @@
     "placeholder": "Choose from existing",
     "empty": "No courses or labels exist yet.",
     "courseCount": "{n} courses",
-    "loadError": "The list of courses could not be loaded: {message}"
+    "loadError": "The list of courses could not be loaded: {message}",
+    "unknownCourse": "a course outside your list"
   },
   "translate": {
     "state": {

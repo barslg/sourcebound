@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router'
 import { ApiError, request } from '@/api/client'
 import { courseItem, courseLearner } from '@/api/endpoints'
 import type { CourseDoc, LearnerBlock, LearnerDoc } from '@/api/types'
+import BlockView from '@/components/learner/BlockView.vue'
 import FormField from '@/components/FormField.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ResourceState from '@/components/ResourceState.vue'
@@ -60,8 +61,10 @@ function textOf(block: LearnerBlock): string {
       <ol v-if="doc" class="stack plain-list" data-testid="preview-blocks">
         <li v-for="(block, index) in doc.blocks" :key="block.plan_node_id" class="bell-item stack" data-testid="preview-block" :lang="block.language">
           <strong>{{ t('preview.block', { n: index + 1 }) }}</strong>
-          <p v-if="textOf(block)">{{ textOf(block) }}</p>
-          <p v-else class="muted">{{ t('preview.noText') }}</p>
+          <BlockView :type="block.block_type" :content="block.content">
+            <p v-if="textOf(block)">{{ textOf(block) }}</p>
+            <p v-else class="muted">{{ t('preview.noText') }}</p>
+          </BlockView>
           <p v-if="block.fallback_notice" class="preview-notice" role="note" data-testid="preview-notice">{{ block.fallback_notice }}</p>
         </li>
       </ol>

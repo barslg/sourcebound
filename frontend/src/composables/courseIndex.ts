@@ -26,3 +26,8 @@ export function useCourseIndex() {
 export function coursesForTags(courses: IndexedCourse[], tags: string[]): IndexedCourse[] {
   return courses.filter((c) => c.tags.some((tag) => tags.includes(tag)))
 }
+
+export function scopeTitles(courses: IndexedCourse[], tags: string[], fallback: string): string[] {
+  const titles = coursesForTags(courses, tags).map((c) => c.title)
+  return titles.length > 0 ? titles : tags.length > 0 ? [fallback] : []
+}

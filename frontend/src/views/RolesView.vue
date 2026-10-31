@@ -19,11 +19,13 @@ import PageHeader from '@/components/PageHeader.vue'
 import ResourceState from '@/components/ResourceState.vue'
 import { humanize } from '@/composables/labels'
 import { firstReason, lacking } from '@/composables/reasons'
+import { scopeTitles, useCourseIndex } from '@/composables/courseIndex'
 import { notify } from '@/composables/notify'
 import { useResource } from '@/composables/useResource'
 import { useSessionStore } from '@/stores/session'
 
 const { t } = useI18n()
+const index = useCourseIndex()
 const session = useSessionStore()
 const roles = useResource<Role[]>('roles', (signal) => request<Role[]>(ENDPOINTS.roles, { signal }))
 
@@ -134,7 +136,7 @@ const title = computed(() =>
       <Column :header="t('roles.scope')">
         <template #body="{ data }">
           <span v-if="(data as Role).scope_tags.length === 0" class="muted">{{ t('roles.global') }}</span>
-          <span v-for="tag in (data as Role).scope_tags" :key="tag" class="chip mono">{{ tag }}</span>
+          <span v-for="label in scopeTitles(index.courses.value, (data as Role).scope_tags, t('scope.unknownCourse'))" :key="label" class="chip">{{ label }}</span>
         </template>
       </Column>
       <Column :header="t('common.actions')" class="col-actions">

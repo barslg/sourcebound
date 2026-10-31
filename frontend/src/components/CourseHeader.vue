@@ -78,6 +78,7 @@ defineExpose({ reload })
         <span v-if="course.data.value.translations.length === 0" class="muted">{{ t('course.translationNone') }}</span>
         <StatusChip v-for="tr in course.data.value.translations" :key="tr.language" :tone="translationTone(tr)" :label="translationLabel(tr)" :data-testid="`translation-${tr.language}`" :data-state="translationState(tr)" />
         <ActionButton action="preview" size="small" :reason="previewDenied" data-testid="preview-link" @click="router.push(`/courses/${id}/preview`)" />
+        <router-link :to="`/courses/${id}/runs`" data-testid="runs-link">{{ t('runs.link') }}</router-link>
       </div>
       <ol class="stage-strip" :aria-label="t('course.stages')">
         <li v-for="s in strip" :key="s.id">
@@ -94,6 +95,6 @@ defineExpose({ reload })
         <strong v-else>{{ t(action.key) }}</strong>
       </div>
     </div>
-    <slot :course="course.data.value" :validation="validation.data.value" :reload="course.reload" :reload-validation="validation.reload" :held-count="held.data.value?.blocks.length ?? 0" />
+    <slot :course="course.data.value" :validation="validation.data.value" :reload="course.reload" :reload-validation="validation.reload" :held-count="held.data.value?.blocks.length ?? 0" :draft-count="course.data.value?.draft_count ?? 0" />
   </ResourceState>
 </template>

@@ -23,7 +23,9 @@ import StatusChip from '@/components/StatusChip.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ResourceState from '@/components/ResourceState.vue'
 import { firstReason, lacking } from '@/composables/reasons'
-import { notify } from '@/composables/notify'
+import { scopeTitles, useCourseIndex } from '@/composables/courseIndex'
+import { userRole } from '@/api/endpoints'
+import { notify, notifyError } from '@/composables/notify'
 import { useResource } from '@/composables/useResource'
 import { useUrlParam } from '@/composables/useUrlState'
 import { useSessionStore } from '@/stores/session'
@@ -67,6 +69,20 @@ const reason = ref('')
 const heirId = ref<string | null>(null)
 const legacy = ref(false)
 const roles = ref<Role[]>([])
+const index = useCourseIndex()
+const removing = ref<{ user: UserRow; role: string } | null>(null)
+async function removeRole(): Promise<void> {
+  const target = removing.value
+  if (!target) return
+  try {
+    await request(userRole(target.user.id, target.role), { method: 'DELETE' })
+    notify('success', t('users.roleRemoved'))
+    removing.value = null
+    await users.reload(true)
+  } catch (cause) {
+    notifyError(cause)
+  }
+}
 
 function nameOf(u: UserRow): string {
   return u.display_name || u.email
@@ -176,7 +192,10 @@ function menuFor(u: UserRow): RowMenuItem[] {
         <Column :header="t('users.roles')">
           <template #body="{ data }">
             <NoValue v-if="((data as UserRow).roles ?? []).length === 0" />
-            <router-link v-for="g in (data as UserRow).roles ?? []" :key="g.name" class="chip" :to="`/roles#role-${g.name}`">{{ g.name }}<template v-if="g.scope_tags.length > 0"> ({{ g.scope_tags.join(', ') }})</template></router-link>
+            <span v-for="g in (data as UserRow).roles ?? []" :key="g.name" class="chip" data-testid="role-chip">
+              <router-link :to="`/roles#role-${g.name}`">{{ g.name }}<template v-if="g.scope_tags.length > 0"> ({{ scopeTitles(index.courses.value, g.scope_tags, t('scope.unknownCourse')).join(', ') }})</template></router-link>
+              <ActionButton action="delete" icon-only size="small" :label="t('users.removeRole', { name: g.name })" :reason="lacking('role.assign')" data-testid="role-remove" @click="removing = { user: data as UserRow, role: g.name }" />
+            </span>
           </template>
         </Column>
         <Column :header="t('users.status')">
@@ -216,6 +235,7 @@ function menuFor(u: UserRow): RowMenuItem[] {
     </form>
   </AppDialog>
 
+  <ConfirmDialog :visible="removing !== null" :title="t('users.removeRoleTitle', { role: removing?.role ?? '', name: removing ? nameOf(removing.user) : '' })" :body="t('users.removeRoleBody')" action="delete" :label="t('users.removeRole', { name: removing?.role ?? '' })" @update:visible="(v: boolean) => { if (!v) removing = null }" @confirm="removeRole" />
   <ConfirmDialog :visible="mode === 'ban'" :title="dialogTitle" :body="t('users.banBody')" action="ban" :label="t('users.ban')" :busy="busy" :error="formError" :blocked-reason="canSubmit ? null : t('users.typeReason')" @update:visible="closeIf" @confirm="submit">
     <FormField id="ban-reason" :label="t('users.banReason')" :help="t('users.banReasonHint')" required :error="reason.trim().length === 0 ? t('form.isRequired') : null">
       <Textarea id="ban-reason" v-model="reason" rows="3" maxlength="1000" />

@@ -25,6 +25,7 @@ const header = ref<InstanceType<typeof CourseHeader> | null>(null)
 const held = useResource<HeldDoc>(`held:${courseId.value}`, (signal) => request<HeldDoc>(courseHeld(courseId.value), { signal }))
 const plan = useResource<PlanTree>(`plan:${courseId.value}`, (signal) => request<PlanTree>(coursePlan(courseId.value), { signal }))
 const generated = computed(() => (plan.data.value?.modules ?? []).some((m) => m.topics.some((x) => x.blocks.some((b) => b.status !== 'draft'))))
+const unread = computed(() => (plan.data.value?.modules ?? []).flatMap((m) => m.topics.flatMap((x) => x.blocks)).filter((b) => b.status === 'draft').length)
 const working = ref<string | null>(null)
 const editing = ref<string | null>(null)
 const draft = ref('')
@@ -67,9 +68,9 @@ function startEdit(block: HeldBlock): void {
   <CourseHeader ref="header" :course-id="courseId">
     <div id="held-list" class="stack">
       <Section :title="t('fix.title')" :help="t('fix.help')" />
-      <ResourceState :loading="held.loading.value" :error="held.error.value" :empty="(held.data.value?.blocks ?? []).length === 0" :empty-text="generated ? t('fix.empty') : t('fix.notGenerated')" @retry="held.reload()">
+      <ResourceState :loading="held.loading.value" :error="held.error.value" :empty="(held.data.value?.blocks ?? []).length === 0" :empty-text="!generated ? t('fix.notGenerated') : unread > 0 ? t('fix.unread', { count: t('count.block', unread) }) : t('fix.empty')" @retry="held.reload()">
         <template #empty-actions>
-          <router-link :to="generated ? `/courses/${courseId}/publish` : `/courses/${courseId}/plan#generate`">{{ generated ? t('fix.goPublish') : t('fix.goGenerate') }}</router-link>
+          <router-link :to="generated && unread === 0 ? `/courses/${courseId}/publish` : `/courses/${courseId}/plan#generate`" data-testid="fix-exit">{{ generated && unread === 0 ? t('fix.goPublish') : t('fix.goGenerate') }}</router-link>
         </template>
         <div v-if="held.data.value?.batch_quote_usd" class="row">
           <ActionButton action="rewrite" :label="t('fix.batch', { count: held.data.value.blocks.length, price: usd(held.data.value.batch_quote_usd) })" :loading="working === 'batch'" :reason="lacking('course.generate')" data-testid="fix-batch" @click="rewriteAll" />

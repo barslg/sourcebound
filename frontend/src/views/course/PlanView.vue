@@ -59,6 +59,8 @@ const confirmDelete = ref(false)
 const leaveAsk = ref<((ok: boolean) => void) | null>(null)
 const generating = ref(false)
 const generateOp = ref<string | null>(null)
+const confirmRegenerate = ref(false)
+const alreadyGenerated = computed(() => (plan.data.value?.modules ?? []).some((m) => m.topics.some((x) => x.blocks.some((b) => b.status !== 'draft'))))
 const narrow = ref(false)
 const tab = ref<'plan' | 'before'>('plan')
 let media: MediaQueryList | null = null
@@ -287,7 +289,7 @@ onBeforeUnmount(() => {
             <p data-testid="forecast">{{ t('plan.forecastLine', { blocks: t('count.block', estimate.data.value?.blocks ?? 0), cost: usd(estimate.data.value?.cost_usd ?? '0') }) }}</p>
           </ResourceState>
           <Section id="generate" :title="t('plan.generateTitle')" :help="t('plan.generateHelp')" />
-          <ActionButton action="generate" :label="t('plan.generate')" :loading="generating" :reason="firstReason(lacking('run.start'), dirty && t('plan.saveFirst'), validation && !validation.can_generate && t('plan.questionsOpen'), noSources && t('plan.addSourceFirst'), genQueue.queued.value && t('plan.alreadyQueued'))" data-testid="generate" @click="generate" />
+          <ActionButton action="generate" :label="t('plan.generate')" :loading="generating" :reason="firstReason(lacking('run.start'), dirty && t('plan.saveFirst'), validation && !validation.can_generate && t('plan.questionsOpen'), noSources && t('plan.addSourceFirst'), genQueue.queued.value && t('plan.alreadyQueued'))" data-testid="generate" @click="alreadyGenerated ? (confirmRegenerate = true) : generate()" />
           <router-link v-if="noSources" :to="`/courses/${courseId}/sources`" data-testid="go-sources-generate">{{ t('plan.goSources') }}</router-link>
           <Queued v-if="genQueue.queued.value" />
           <router-link v-if="runId" :to="`/runs/${runId}`" data-testid="open-run">{{ t('plan.openRun') }}</router-link>
@@ -311,6 +313,7 @@ onBeforeUnmount(() => {
           </template>
         </aside>
       </div>
+      <ConfirmDialog v-model:visible="confirmRegenerate" :title="t('plan.regenerateTitle')" :body="t('plan.regenerateBody', { cost: usd(estimate.data.value?.cost_usd ?? '0') })" action="generate" :label="t('plan.generate')" :solid="false" @confirm="() => { confirmRegenerate = false; void generate() }" />
       <ConfirmDialog v-model:visible="confirmDelete" :title="t('plan.deleteTitle', { name: selectedTitle })" :body="t('plan.deleteBody', { name: selectedTitle })" action="delete" :label="t('plan.deleteButton')" @confirm="removeSelected" />
       <AppDialog :visible="leaveAsk !== null" :closable="false" :header="t('common.unsavedTitle')" size="sm">
         <p>{{ t('common.unsavedBody') }}</p>

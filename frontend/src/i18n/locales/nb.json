@@ -166,7 +166,11 @@
     "moreFor": "Flere handlinger for {name}",
     "unbanTitle": "Oppheve utestengelsen av {name}?",
     "unbanBody": "{name} kan logge inn igjen. Tidligere økter og invitasjoner forblir trukket tilbake.",
-    "unbanned": "Utestengelsen er opphevet"
+    "unbanned": "Utestengelsen er opphevet",
+    "removeRole": "Slett rollen {name}",
+    "removeRoleTitle": "Fjerne rollen {role} fra {name}?",
+    "removeRoleBody": "Personen mister det rollen gir, med en gang. Selve rollen blir stående.",
+    "roleRemoved": "Rollen er fjernet."
   },
   "roles": {
     "title": "Roller",
@@ -465,7 +469,9 @@
     "tabPlan": "Plan",
     "tabs": "Planseksjoner",
     "addSourceFirst": "Legg til og godkjenn en kilde først",
-    "goSources": "Gå til Kilder"
+    "goSources": "Gå til Kilder",
+    "regenerateTitle": "Generere kurset på nytt?",
+    "regenerateBody": "Kurset er allerede generert. Hver blokk i planen skrives og sjekkes på nytt, noe som koster omtrent {cost}. For å endre bare én blokk, skriv den om på siden Hva som må rettes."
   },
   "run": {
     "title": "Genereringskjøring",
@@ -545,7 +551,8 @@
     "notGenerated": "Ingenting å rette ennå: lag kurset først.",
     "openSources": "Åpne kildene",
     "saveBrief": "Lagre oppgave",
-    "typeBrief": "Skriv oppdraget for å lagre."
+    "typeBrief": "Skriv oppdraget for å lagre.",
+    "unread": "Ingenting er holdt tilbake, men {count} venter fortsatt på lesing. Generer på nytt for å fullføre."
   },
   "publish": {
     "title": "Publiser",
@@ -567,7 +574,11 @@
     "shareLink": "Opprett en invitasjonslenke for dette kurset",
     "summary": "Oppsummering",
     "summaryHelp": "Det du er i ferd med å publisere.",
-    "topics": "Temaer: {count}"
+    "topics": "Temaer: {count}",
+    "unread": "{count} er skrevet, men ikke lest ennå.",
+    "unreadFirst": "{count} er ikke lest ennå. Fullfør genereringen først.",
+    "translationsKept": "Eksisterende oversettelser ({languages}) tas med: hver blokk hvis kildetekst ikke er endret beholder oversettelsen.",
+    "translationHeld": "Oversettelse {language}: {held} holdt tilbake og {failed} mislykkede blokker. De blir stående til du oversetter på nytt."
   },
   "notification": {
     "kind": {
@@ -696,7 +707,8 @@
     "placeholder": "Velg blant eksisterende",
     "empty": "Ingen kurs eller merker finnes ennå.",
     "courseCount": "{n} kurs",
-    "loadError": "Kurslisten kunne ikke lastes: {message}"
+    "loadError": "Kurslisten kunne ikke lastes: {message}",
+    "unknownCourse": "et kurs utenfor listen din"
   },
   "translate": {
     "state": {
