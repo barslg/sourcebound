@@ -310,11 +310,18 @@ def kind_difference(
 
     None when the kind cannot be decided on this pair. Language-neutral
     vocabularies cover en/nb/uk; used on the SOURCE pair and again on
-    the translated pair.
+    the translated pair. A negation shows when the pair differs by an odd
+    number of negations; the translated pair must keep the source's
+    difference, so a double negation (which cancels) is not an error.
     """
     glossary = glossary or {}
     if kind == "negation":
-        return _count_in(planted, _NEGATIONS) != _count_in(partner, _NEGATIONS)
+        delta = _count_in(planted, _NEGATIONS) - _count_in(partner, _NEGATIONS)
+        if source_pair is None:
+            return delta % 2 == 1
+        return delta == _count_in(source_pair[0], _NEGATIONS) - _count_in(
+            source_pair[1], _NEGATIONS
+        )
     if kind == "scope":
         p = sorted(t for t in _tokens(planted) if t in _SCOPE)
         q = sorted(t for t in _tokens(partner) if t in _SCOPE)
