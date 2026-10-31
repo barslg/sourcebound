@@ -1,7 +1,7 @@
 """Migration round trips (permanent): upgrade, downgrade and upgrade again on the test database.
 
 One section per migration; the data-bearing ones (0014 orphans, 0015 rows kept,
-0017 cascade, 0018 status map) carry rows through the downgrade.
+0017 cascade, 0018 status map, 0019 pins) carry rows through the downgrade.
 """
 
 from __future__ import annotations
@@ -529,7 +529,7 @@ def test_0017_user_delete_cascades_answers_and_downgrade_drops_only_the_table() 
     before = set(_harness_tables(url))
     command.downgrade(_cfg(url), "0016")
     after = set(_harness_tables(url))
-    assert before - after == {"learner_answers"}
+    assert before - after == {"learner_answers", "learner_block_views"}
     command.upgrade(_cfg(url), "head")
     assert "learner_answers" in _harness_tables(url)
     with psycopg.connect(_m0017_sync(url), autocommit=True) as conn:
@@ -568,3 +568,76 @@ def test_0018_allows_generated_and_downgrade_turns_it_into_draft() -> None:
     with psycopg.connect(_m0018_sync(url), autocommit=True) as conn:
         conn.execute("DELETE FROM courses WHERE title = 'm18'")
         conn.execute("DELETE FROM users WHERE email = 'm18-owner@example.com'")
+
+
+def test_0019_pins_cascade_and_downgrade_drops_only_the_two_additions() -> None:
+    url = _db_url()
+    require_postgres(url)
+    command.upgrade(_cfg(url), "head")
+    sync = _sync_url(url)
+    with psycopg.connect(sync, autocommit=True) as conn:
+        user = conn.execute(
+            "INSERT INTO users (email, display_name) VALUES ('m19@example.com', 'M')"
+            " ON CONFLICT (email) DO UPDATE SET display_name = 'M' RETURNING id"
+        ).fetchone()[0]  # type: ignore[index]
+        course = conn.execute(
+            "INSERT INTO courses (owner_id, title) VALUES (%s, 'm19') RETURNING id", (user,)
+        ).fetchone()[0]  # type: ignore[index]
+        module = conn.execute(
+            "INSERT INTO modules (course_id, ordinal, title) VALUES (%s, 0, 'm') RETURNING id",
+            (course,),
+        ).fetchone()[0]  # type: ignore[index]
+        topic = conn.execute(
+            "INSERT INTO topics (module_id, ordinal, kind, title, plan_node_id)"
+            " VALUES (%s, 0, 'lesson', 't', gen_random_uuid()::text) RETURNING id",
+            (module,),
+        ).fetchone()[0]  # type: ignore[index]
+        block = conn.execute(
+            "INSERT INTO blocks (topic_id, plan_node_id, ordinal, role, block_type, brief)"
+            " VALUES (%s, gen_random_uuid()::text, 0, 'check', 'choice', 'b') RETURNING id",
+            (topic,),
+        ).fetchone()[0]  # type: ignore[index]
+        version = conn.execute(
+            "INSERT INTO block_versions (block_id, version_no, content) VALUES (%s, 1, '{}')"
+            " RETURNING id",
+            (block,),
+        ).fetchone()[0]  # type: ignore[index]
+        conn.execute("UPDATE blocks SET accepted_version_id = %s WHERE id = %s", (version, block))
+        conn.execute("DELETE FROM block_versions WHERE id = %s", (version,))
+        pinned = conn.execute(
+            "SELECT accepted_version_id FROM blocks WHERE id = %s", (block,)
+        ).fetchone()[0]  # type: ignore[index]
+        assert pinned is None, "a deleted version unpins the accept"
+    command.downgrade(_cfg(url), "0018")
+    with psycopg.connect(sync, autocommit=True) as conn:
+        assert (
+            conn.execute("SELECT count(*) FROM blocks WHERE id = %s", (block,)).fetchone()[0] == 1  # type: ignore[index]
+        )
+        columns = {
+            row[0]
+            for row in conn.execute(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'blocks'"
+            ).fetchall()
+        }
+        assert "accepted_version_id" not in columns
+        assert "learner_block_views" not in {
+            row[0]
+            for row in conn.execute(
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+            ).fetchall()
+        }
+    command.upgrade(_cfg(url), "head")
+    with psycopg.connect(sync, autocommit=True) as conn:
+        learner = conn.execute(
+            "INSERT INTO users (email, display_name) VALUES ('m19-learner@example.com', 'L')"
+            " ON CONFLICT (email) DO UPDATE SET display_name = 'L' RETURNING id"
+        ).fetchone()[0]  # type: ignore[index]
+        conn.execute(
+            "INSERT INTO learner_block_views (user_id, block_id, language) VALUES (%s, %s, 'nb')",
+            (learner, block),
+        )
+        conn.execute("DELETE FROM users WHERE id = %s", (learner,))
+        left = conn.execute("SELECT count(*) FROM learner_block_views").fetchone()[0]  # type: ignore[index]
+        assert left == 0, "deleting the learner deletes the served-language rows"
+        conn.execute("DELETE FROM courses WHERE title = 'm19'")
+        conn.execute("DELETE FROM users WHERE email = 'm19@example.com'")
