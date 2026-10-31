@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Response
@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 
 from app.auth.ctx import RequestContext, get_ctx, require_auth
 from app.controllers import t02 as controller
+from app.routes.ids import operation_id_param
 from app.schemas import t02 as dto
 
 invites_accept_router = APIRouter(prefix="/invites", tags=["invites"])
@@ -68,7 +69,7 @@ async def submit_echo(
 
 @operations_router.get("/{operation_id}", response_model=dto.OperationResponse)
 async def get_operation(
-    operation_id: str,
+    operation_id: Annotated[str, Depends(operation_id_param)],
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dto.OperationResponse:
     """One operation for its owner; anyone else's answers 404."""

@@ -455,7 +455,10 @@ async def read_tree(session: AsyncSession, *, course_id: UUID) -> dict[str, Any]
                     sa.text(
                         "SELECT b.id, b.plan_node_id, b.role, b.block_type, b.brief,"
                         " b.status, b.hold_reason, bv.content FROM blocks b"
-                        " LEFT JOIN block_versions bv ON bv.id = b.current_version_id"
+                        " LEFT JOIN block_versions bv ON bv.id = ("
+                        " SELECT id FROM block_versions WHERE block_id = b.id"
+                        " AND content -> 'source_handles' IS NOT NULL"
+                        " ORDER BY version_no DESC LIMIT 1)"
                         " WHERE b.topic_id = :topic ORDER BY b.ordinal"
                     ),
                     {"topic": str(topic[0])},

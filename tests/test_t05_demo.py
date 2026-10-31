@@ -74,11 +74,13 @@ async def _verify_demo(
             )
         }
         for citation in citations:
-            pid = handle_to_id.get(str(citation["passage_id"]), str(citation["passage_id"]))
+            _handle = str(citation.get("passage_id", citation.get("handle", "")))
+            pid = handle_to_id.get(_handle, _handle)
             assert pid in by_id, f"block {node_id} cites no passage"
         quoted = []
         for item in citations:
-            text = by_id[handle_to_id.get(str(item["passage_id"]), str(item["passage_id"]))]
+            _h = str(item.get("passage_id", item.get("handle", "")))
+            text = by_id[handle_to_id.get(_h, _h)]
             start = text.index(item["quote"])
             quoted.append(
                 {

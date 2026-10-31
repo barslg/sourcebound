@@ -34,11 +34,11 @@ def build_reader_prompt(
     blocks: list[dict[str, Any]] | None = None,
 ) -> str:
     """Full reader prompt with the binding prefix order."""
-    from app.agents.generate_block import ordered_sources
+    from app.agents.generate_block import public_sources
 
     system = system_prompt("reader")
     dynamic = "\n\n## Approved sources\n" + json.dumps(
-        {"course_language": course_language, "sources": ordered_sources(list(sources or []))},
+        {"course_language": course_language, "sources": public_sources(list(sources or []))},
         ensure_ascii=False,
         sort_keys=True,
     )
@@ -81,6 +81,9 @@ def check_reader_output(payload: dict[str, Any], *, node_ids: set[str]) -> list[
                 errors.append(f"verdicts[{position}]: {required} verdict must be pass/hold/unknown")
             if not str(item.get("evidence", "")).strip():
                 errors.append(f"verdicts[{position}]: {required}: evidence is required")
+    judged = {str(v.get("plan_node_id", "")) for v in verdicts if isinstance(v, dict)}
+    for node_id in sorted(node_ids - judged):
+        errors.append(f"no verdict for block {node_id!r}: every block must be judged")
     return errors
 
 

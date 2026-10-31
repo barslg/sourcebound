@@ -13,22 +13,25 @@ from __future__ import annotations
 
 
 def test_merrill_prescription_branches_by_bloom_and_data() -> None:
-    from app.course.methodologies import expand_merrill, methodology_codes
+    # expand_merrill was deleted in T05c: it had no production caller.
+    # The Merrill block plan lives in the registry prescription the
+    # compiler and architect actually read.
+    from app.course.methodologies import METHODOLOGIES, methodology_codes
 
     codes = methodology_codes()
     assert "merrill_first_principles" in codes
     assert "backward_design" in codes
     assert "kolb_experiential" in codes
-    low = expand_merrill(topic_kind="lesson", bloom_target="remember", has_data=False)
-    assert ("teach", "choice") in low
-    assert ("teach", "reading") in low
-    assert not any(block == "figure" for _, block in low)
-    high_data = expand_merrill(topic_kind="lesson", bloom_target="apply", has_data=True)
-    assert ("teach", "figure") in high_data
-    assert ("practice", "scenario_practice") in high_data
-    assert ("practice", "spot_the_error") in high_data
-    test_topic = expand_merrill(topic_kind="module_test", bloom_target="apply", has_data=True)
-    kinds = [block for _, block in test_topic]
+    merrill = next(e for e in METHODOLOGIES if e["code"] == "merrill_first_principles")
+    blocks = merrill["prescription"]["lesson_blocks"]
+    assert blocks["activation"] == [["teach", "choice"]]
+    assert blocks["demonstration"] == [["teach", "reading"]]
+    assert ["teach", "figure"] in blocks["demonstration_data"]
+    assert ["practice", "cloze"] in blocks["application_low"]
+    assert ["practice", "scenario_practice"] in blocks["application_high"]
+    assert blocks["integration"] == [["practice", "spot_the_error"]]
+    test_blocks = merrill["prescription"]["module_test_blocks"]
+    kinds = [block_type for _, block_type in test_blocks]
     assert kinds.count("spot_the_error") == 1
     assert "choice" in kinds and "matching" in kinds
 
@@ -236,21 +239,14 @@ def test_spot_the_error_single_sentence_and_partial_credit() -> None:
 
 
 def test_planted_rows_excluded_and_teacher_report_counts() -> None:
-    from app.course.errorspot import is_excluded_from, teacher_report
+    # teacher_report was deleted in T05c: no production caller exists
+    # until the T06 learner surface lands its attempts table.
+    from app.course.errorspot import is_excluded_from
 
     row = {"planted": True}
     for store in ("search", "retrieval_pair", "tutor_retrieval", "translation_memory"):
         assert is_excluded_from(row, store) is True
     assert is_excluded_from({"planted": False}, "search") is False
-    report = teacher_report(
-        [
-            {"kind": "negation", "hit": True},
-            {"kind": "negation", "hit": False, "false_alarm": True},
-            {"kind": "scope", "hit": True},
-        ]
-    )
-    assert report["negation"] == {"hits": 1, "false_alarms": 1}
-    assert report["scope"] == {"hits": 1, "false_alarms": 0}
 
 
 def test_wrong_language_block_held_and_glossary_per_language() -> None:

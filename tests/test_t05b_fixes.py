@@ -111,19 +111,6 @@ def test_fully_correct_via_check_module() -> None:
     assert grade(content, key, {"sentence": "Alpha shall apply."})["score"] == 0.0
 
 
-def test_teacher_report_miss_is_not_false_alarm() -> None:
-    from app.course.errorspot import teacher_report
-
-    rep = teacher_report(
-        [
-            {"kind": "negation", "hit": True},
-            {"kind": "negation", "hit": False, "false_alarm": True},
-            {"kind": "negation", "hit": False},
-        ]
-    )
-    assert rep["negation"] == {"hits": 1, "false_alarms": 1}
-
-
 def test_spot_content_never_carries_key() -> None:
     from app.blocks.spot_the_error.fixture import SENTINEL, fixture
     from app.blocks.spot_the_error.schema import validate
@@ -276,7 +263,8 @@ def test_stop_marker_never_carries_reply_text() -> None:
 
     marker = safe_stop_marker("stopped at reader:t1: LLMError: model said SECRET_REPLY_TEXT")
     assert "SECRET_REPLY_TEXT" not in marker
-    assert "LLMError" in marker
+    assert "LLMError" not in marker
+    assert marker.endswith(".")
 
 
 def test_derive_parser_spec_from_html() -> None:

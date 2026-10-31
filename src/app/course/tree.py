@@ -13,6 +13,9 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.blocks.registry import BLOCK_TYPES as REGISTRY_BLOCK_TYPES
+from app.course.errorspot import MUTATION_KINDS
+
 ROLES = ("teach", "example", "check", "practice", "test")
 QUESTION_ROLES = frozenset({"check", "practice", "test"})
 TOPIC_KINDS = ("lesson", "module_test")
@@ -309,7 +312,10 @@ ARCHITECT_SCHEMA: dict[str, Any] = _strict_object(
                                                     "test",
                                                 ],
                                             },
-                                            "block_type": _string(),
+                                            "block_type": {
+                                                "type": "string",
+                                                "enum": sorted(REGISTRY_BLOCK_TYPES),
+                                            },
                                             "brief": _string(),
                                             "source_refs": {
                                                 "type": "array",
@@ -367,7 +373,7 @@ LIBRARIAN_SCHEMA: dict[str, Any] = _strict_object(
 
 GENERATOR_SCHEMA: dict[str, Any] = _strict_object(
     {
-        "block_type": _string(),
+        "block_type": {"type": "string", "enum": sorted(REGISTRY_BLOCK_TYPES)},
         "text": _string(),
         "citations": {
             "type": "array",
@@ -384,14 +390,25 @@ _CITATIONS = {
 
 BLOCK_GENERATOR_SCHEMAS: dict[str, dict[str, Any]] = {
     "reading": _strict_object(
-        {"block_type": _string(), "text": _string(), "citations": _CITATIONS, "answer": _string()}
+        {
+            "block_type": {"type": "string", "enum": sorted(REGISTRY_BLOCK_TYPES)},
+            "text": _string(),
+            "citations": _CITATIONS,
+            "answer": _string(),
+        }
     ),
     "figure": _strict_object(
-        {"block_type": _string(), "text": _string(), "citations": _CITATIONS, "answer": _string()}
+        {
+            "block_type": {"type": "string", "enum": sorted(REGISTRY_BLOCK_TYPES)},
+            "text": _string(),
+            "citations": _CITATIONS,
+            "answer": _string(),
+            "numbers": {"type": "array", "items": {"type": "number"}},
+        }
     ),
     "choice": _strict_object(
         {
-            "block_type": _string(),
+            "block_type": {"type": "string", "enum": sorted(REGISTRY_BLOCK_TYPES)},
             "text": _string(),
             "citations": _CITATIONS,
             "answer": _string(),
@@ -403,7 +420,7 @@ BLOCK_GENERATOR_SCHEMAS: dict[str, dict[str, Any]] = {
     ),
     "matching": _strict_object(
         {
-            "block_type": _string(),
+            "block_type": {"type": "string", "enum": sorted(REGISTRY_BLOCK_TYPES)},
             "text": _string(),
             "citations": _CITATIONS,
             "answer": _string(),
@@ -415,7 +432,7 @@ BLOCK_GENERATOR_SCHEMAS: dict[str, dict[str, Any]] = {
     ),
     "cloze": _strict_object(
         {
-            "block_type": _string(),
+            "block_type": {"type": "string", "enum": sorted(REGISTRY_BLOCK_TYPES)},
             "text": _string(),
             "citations": _CITATIONS,
             "answer": _string(),
@@ -424,7 +441,7 @@ BLOCK_GENERATOR_SCHEMAS: dict[str, dict[str, Any]] = {
     ),
     "scenario_practice": _strict_object(
         {
-            "block_type": _string(),
+            "block_type": {"type": "string", "enum": sorted(REGISTRY_BLOCK_TYPES)},
             "text": _string(),
             "citations": _CITATIONS,
             "answer": _string(),
@@ -438,7 +455,7 @@ BLOCK_GENERATOR_SCHEMAS: dict[str, dict[str, Any]] = {
     ),
     "spot_the_error": _strict_object(
         {
-            "block_type": _string(),
+            "block_type": {"type": "string", "enum": sorted(REGISTRY_BLOCK_TYPES)},
             "text": _string(),
             "citations": _CITATIONS,
             "answer": _string(),
@@ -484,7 +501,7 @@ READER_SCHEMA: dict[str, Any] = _strict_object(
 SABOTEUR_SCHEMA: dict[str, Any] = _strict_object(
     {
         "sentence": _string(),
-        "kind": _string(),
+        "kind": {"type": "string", "enum": sorted(MUTATION_KINDS)},
         "mutated": _string(),
     }
 )

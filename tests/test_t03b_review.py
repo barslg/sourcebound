@@ -1226,6 +1226,10 @@ async def test_step_keys_are_agent_plan_node(t03_session: AsyncSession) -> None:
 
     user = await _user(t03_session, "keys")
     course = await _course(t03_session, user, title="Keys")
+    # T05c item 12a: submit_plan refuses a course with 0 approved passages
+    await _text_source(
+        t03_session, _settings(), user, course, "Providers shall ensure AI literacy."
+    )
     actor = _actor(user, frozenset({"run.start", "operation.run", "course.edit", "course.plan"}))
     operation_id = await planruns.submit_plan(
         t03_session, actor=actor, course_id=course, queries=["first", "second"], defer=None
@@ -1309,7 +1313,11 @@ async def test_code_error_stops_run_with_marker(t03_session: AsyncSession) -> No
         handlers={"boom": boom},
     )
     assert final["status"] == "stopped"
-    assert "ValidationError" in (final["stop_marker"] or "")
+    # T05c item 12d: the marker is a plain sentence; the exception
+    # class stays in run_steps.error only.
+    assert "ValidationError" not in (final["stop_marker"] or "")
+    assert (final["stop_marker"] or "").endswith(".")
+    assert "ValidationError" in (final["steps"][0]["error"] or "")
     assert final["steps"][0]["status"] == "failed"
 
 

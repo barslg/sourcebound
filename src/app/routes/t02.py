@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Response
 
 from app.auth.ctx import RequestContext, get_ctx
 from app.controllers import t02 as controller
+from app.routes.ids import invite_id_param, notification_id_param, user_id_param
 from app.schemas import t02 as dto
 
 users_router = APIRouter(prefix="/users", tags=["users"])
@@ -23,7 +26,7 @@ async def list_users(ctx: RequestContext = Depends(get_ctx)) -> list[dto.UserRes
 
 @users_router.post("/{user_id}/ban")
 async def ban_user(
-    user_id: str,
+    user_id: Annotated[str, Depends(user_id_param)],
     body: dto.BanRequest,
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, bool]:
@@ -34,7 +37,7 @@ async def ban_user(
 
 @users_router.delete("/{user_id}")
 async def delete_user(
-    user_id: str,
+    user_id: Annotated[str, Depends(user_id_param)],
     heir_id: str | None = None,
     legacy: bool = False,
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
@@ -101,7 +104,7 @@ async def revoke_role(
 
 @users_router.delete("/{user_id}/roles/{name}")
 async def revoke_user_role(
-    user_id: str,
+    user_id: Annotated[str, Depends(user_id_param)],
     name: str,
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, bool]:
@@ -126,7 +129,10 @@ async def create_invite(
 
 
 @invites_router.post("/{invite_id}/revoke")
-async def revoke_invite(invite_id: str, ctx: RequestContext = Depends(get_ctx)) -> dict[str, bool]:  # noqa: B008 - FastAPI dependency injection idiom
+async def revoke_invite(
+    invite_id: Annotated[str, Depends(invite_id_param)],
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, bool]:
     """Revoke an invite link by id (what GET /invites returns)."""
     await controller.revoke_invite(ctx, invite_id=invite_id)
     return {"ok": True}
@@ -150,7 +156,7 @@ async def list_notifications(
 
 @notifications_router.post("/{notification_id}/read")
 async def mark_notification_read(
-    notification_id: str,
+    notification_id: Annotated[str, Depends(notification_id_param)],
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, bool]:
     """Mark one of the caller's notifications as read."""

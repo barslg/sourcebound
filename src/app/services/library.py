@@ -226,6 +226,8 @@ def detect_language(text: str) -> str:
     best = max(scores, key=lambda lang: scores[lang])
     if scores[best] == 0:
         return "en"
+    if list(scores.values()).count(scores[best]) > 1:
+        return "unknown"
     return best
 
 
@@ -250,7 +252,7 @@ def ts_config_for_passage(text: str, override: str | None = None) -> str:
         if override not in TS_CONFIG_BY_LANGUAGE.values():
             raise ValidationError(f"unsupported ts_config: {override}")
         return override
-    return TS_CONFIG_BY_LANGUAGE[detect_language(text)]
+    return TS_CONFIG_BY_LANGUAGE.get(detect_language(text), "english")
 
 
 async def bind_source_to_course(session: AsyncSession, *, course_id: UUID, source_id: UUID) -> None:
@@ -481,12 +483,15 @@ async def ingest_passages(
     `ts_config` is a stored per-passage override; without one the
     language is detected per passage by code heuristics (en/nb/uk).
     """
+    from app.course.errorspot import is_content_text
+
     count = 0
     for passage in passages:
         await session.execute(
             sa.text(
-                "INSERT INTO passages (source_id, text, address, address_key, ts_config)"
-                " VALUES (:source, :text, CAST(:address AS jsonb), :key, :cfg)"
+                "INSERT INTO passages (source_id, text, address, address_key, ts_config,"
+                " is_content)"
+                " VALUES (:source, :text, CAST(:address AS jsonb), :key, :cfg, :content)"
                 " ON CONFLICT (source_id, address_key) DO NOTHING"
             ),
             {
@@ -495,6 +500,7 @@ async def ingest_passages(
                 "address": json.dumps(passage["address"]),
                 "key": passage["address_key"],
                 "cfg": ts_config_for_passage(passage["text"], ts_config),
+                "content": bool(passage.get("is_content", is_content_text(passage["text"]))),
             },
         )
         count += 1

@@ -35,7 +35,73 @@ _HABITS = {
     "bad_citation": "Open the citation before trusting the claim.",
 }
 
-_ARTICLE_REF = re.compile(r"(Article|Art\.|§|paragraph|para\.?)\s*\d+", re.IGNORECASE)
+_ARTICLE_REF = re.compile(
+    r"(Articles?|Art\.|Artikkel|Artikel|Article|§|paragraph|para\.?|avsnitt|пункт|пункту|статья|статті)"
+    r"\s*\d+",
+    re.IGNORECASE,
+)
+_REGULATION_REF = re.compile(r"\b\d{3,4}/\d{1,4}\b")
+_NON_CONTENT_PREFIXES = ("reuse notice", "source:", "source line", "note on reuse")
+
+# Per-language negation/scope word tables (en/nb/uk). A kind whose table
+# has no hit in the sentence raises, so the caller routes it to the
+# saboteur model or holds instead of planting an English fallback.
+_NEGATIONS: tuple[tuple[str, str], ...] = (
+    (" shall not ", " shall "),
+    (" shall ", " shall not "),
+    (" must not ", " must "),
+    (" must ", " must not "),
+    (" is not ", " is "),
+    (" is ", " is not "),
+    (" are not ", " are "),
+    (" are ", " are not "),
+    (" skal ikke ", " skal "),
+    (" skal ", " skal ikke "),
+    (" må ikke ", " må "),
+    (" må ", " må ikke "),
+    (" er ikke ", " er "),
+    (" er ", " er ikke "),
+    (" повинні не ", " повинні "),
+    (" повинні ", " не повинні "),
+    (" не є ", " є "),
+    (" є ", " не є "),
+)
+_SCOPES: tuple[tuple[str, str], ...] = (
+    ("all ", "no "),
+    ("every ", "no "),
+    ("alle ", "ingen "),
+    ("enhver ", "ingen "),
+    ("всі ", "жодні "),
+    ("кожен ", "жоден "),
+)
+
+
+def is_content_text(text: str) -> bool:
+    """False for non-content passages (reuse notice, source line).
+
+    Called at ingest (the flag is stored on the passage) and again in
+    the picker, so a notice line can never become an exercise sentence.
+    """
+    head = " ".join(str(text).strip().lower().split())[:200]
+    if "reuse notice:" in head or "only the official journal is authentic" in head:
+        return False
+    return not any(head.startswith(prefix) for prefix in _NON_CONTENT_PREFIXES)
+
+
+def _protected_spans(sentence: str) -> list[tuple[int, int]]:
+    """Spans of every reference shape whose digits must never mutate."""
+    protected: list[tuple[int, int]] = []
+    for match in _ARTICLE_REF.finditer(sentence):
+        end = match.end()
+        # parenthesised sub-numbers and plural lists: 5(1), 4, 5 and 6
+        tail = sentence[end:]
+        extra = re.match(r"(\s*\(\d+\))*(\s*(,|and|og|та|и)\s*\d+(\s*\(\d+\))?)*", tail)
+        if extra:
+            end += extra.end()
+        protected.append((match.start(), end))
+    for match in _REGULATION_REF.finditer(sentence):
+        protected.append(match.span())
+    return protected
 
 
 def rewrite_allowed(kind: str) -> bool:
@@ -45,10 +111,7 @@ def rewrite_allowed(kind: str) -> bool:
 
 def _mutate_number_date(sentence: str) -> str:
     """Bump a numeric value that is not part of a citation/article reference."""
-    # protect digits that are part of an article/citation reference
-    protected: list[tuple[int, int]] = []
-    for m in re.finditer(r"(Article|Art\.|§)\s*\d+", sentence):
-        protected.append(m.span())
+    protected = _protected_spans(sentence)
     for match in re.finditer(r"\d+(?:[.,]\d+)?", sentence):
         if any(start <= match.start() < end for start, end in protected):
             continue
@@ -62,6 +125,43 @@ def _mutate_number_date(sentence: str) -> str:
     raise ValueError("no mutable numeric value outside citation references")
 
 
+def pick_sentence(verified: list[dict[str, Any]], *, seed: int = 0) -> dict[str, Any]:
+    """THE picker: one sentence + one kind, chosen by seed from content only.
+
+    The saboteur receives exactly this sentence and kind, and the
+    answer key is built from this same pick — there is no second path.
+    Kinds the code cannot plant deterministically on this sentence
+    (model kinds) stay eligible; number_date only when a mutable
+    number exists outside every reference.
+    """
+    pool = [
+        item
+        for item in verified
+        if item.get("sentence")
+        and item.get("is_content", True)
+        and is_content_text(str(item.get("sentence", "")))
+    ]
+    if not pool:
+        raise ValueError("no content sentence available to plant")
+    item = pool[seed % len(pool)]
+    sentence = str(item["sentence"])
+    number_ok = True
+    try:
+        _mutate_number_date(sentence)
+    except ValueError:
+        number_ok = False
+    kind = MUTATION_KINDS[seed % len(MUTATION_KINDS)]
+    if kind == "number_date" and not number_ok:
+        kind = "negation"
+    return {
+        "sentence": sentence,
+        "passage": str(item.get("passage", "")),
+        "kind": kind,
+        "is_content": True,
+        "fully_correct": seed % 4 == 3,
+    }
+
+
 def mutate_claim(sentence: str, *, kind: str) -> str:
     """Deterministic code mutation; non-numeric kinds prefer word-level flips.
 
@@ -73,17 +173,15 @@ def mutate_claim(sentence: str, *, kind: str) -> str:
     if kind == "number_date":
         return _mutate_number_date(sentence)
     if kind == "negation":
-        for old, new in (
-            (" shall ", " shall not "),
-            (" must ", " must not "),
-            (" is ", " is not "),
-            (" are ", " are not "),
-        ):
-            if old in sentence:
-                return sentence.replace(old, new, 1)
+        padded = f" {sentence} "
+        for old, new in _NEGATIONS:
+            if old in padded.lower():
+                i = padded.lower().index(old)
+                flipped = padded[:i] + new + padded[i + len(old) :]
+                return flipped.strip() if sentence == sentence.strip() else flipped[1:-1]
         raise ValueError("negation needs a modal or copula to flip")
     if kind == "scope":
-        for old, new in (("all ", "no "), ("every ", "no "), ("shall ", "need never ")):
+        for old, new in _SCOPES:
             if old in sentence.lower():
                 i = sentence.lower().index(old)
                 return sentence[:i] + new + sentence[i + len(old) :]
@@ -102,31 +200,52 @@ def plant_error(
     verified: list[dict[str, Any]],
     reader_holds: list[dict[str, Any]],
     seed: int = 0,
-    fully_correct: bool = False,
+    fully_correct: bool | None = False,
     mutated: str | None = None,
     kind: str | None = None,
+    pick: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build one spot-the-error exercise with exactly one planted sentence.
 
     The planted sentence is the held sentence itself when a reader hold
     exists; the corrected sentence comes from the passage/true value.
     The original (true) sentence is never shown beside the planted one.
-    Position is seeded, never fixed at 0.
+    Position is seeded, never fixed at 0. `fully_correct=None` seeds
+    the choice (one exercise in four is fully correct); `pick` is the
+    one picker's output — sentence, kind, and passage all come from it.
     """
+    if fully_correct is None:
+        fully_correct = seed % 4 == 3 and not reader_holds
     rng = random.Random(seed)
-    sentences_pool = [str(i.get("sentence", "")) for i in verified if i.get("sentence")]
+    sentences_pool = [
+        str(i.get("sentence", ""))
+        for i in verified
+        if i.get("sentence")
+        and i.get("is_content", True)
+        and is_content_text(str(i.get("sentence", "")))
+    ]
     if fully_correct or (not verified and not reader_holds):
-        sentences = list(sentences_pool)
+        anchor = str(pick["sentence"]) if pick and pick.get("sentence") else ""
+        if not anchor and sentences_pool:
+            anchor = sentences_pool[0]
+        companions = [s for s in sentences_pool if s != anchor]
+        rng.shuffle(companions)
+        sentences = companions[:2]
+        if anchor:
+            sentences.insert(rng.randrange(len(sentences) + 1), anchor)
         while len(sentences) < 2:
-            sentences.append(sentences_pool[0] if sentences_pool else "No sentence available.")
-            if len(sentences) >= 2:
-                break
+            sentences.append("No sentence available.")
+        passage = str(pick.get("passage", "")) if pick else ""
+        if not passage and anchor:
+            passage = str(
+                next((i.get("passage", "") for i in verified if i.get("sentence") == anchor), "")
+            )
         return {
-            "sentences": sentences[: max(2, len(sentences))],
+            "sentences": sentences,
             "planted_sentence": "",
             "planted_index": -1,
             "kind": kind or "negation",
-            "passage": str(verified[0].get("passage", "")) if verified else "",
+            "passage": passage,
             "true_sentence": "",
             "fully_correct": True,
         }
@@ -141,11 +260,14 @@ def plant_error(
             # correction comes from the passage text when supplied
             true_sentence = str(first.get("passage_text", ""))
     else:
-        pick = verified[seed % len(verified)]
-        true_sentence = str(pick.get("sentence", ""))
-        passage = str(pick.get("passage", ""))
+        chosen = pick or pick_sentence(verified, seed=seed)
+        true_sentence = str(chosen.get("sentence", ""))
+        passage = str(chosen.get("passage", ""))
+        chosen_kind = str(kind or chosen.get("kind") or chosen_kind)
         if mutated is not None:
             planted_sentence = mutated
+        elif chosen_kind == "number_date":
+            planted_sentence = mutate_claim(true_sentence, kind="number_date")
         elif chosen_kind in ("entity_swap", "cause_reversal", "bad_citation"):
             raise ValueError(f"{chosen_kind} requires a saboteur rewrite")
         else:
@@ -195,19 +317,31 @@ def grade_spot_error(planted: dict[str, Any], *, submission: dict[str, Any]) -> 
                 "habit": "Say none when every sentence holds.",
             },
         }
-    parts = 0.0
     named_index = submission.get("sentence_index", submission.get("planted_index"))
     if isinstance(named_index, str) and named_index.isdigit():
         named_index = int(named_index)
-    if submission.get("sentence") == planted.get("planted_sentence") or (
+    sentence_right = _norm(submission.get("sentence", "")) == _norm(
+        planted.get("planted_sentence", "")
+    ) or (
         isinstance(named_index, int)
         and named_index == planted.get("planted_index")
         and named_index >= 0
-    ):
-        parts += 0.4
-    if submission.get("kind") == planted.get("kind"):
+    )
+    if not sentence_right:
+        # kind, passage, and fix earn credit only behind the right sentence
+        return {
+            "score": 0.0,
+            "feedback": {
+                "wrong": str(planted.get("planted_sentence", "")),
+                "true": str(planted.get("true_sentence", "")),
+                "passage": str(planted.get("passage", "")),
+                "habit": _HABITS.get(str(planted.get("kind", "")), "Check the passage."),
+            },
+        }
+    parts = 0.4
+    if _norm(submission.get("kind", "")) == _norm(planted.get("kind", "")):
         parts += 0.25
-    if submission.get("passage") == planted.get("passage"):
+    if _norm(submission.get("passage", "")) == _norm(planted.get("passage", "")):
         parts += 0.15
     correct = _norm(submission.get("correct_value", ""))
     if correct and correct == _norm(planted.get("true_sentence", "")):
@@ -221,17 +355,3 @@ def grade_spot_error(planted: dict[str, Any], *, submission: dict[str, Any]) -> 
             "habit": _HABITS.get(str(planted.get("kind", "")), "Check the passage."),
         },
     }
-
-
-def teacher_report(attempts: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
-    """Hits vs false alarms per mutation kind; a miss is neither."""
-    report: dict[str, dict[str, int]] = {}
-    for attempt in attempts:
-        kind = str(attempt.get("kind", "negation"))
-        slot = report.setdefault(kind, {"hits": 0, "false_alarms": 0})
-        if attempt.get("hit"):
-            slot["hits"] += 1
-        elif attempt.get("false_alarm"):
-            slot["false_alarms"] += 1
-        # a plain miss (hit=False without false_alarm) counts as neither
-    return report

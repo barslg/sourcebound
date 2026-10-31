@@ -15,7 +15,8 @@ def grade(
     correct = answer_key.get("correct")
     picked = submission.get("picked")
     if isinstance(correct, list):
-        score = 1.0 if sorted(picked or []) == sorted(correct) else 0.0
+        chosen = picked if isinstance(picked, list) else [] if picked is None else [picked]
+        score = 1.0 if sorted(chosen) == sorted(correct) else 0.0
     else:
         score = 1.0 if picked == correct else 0.0
     return {

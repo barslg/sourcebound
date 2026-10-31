@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request, UploadFile
 
 from app.auth.ctx import RequestContext, get_ctx
 from app.controllers import t03 as controller
+from app.routes.ids import (
+    block_id_param,
+    candidate_id_param,
+    course_id_param,
+    item_id_param,
+    run_id_param,
+    source_id_param,
+)
 from app.schemas import t03 as dto
 
 courses_router = APIRouter(prefix="/courses", tags=["courses"])
@@ -28,7 +36,7 @@ async def create_course(
 
 @courses_router.get("/{course_id}")
 async def get_course(
-    course_id: str,
+    course_id: Annotated[str, Depends(course_id_param)],
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, Any]:
     """One course with its profile and plan validation state."""
@@ -37,7 +45,7 @@ async def get_course(
 
 @courses_router.post("/{course_id}/profile")
 async def set_profile(
-    course_id: str,
+    course_id: Annotated[str, Depends(course_id_param)],
     body: dto.ProfileRequest,
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, bool]:
@@ -55,7 +63,7 @@ async def list_courses(
 
 @courses_router.patch("/{course_id}/plan")
 async def edit_plan(
-    course_id: str,
+    course_id: Annotated[str, Depends(course_id_param)],
     body: dto.PlanEditRequest,
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, Any]:
@@ -67,7 +75,7 @@ async def edit_plan(
 
 @courses_router.get("/{course_id}/plan")
 async def get_plan(
-    course_id: str,
+    course_id: Annotated[str, Depends(course_id_param)],
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, Any]:
     """The plan tree, same shape as the PATCH response, with source handles."""
@@ -76,7 +84,7 @@ async def get_plan(
 
 @courses_router.get("/{course_id}/estimate")
 async def get_estimate(
-    course_id: str,
+    course_id: Annotated[str, Depends(course_id_param)],
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, Any]:
     """Cost/time forecast for the course: a forecast, never a limit."""
@@ -85,7 +93,7 @@ async def get_estimate(
 
 @courses_router.get("/{course_id}/sources")
 async def list_course_sources(
-    course_id: str,
+    course_id: Annotated[str, Depends(course_id_param)],
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> list[dict[str, Any]]:
     """Sources bound to the course with approval and ingest progress."""
@@ -94,7 +102,7 @@ async def list_course_sources(
 
 @courses_router.get("/{course_id}/held")
 async def get_held(
-    course_id: str,
+    course_id: Annotated[str, Depends(course_id_param)],
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, Any]:
     """Held blocks with passages plus the batch rewrite quote."""
@@ -103,7 +111,7 @@ async def get_held(
 
 @courses_router.post("/{course_id}/held/rewrite", status_code=202)
 async def rewrite_held(
-    course_id: str,
+    course_id: Annotated[str, Depends(course_id_param)],
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, str]:
     """Rewrite every held block as one operation."""
@@ -112,7 +120,7 @@ async def rewrite_held(
 
 @courses_router.post("/{course_id}/publish", status_code=201)
 async def publish_course(
-    course_id: str,
+    course_id: Annotated[str, Depends(course_id_param)],
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, str]:
     """Snapshot an immutable published version; 422 while a block is held."""
@@ -121,7 +129,7 @@ async def publish_course(
 
 @courses_router.get("/{course_id}/plan/validate")
 async def validate_plan(
-    course_id: str,
+    course_id: Annotated[str, Depends(course_id_param)],
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, Any]:
     """List blocking questions; generation is refused while any is open."""
@@ -130,7 +138,7 @@ async def validate_plan(
 
 @courses_router.post("/{course_id}/plan/submit", status_code=202)
 async def submit_plan(
-    course_id: str,
+    course_id: Annotated[str, Depends(course_id_param)],
     body: dto.PlanSubmitRequest,
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, str]:
@@ -145,7 +153,7 @@ async def submit_plan(
 
 @courses_router.post("/{course_id}/generate/submit", status_code=202)
 async def submit_generate(
-    course_id: str,
+    course_id: Annotated[str, Depends(course_id_param)],
     body: dto.GenerateSubmitRequest,
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, str]:
@@ -179,7 +187,7 @@ async def upload_source(
 
 @courses_router.post("/{course_id}/translate", status_code=202)
 async def translate_course(
-    course_id: str,
+    course_id: Annotated[str, Depends(course_id_param)],
     body: dto.TranslateRequest,
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, str]:
@@ -195,7 +203,7 @@ async def translate_course(
 
 @courses_router.get("/{course_id}/learner")
 async def get_learner_course(
-    course_id: str,
+    course_id: Annotated[str, Depends(course_id_param)],
     request: Request,
     lang: str | None = None,
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
@@ -213,7 +221,7 @@ async def get_learner_course(
 
 @sources_router.patch("/{source_id}/language")
 async def set_source_language(
-    source_id: str,
+    source_id: Annotated[str, Depends(source_id_param)],
     body: dto.SourceLanguageRequest,
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, Any]:
@@ -225,7 +233,7 @@ async def set_source_language(
 
 @sources_router.post("/{source_id}/reject")
 async def reject_source(
-    source_id: str,
+    source_id: Annotated[str, Depends(source_id_param)],
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, bool]:
     """Reject a source: pending bindings are held out of retrieval."""
@@ -243,7 +251,7 @@ async def fetch_source(
 
 @sources_router.post("/{source_id}/approve")
 async def approve_source(
-    source_id: str,
+    source_id: Annotated[str, Depends(source_id_param)],
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, bool]:
     """Human approval moves a source from pending to approved."""
@@ -252,7 +260,7 @@ async def approve_source(
 
 @sources_router.post("/candidates/{candidate_id}/approve", status_code=201)
 async def approve_candidate(
-    candidate_id: str,
+    candidate_id: Annotated[str, Depends(candidate_id_param)],
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, str]:
     """Approve a web candidate: fetch, ingest, then approve."""
@@ -261,7 +269,7 @@ async def approve_candidate(
 
 @sources_router.post("/{source_id}/transcribe", status_code=202)
 async def transcribe_source(
-    source_id: str,
+    source_id: Annotated[str, Depends(source_id_param)],
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, Any]:
     """Transcribe an audio source into timestamped passages."""
@@ -270,7 +278,7 @@ async def transcribe_source(
 
 @runs_router.get("/{run_id}")
 async def get_run(
-    run_id: str,
+    run_id: Annotated[str, Depends(run_id_param)],
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, Any]:
     """One run with its steps in DAG order."""
@@ -279,7 +287,7 @@ async def get_run(
 
 @runs_router.post("/{run_id}/resume", status_code=202)
 async def resume_run(
-    run_id: str,
+    run_id: Annotated[str, Depends(run_id_param)],
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, str]:
     """Resume a stopped run from its last good step."""
@@ -288,7 +296,7 @@ async def resume_run(
 
 @runs_router.post("/{run_id}/cancel")
 async def cancel_run(
-    run_id: str,
+    run_id: Annotated[str, Depends(run_id_param)],
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, bool]:
     """Cooperative cancel: the in-flight call finishes, no new step starts."""
@@ -297,7 +305,7 @@ async def cancel_run(
 
 @blocks_router.post("/{block_id}/rewrite", status_code=202)
 async def rewrite_block(
-    block_id: str,
+    block_id: Annotated[str, Depends(block_id_param)],
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, str]:
     """Rewrite one held block as an operation."""
@@ -306,7 +314,7 @@ async def rewrite_block(
 
 @blocks_router.post("/{block_id}/accept")
 async def accept_block(
-    block_id: str,
+    block_id: Annotated[str, Depends(block_id_param)],
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, bool]:
     """Accept a held block after human review."""
@@ -315,7 +323,7 @@ async def accept_block(
 
 @blocks_router.patch("/{block_id}")
 async def patch_block(
-    block_id: str,
+    block_id: Annotated[str, Depends(block_id_param)],
     body: dto.BlockBriefRequest,
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, bool]:
@@ -333,7 +341,7 @@ async def list_human_queue(
 
 @human_queue_router.post("/{item_id}/resolve")
 async def resolve_human_queue(
-    item_id: str,
+    item_id: Annotated[str, Depends(item_id_param)],
     body: dto.HumanQueueResolveRequest,
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, Any]:

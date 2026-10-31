@@ -354,10 +354,12 @@ async def test_generate_refuses_while_questions_open(t03_session: AsyncSession) 
         operations=[{"op": "set_constraint", "key": "scope_act", "answer": {"act": "AI Act"}}],
     )
     await t03_session.commit()
-    operation_id = await planruns.submit_generate(
-        t03_session, actor=actor, course_id=course_id, defer=None
-    )
-    assert operation_id is not None
+    # T05c item 12a: with questions answered but still no plan, the
+    # empty-plan guard refuses before any model call.
+    from app.errors import UnprocessableError
+
+    with pytest.raises(UnprocessableError, match="Build a plan"):
+        await planruns.submit_generate(t03_session, actor=actor, course_id=course_id)
 
 
 async def test_plan_edit_and_idempotent_submit(t03_session: AsyncSession) -> None:

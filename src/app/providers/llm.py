@@ -147,6 +147,12 @@ class MetaProvider:
         digest = replies.request_hash(resolved_model, version, body, variant)
 
         cached = await replies.get_reply(self._session, digest)
+        if cached is not None and check is not None and list(check(cached)):
+            # a reply the checks reject is never replayed: evict and re-ask
+            async with self._ledger_factory() as ledger:
+                await replies.delete_reply(ledger, digest)
+                await ledger.commit()
+            cached = None
         if cached is not None:
             await self._record_call(
                 agent=agent,
