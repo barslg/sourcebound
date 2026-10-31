@@ -118,7 +118,7 @@ async def revoke_role(ctx: RequestContext, *, name: str, body: dto.RevokeRequest
 
 async def create_invite(ctx: RequestContext, *, body: dto.InviteRequest) -> dto.InviteResponse:
     from app.services.invites import create_invite as create_use_case
-    from app.services.invites import hash_invite_token
+    from app.services.invites import display_tag, hash_invite_token
 
     actor = require_auth(ctx)
     raw_token = await create_use_case(
@@ -139,7 +139,7 @@ async def create_invite(ctx: RequestContext, *, body: dto.InviteRequest) -> dto.
     ).one()
     return dto.InviteResponse(
         token=raw_token,
-        course_tags=list(row[0] or []),
+        course_tags=[display_tag(t) for t in row[0] or []],
         max_uses=row[1],
         used_count=int(row[2]),
         expires_at=row[3].isoformat() if row[3] else None,
