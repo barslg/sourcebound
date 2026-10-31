@@ -1,8 +1,9 @@
-"""Resumable build runner: drives Muse Code task by task, gates each task, commits each task.
+"""Resumable build runner: task by task, gate each task, commit each task.
 
-State lives in git (a done task = a commit whose subject starts with "build(<id>):") and in build/state.json
-(the task in progress, its attempt count and Muse session id). Re-running after any interruption resumes the
-task in progress from the current working tree instead of starting over.
+State lives in git (a done task = a commit starting with "build(<id>):")
+and in build/state.json (the task in progress, attempt count, session).
+Re-running after any interruption resumes the task in progress from the
+current working tree instead of starting over.
 """
 
 from __future__ import annotations
@@ -63,11 +64,15 @@ def build_prompt(task: dict, state: dict, gate_output: str | None) -> str:
         diff = sh("git", "status", "--short").stdout
         base += (
             "\n\n--- RESUME ---\nThis task was interrupted after partial work (attempt "
-            f"{cur.get('attempt', 1)}). Do not start over: read `git status` and `git diff`, keep what is correct, "
-            f"finish the remaining steps, and re-run the gate.\nCurrent working tree:\n{diff}\n"
+            f"{cur.get('attempt', 1)}). Do not start over: read `git status` and "
+            "`git diff`, keep what is correct, finish the remaining steps, "
+            f"and re-run the gate.\nCurrent working tree:\n{diff}\n"
         )
     if gate_output:
-        base += f"\n\n--- GATE FAILED ---\nFix these, then re-run `make check`:\n{gate_output[-6000:]}\n"
+        base += (
+            "\n\n--- GATE FAILED ---\nFix these, then re-run `make check`:\n"
+            f"{gate_output[-6000:]}\n"
+        )
     notes = ROOT / "build" / "notes" / f"{task['id']}.md"
     if notes.exists():
         base += f"\n\n--- REVIEW NOTES (fix every High and Medium) ---\n{notes.read_text()}\n"
@@ -81,14 +86,26 @@ def run_muse(task: dict, prompt: str) -> int:
     prompt_file.write_text(prompt)
     log = LOGS / f"{task['id']}-{stamp}.jsonl"
     cmd = [
-        "muse", "exec", "--trust-workspace", "--disable-approval", "--sandbox-network", "enabled", "--json",
-        "--model", task.get("model", "muse-spark-1.3"),
-        "--reasoning-effort", task.get("effort", "high"),
-        "--max-model-steps", str(task.get("max_steps", 400)),
-        "--prompt-file", str(prompt_file),
+        "muse",
+        "exec",
+        "--trust-workspace",
+        "--disable-approval",
+        "--sandbox-network",
+        "enabled",
+        "--json",
+        "--model",
+        task.get("model", "muse-spark-1.3"),
+        "--reasoning-effort",
+        task.get("effort", "high"),
+        "--max-model-steps",
+        str(task.get("max_steps", 400)),
+        "--prompt-file",
+        str(prompt_file),
     ]
     with log.open("w") as fh:
-        proc = subprocess.run(cmd, cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT, text=True, check=False)
+        proc = subprocess.run(
+            cmd, cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT, text=True, check=False
+        )
     return proc.returncode
 
 
@@ -111,9 +128,16 @@ def main() -> int:
     cur = state.get("in_progress") or {}
     attempt = cur.get("attempt", 0) + 1 if cur.get("id") == task["id"] else 1
     if attempt > MAX_ATTEMPTS:
-        print(f"{task['id']}: {MAX_ATTEMPTS} attempts failed; stop and inspect build/logs", file=sys.stderr)
+        print(
+            f"{task['id']}: {MAX_ATTEMPTS} attempts failed; stop and inspect build/logs",
+            file=sys.stderr,
+        )
         return 2
-    state["in_progress"] = {"id": task["id"], "attempt": attempt, "started": datetime.now(UTC).isoformat()}
+    state["in_progress"] = {
+        "id": task["id"],
+        "attempt": attempt,
+        "started": datetime.now(UTC).isoformat(),
+    }
     save_state(state)
     gate_output = cur.get("gate_output") if cur.get("id") == task["id"] else None
     print(f"{task['id']} attempt {attempt}: {task['title']}")
@@ -127,7 +151,11 @@ def main() -> int:
         return 0
     state["in_progress"]["gate_output"] = out
     save_state(state)
-    print(f"{task['id']}: muse exit {code}, gate {'green' if ok else 'red'}; re-run scripts/build.py to resume", file=sys.stderr)
+    print(
+        f"{task['id']}: muse exit {code}, gate {'green' if ok else 'red'};"
+        " re-run scripts/build.py to resume",
+        file=sys.stderr,
+    )
     return 1
 
 

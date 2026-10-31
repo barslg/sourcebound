@@ -1,0 +1,36 @@
+# Gitleaks config: default rules plus repo-specific secret shapes.
+# Scan: gitleaks detect --source . --config .gitleaks.toml --verbose
+# (CI runs it over full history with fetch-depth: 0).
+
+[extend]
+useDefault = true
+
+# Google OAuth client secret.
+[[rules]]
+id = "google-client-secret"
+description = "Google OAuth client secret"
+regex = '''GOCSPX-[A-Za-z0-9_\-]{8,}'''
+tags = ["oauth", "google"]
+
+# Meta Model API key: a long LLM- token ...
+[[rules]]
+id = "meta-llm-token"
+description = "Meta Model API key token"
+regex = '''LLM-[A-Za-z0-9_\-]{24,}'''
+tags = ["api-key", "meta"]
+
+# ... or MODEL_API_KEY carrying a real-looking value (fixture words excluded).
+[[rules]]
+id = "meta-model-api-key-assignment"
+description = "Meta Model API key assignment"
+regex = '''(?i)model[_-]?api[_-]?key['"]?\s*[:=]\s*['"]?(?!synthetic|test|fake|dummy|example|placeholder|xxx|redacted)([A-Za-z0-9_\-.~+/=]{16,})'''
+tags = ["api-key", "meta"]
+
+# The gate scripts and their tests name these shapes on purpose.
+[[allowlists]]
+description = "secret-shape fixtures in gates and their tests"
+paths = [
+  '''\.gitleaks\.toml$''',
+  '''scripts/check_public_tree\.py$''',
+  '''tests/gates/''',
+]
