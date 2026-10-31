@@ -330,9 +330,9 @@ async def _run_kind(
             session_factory=factory,
         )
     if kind in ("rewrite_block", "rewrite_held_batch"):
-        from app.services.planruns import real_provider_factory, run_generate_operation
+        from app.services.planruns import real_provider_factory, run_rewrite_operation
 
-        return await run_generate_operation(
+        return await run_rewrite_operation(
             session,
             operation_id,
             provider_factory=real_provider_factory(get_settings()),

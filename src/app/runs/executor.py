@@ -996,17 +996,22 @@ async def _persist_block(
     step_id: UUID,
     status: str = "draft",
     hold_reason: str | None = None,
-) -> tuple[str, str] | None:
+) -> tuple[str, str, bool] | None:
     """Write one block version; content never carries the answer key.
 
-    Returns (block_id, version_id) of the course-scoped block so
-    callers attach citations to THE version they just wrote, in THEIR
-    course — never to whichever course shares the plan node id.
+    Returns (block_id, version_id, created) of the course-scoped block
+    so callers attach citations to THE version they just wrote, in
+    THEIR course — never to whichever course shares the plan node id.
+    A write equal to the block's current version (content and key) is
+    not persisted: created is False, the version, its status and its
+    citations stay as they are, so an identical re-run neither
+    re-versions every block nor resets an author's accept.
     """
     brow = (
         await session.execute(
             sa.text(
-                "SELECT b.id FROM blocks b JOIN topics tp ON tp.id = b.topic_id"
+                "SELECT b.id, b.current_version_id FROM blocks b"
+                " JOIN topics tp ON tp.id = b.topic_id"
                 " JOIN modules m ON m.id = tp.module_id"
                 " WHERE m.course_id = :c AND b.plan_node_id = :n"
             ),
@@ -1016,6 +1021,23 @@ async def _persist_block(
     if brow is None:
         return None
     block_id = str(brow[0])
+    if brow[1] is not None:
+        current = (
+            await session.execute(
+                sa.text(
+                    "SELECT content = CAST(:content AS jsonb),"
+                    " answer_key IS NOT DISTINCT FROM CAST(:key AS jsonb)"
+                    " FROM block_versions WHERE id = :v"
+                ),
+                {
+                    "content": json.dumps(content),
+                    "key": json.dumps(answer_key) if answer_key is not None else None,
+                    "v": str(brow[1]),
+                },
+            )
+        ).one()
+        if current[0] and current[1] and status == "draft":
+            return block_id, str(brow[1]), False
     nxt = (
         await session.execute(
             sa.text(
@@ -1046,7 +1068,7 @@ async def _persist_block(
         ),
         {"v": str(vid), "s": status, "r": hold_reason, "b": block_id},
     )
-    return block_id, str(vid)
+    return block_id, str(vid), True
 
 
 async def _mark_reader_stale(
@@ -1070,11 +1092,16 @@ async def _mark_reader_stale(
     )
 
 
-def _spot_seed(node_id: str) -> int:
-    """One seed per spot block: picker, saboteur, and key all derive from it."""
+def _spot_seed(node_id: str, variant: int = 0) -> int:
+    """One seed per spot block and variant: picker, saboteur, and key all derive from it.
+
+    The first generation is variant 0; every rewrite or rework passes
+    the block's version count, so the seed advances: a new sentence, a
+    new kind, a new position, still from ONE picker.
+    """
     import hashlib as _hl
 
-    return int(_hl.sha256(node_id.encode()).hexdigest()[:8], 16)
+    return int(_hl.sha256(node_id.encode()).hexdigest()[:8], 16) + int(variant)
 
 
 async def _verified_sentences(
@@ -1125,6 +1152,7 @@ async def _plant_spot_block(
     kind: str | None = None,
     pick: dict[str, Any] | None = None,
     run_id: UUID | None = None,
+    variant: int = 0,
 ) -> None:
     """Code-planted spot-the-error from the ONE picker's pick.
 
@@ -1136,7 +1164,7 @@ async def _plant_spot_block(
 
     stored_all = await _stored_passage_texts(session, passage_ids=list(handle_to_passage.values()))
     verified = await _verified_sentences(session, handle_to_passage=handle_to_passage)
-    seed = _spot_seed(node_id)
+    seed = _spot_seed(node_id, variant)
     exercise = _plant(
         verified=verified,
         reader_holds=[],
@@ -1172,8 +1200,14 @@ async def _plant_spot_block(
         step_id=step_id,
         status="draft",
     )
-    if persisted is not None and pid and quote and quote in stored_all.get(pid, ""):
-        _block_id, version_id = persisted
+    if (
+        persisted is not None
+        and persisted[2]
+        and pid
+        and quote
+        and quote in stored_all.get(pid, "")
+    ):
+        version_id = persisted[1]
         start = stored_all[pid].index(quote)
         await session.execute(
             sa.text(
@@ -1189,7 +1223,7 @@ async def _plant_spot_block(
                 "e": start + len(quote),
             },
         )
-    if run_id is not None:
+    if run_id is not None and persisted is not None and persisted[2]:
         await _mark_reader_stale(session, run_id=run_id, course_id=course_id, node_id=node_id)
     await finish_step(session, step_id=step_id, output=output)
 
@@ -1286,7 +1320,50 @@ def _typed_content(
         validate = import_module(f"app.blocks.{block_type}.schema").validate
     except Exception:
         return content, key, []
-    return content, key, list(validate(content))
+    return content, key, [*validate(content), *_key_errors(block_type, content, key)]
+
+
+def _key_errors(block_type: str, content: dict[str, Any], key: dict[str, Any]) -> list[str]:
+    """Per-type answer-key validation: a key a grader would misread holds the block.
+
+    A choice with no correct option would score 1.0 for picking
+    nothing; duplicate matching rights collapse the index key; a cloze
+    whose blanks do not match its gaps, or a scenario item without a
+    tier, grade against a key that is not the exercise.
+    """
+    if block_type == "choice":
+        options = content.get("options")
+        count = len(options) if isinstance(options, list) else 0
+        correct = key.get("correct")
+        if not isinstance(correct, list) or not correct:
+            return ["choice key: at least one option must be correct"]
+        if any(not isinstance(i, int) or not 0 <= i < count for i in correct):
+            return ["choice key: a correct option is outside the options"]
+    elif block_type == "matching":
+        pairs = [p for p in content.get("pairs", []) if isinstance(p, dict)]
+        rights = [str(p.get("right", "")).strip() for p in pairs]
+        lefts = [str(p.get("left", "")).strip() for p in pairs]
+        if len(set(rights)) != len(rights) or len(set(lefts)) != len(lefts):
+            return ["matching key: each left and each right item must be unique"]
+    elif block_type == "cloze":
+        gaps = str(content.get("text", "")).count("___")
+        blanks = key.get("blanks")
+        if (
+            not isinstance(blanks, list)
+            or len(blanks) != gaps
+            or any(not str(b).strip() for b in blanks)
+        ):
+            return [f"cloze key: {gaps} gaps need {gaps} non-empty blanks"]
+    elif block_type == "scenario_practice":
+        items = [i for i in content.get("items", []) if isinstance(i, dict)]
+        labels = key.get("labels_by_index")
+        if (
+            not isinstance(labels, dict)
+            or len(labels) != len(items)
+            or any(not str(v).strip() for v in labels.values())
+        ):
+            return ["scenario key: every item needs a tier"]
+    return []
 
 
 async def generate_block_step(
@@ -1339,6 +1416,7 @@ async def generate_block_step(
             handle_to_passage=handle_to_passage,
             step_id=claim["step_id"],
             run_id=run_id,
+            variant=int(entry.get("variant_offset", 0)),
             mutated=str(sab["mutated"]) if sab.get("mutated") else None,
             kind=str(sab["kind"]) if sab.get("kind") else None,
             pick=(
@@ -1425,8 +1503,8 @@ async def generate_block_step(
             status="draft",
         )
         # citation rows on THE version just written, in THIS course
-        if persisted is not None:
-            _block_id, version_id = persisted
+        if persisted is not None and persisted[2]:
+            version_id = persisted[1]
             for cit, pid in zip(resolved_citations, citation_pids, strict=True):
                 await session.execute(
                     sa.text(
@@ -1443,18 +1521,25 @@ async def generate_block_step(
                         "e": cit["quote_end"],
                     },
                 )
-        await _mark_reader_stale(session, run_id=run_id, course_id=course_id, node_id=node_id)
+        if persisted is not None and persisted[2]:
+            await _mark_reader_stale(session, run_id=run_id, course_id=course_id, node_id=node_id)
         await finish_step(session, step_id=claim["step_id"], output=output)
     await session.commit()
 
 
 def _undecided_nodes(output: dict[str, Any]) -> set[str]:
-    """Nodes the reader answered `unknown` for, with no item holding."""
+    """Nodes the reader could not decide: no hold anywhere, yet not a clean pass.
+
+    A block verdict of `unknown`, or a `pass` that leaves any rubric
+    item `unknown`, is not a pass: it is asked once more, then held.
+    """
     undecided: set[str] = set()
     for verdict in output.get("verdicts", []):
         items = verdict.get("items", {}) if isinstance(verdict.get("items"), dict) else {}
-        held_item = any(isinstance(v, dict) and v.get("verdict") == "hold" for v in items.values())
-        if verdict.get("verdict") not in ("pass", "hold") and not held_item:
+        verdicts = [v.get("verdict") for v in items.values() if isinstance(v, dict)]
+        if verdict.get("verdict") == "hold" or "hold" in verdicts:
+            continue
+        if verdict.get("verdict") != "pass" or any(v != "pass" for v in verdicts):
             undecided.add(str(verdict.get("plan_node_id", "")))
     return undecided
 
@@ -1476,7 +1561,12 @@ def _merge_undecided(
                 replacement.get("items", {}) if isinstance(replacement.get("items"), dict) else {}
             )
             evidence = next(
-                (str(v.get("evidence", "")) for v in items.values() if isinstance(v, dict)), ""
+                (
+                    f"{k}: {v.get('evidence', '')}"
+                    for k, v in items.items()
+                    if isinstance(v, dict) and v.get("verdict") != "pass"
+                ),
+                "",
             )
             replacement = {
                 **replacement,
@@ -1690,7 +1780,9 @@ async def saboteur_step(
             "passage": str(entry.get("passage", "P1")),
         }
     else:
-        pick = pick_sentence(verified, seed=_spot_seed(node_id))
+        pick = pick_sentence(
+            verified, seed=_spot_seed(node_id, int(entry.get("variant_offset", 0)))
+        )
     sentence = str(pick["sentence"])
     kind = str(pick["kind"])
     digest = step_digest(
@@ -1728,6 +1820,7 @@ async def saboteur_step(
             sentence=sentence,
             kind=kind,
             course_language=str(entry.get("course_language", "en")),
+            hold_reason=str(entry.get("hold_reason", "")),
         )
 
         def _check_pick(reply: dict[str, Any]) -> list[str]:
@@ -1751,6 +1844,22 @@ async def saboteur_step(
         output = {**output, "true_sentence": sentence, "passage": str(pick["passage"])}
         await finish_step(session, step_id=claim["step_id"], output=output)
     await session.commit()
+
+
+async def _version_count(session: AsyncSession, *, course_id: str, node: str) -> int:
+    """How many versions a course's block already has (the next variant offset)."""
+    return int(
+        (
+            await session.execute(
+                sa.text(
+                    "SELECT count(*) FROM block_versions bv JOIN blocks b ON b.id = bv.block_id"
+                    " JOIN topics t ON t.id = b.topic_id JOIN modules m ON m.id = t.module_id"
+                    " WHERE m.course_id = :c AND b.plan_node_id = :n"
+                ),
+                {"c": course_id, "n": node},
+            )
+        ).scalar_one()
+    )
 
 
 async def rework_blocks_step(
@@ -1792,8 +1901,14 @@ async def rework_blocks_step(
         originals = {
             str(e.get("step_key", "")).partition(":")[2]: e
             for e in (dag_list or [])
-            if isinstance(e, dict)
+            if isinstance(e, dict) and str(e.get("handler", "")) == "generate_block"
         }
+        saboteurs = {
+            str(e.get("step_key", "")).partition(":")[2]: e
+            for e in (dag_list or [])
+            if isinstance(e, dict) and str(e.get("handler", "")) == "saboteur"
+        }
+        course_of_run = await run_course_id(session, run_id=run_id)
         reworked = []
         for node in named:
             original = originals.get(node)
@@ -1804,15 +1919,34 @@ async def rework_blocks_step(
             skeleton["hold_reason"] = reasons.get(node, "")
             skeleton["brief"] = f"{skeleton.get('brief', '')} Rewrite: {reasons.get(node, '')}"
             gen_entry["skeleton"] = skeleton
+            failing = str(original.get("step_key", ""))
             try:
+                if node in saboteurs:
+                    # a reworked exercise is a NEW pick: the seed advances with the version count
+                    versions = await _version_count(
+                        session, course_id=str(course_of_run), node=node
+                    )
+                    gen_entry["variant_offset"] = versions
+                    failing = str(saboteurs[node].get("step_key", ""))
+                    await saboteur_step(
+                        session,
+                        run_id=run_id,
+                        entry={
+                            **saboteurs[node],
+                            "variant_offset": versions,
+                            "hold_reason": reasons.get(node, ""),
+                        },
+                        provider_factory=provider_factory,
+                    )
+                    failing = str(original.get("step_key", ""))
                 await generate_block_step(
                     session, run_id=run_id, entry=gen_entry, provider_factory=provider_factory
                 )
                 reworked.append(node)
             except Exception as exc:
-                # the claimed generate step must not strand at running:
-                # mark it failed with the marker, then let the driver
-                # stop the (resumable) run instead of swallowing it.
+                # the claimed step must not strand at running: mark it
+                # failed with the marker, then let the driver stop the
+                # (resumable) run instead of swallowing the error.
                 await session.rollback()
                 await session.execute(
                     sa.text(
@@ -1822,7 +1956,7 @@ async def rework_blocks_step(
                     {
                         "error": f"{type(exc).__name__}: {exc}"[:2000],
                         "run": str(run_id),
-                        "key": str(original.get("step_key", "")),
+                        "key": failing,
                     },
                 )
                 await session.commit()

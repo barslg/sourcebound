@@ -13,19 +13,25 @@ from app.agents.base import AGENT_SCHEMAS, assemble, system_prompt
 from app.course.errorspot import MUTATION_KINDS, rewrite_allowed
 
 
-def build_saboteur_prompt(*, sentence: str, kind: str, course_language: str = "en") -> str:
-    """Typed saboteur prompt; number/date kinds are refused in code."""
+def build_saboteur_prompt(
+    *, sentence: str, kind: str, course_language: str = "en", hold_reason: str = ""
+) -> str:
+    """Typed saboteur prompt; number/date kinds are refused in code.
+
+    A rewrite or rework passes the reader's hold reason (bounded) so
+    the new error does not repeat what the reader rejected.
+    """
     if kind not in MUTATION_KINDS:
         raise ValueError(f"unknown mutation kind: {kind}")
     if not rewrite_allowed(kind):
         raise ValueError("number/date swaps are owned by code, never the model")
+    task: dict[str, str] = {"course_language": course_language, "sentence": sentence, "kind": kind}
+    note = " ".join(hold_reason.split())[:500]
+    if note:
+        task["reader_note"] = note
     return assemble(
         system_prompt("saboteur"),
-        json.dumps(
-            {"course_language": course_language, "sentence": sentence, "kind": kind},
-            ensure_ascii=False,
-            sort_keys=True,
-        ),
+        json.dumps(task, ensure_ascii=False, sort_keys=True),
     )
 
 
