@@ -34,12 +34,14 @@ def _spot_submission(
 ) -> dict[str, Any]:
     """{sentence_id|none, kind, passage_id, corrected_value} -> the check's shape."""
     sentence_id = payload.get("sentence_id")
+    if sentence_id is None or str(sentence_id).strip() == "":
+        raise ValidationError("name a sentence number, or answer 'none' when every sentence holds")
     submission: dict[str, Any] = {
         "kind": payload.get("kind") or "",
         "correct_value": payload.get("corrected_value") or "",
         "passage": passage_handle.get(str(payload.get("passage_id") or ""), ""),
     }
-    if sentence_id is None or str(sentence_id).strip().lower() == "none":
+    if str(sentence_id).strip().lower() == "none":
         submission["sentence"] = "none"
         return submission
     if isinstance(sentence_id, bool) or not str(sentence_id).isdigit():

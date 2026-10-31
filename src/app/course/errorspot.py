@@ -350,7 +350,7 @@ def classify_spot_attempt(planted: dict[str, Any], submission: dict[str, Any]) -
 def grade_spot_error(planted: dict[str, Any], *, submission: dict[str, Any]) -> dict[str, Any]:
     """Code grading with partial credit: sentence, kind, passage, fix."""
     if planted.get("fully_correct"):
-        named_none = _norm(submission.get("sentence", "")) in ("", "none")
+        named_none = _norm(submission.get("sentence", "")) == "none"
         score = 1.0 if named_none else 0.0
         return {
             "score": score,
