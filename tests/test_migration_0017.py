@@ -83,7 +83,9 @@ def test_0017_user_delete_cascades_answers_and_downgrade_drops_only_the_table() 
         conn.execute("DELETE FROM users WHERE id = %s", (learner,))
         left = conn.execute("SELECT count(*) FROM learner_answers").fetchone()[0]  # type: ignore[index]
         assert left == 0, "deleting the learner deletes their answers"
-        assert conn.execute("SELECT count(*) FROM blocks WHERE id = %s", (block,)).fetchone()[0] == 1  # type: ignore[index]
+        assert (
+            conn.execute("SELECT count(*) FROM blocks WHERE id = %s", (block,)).fetchone()[0] == 1
+        )  # type: ignore[index]
     before = set(_harness_tables(url))
     command.downgrade(_cfg(url), "0016")
     after = set(_harness_tables(url))

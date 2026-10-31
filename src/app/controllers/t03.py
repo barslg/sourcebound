@@ -671,3 +671,25 @@ async def resolve_human_queue(ctx: RequestContext, *, item_id: str, body: Any) -
     )
     await ctx.db.commit()
     return result
+
+
+async def get_report(
+    ctx: RequestContext, *, course_id: str, as_csv: bool = False
+) -> dict[str, Any] | str:
+    from app.services.courses import get_course as get_use_case
+    from app.services.report import course_report, report_csv
+
+    actor = require_auth(ctx)
+    require(actor, "course.edit")
+    course = await get_use_case(ctx.db, course_id=UUID(course_id))
+    _owner_or_404(course, actor.user_id, actor.is_superadmin)
+    report = await course_report(ctx.db, UUID(course_id), threshold=ctx.settings.mastery_threshold)
+    return report_csv(report) if as_csv else report
+
+
+async def list_methodologies(ctx: RequestContext) -> list[dict[str, Any]]:
+    from app.services.courses import list_methodologies as list_use_case
+
+    actor = require_auth(ctx)
+    require(actor, "course.edit")
+    return list_use_case()

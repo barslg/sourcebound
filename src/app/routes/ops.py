@@ -55,6 +55,15 @@ async def accept_invite(token: str, ctx: RequestContext = Depends(get_ctx)) -> R
     return JSONResponse({"scopes": scopes})
 
 
+@invites_accept_router.get("/{token}/preview", response_model=dto.InvitePreview)
+async def preview_invite(
+    token: str,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dto.InvitePreview:
+    """Signed-out preview of an invite: the course names and whether the link still works."""
+    return await controller.invite_preview(ctx, token=token)
+
+
 @operations_router.post("/echo", status_code=202)
 async def submit_echo(
     body: dto.EchoRequest,

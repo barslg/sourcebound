@@ -42,6 +42,7 @@ AGENT_SCHEMAS: dict[str, dict[str, object]] = {
     "reader": tree.READER_SCHEMA,
     "saboteur": tree.SABOTEUR_SCHEMA,
     "continuity": tree.CONTINUITY_SCHEMA,
+    "tutor": tree.TUTOR_SCHEMA,
     "translator": tree.TRANSLATOR_SCHEMA,
 }
 
@@ -78,6 +79,7 @@ CODE_REQUIRED: dict[str, set[str]] = {
     "saboteur": {"sentence", "kind", "mutated"},
     "translator": {"segments"},
     "continuity": {"handoffs", "issues"},
+    "tutor": {"quotes"},
 }
 
 

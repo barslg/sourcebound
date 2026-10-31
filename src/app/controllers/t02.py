@@ -262,3 +262,10 @@ async def mark_notification_read(ctx: RequestContext, *, notification_id: str) -
         actor=require_auth(ctx),
         notification_id=parse_uuid_or_404(notification_id, what="notification"),
     )
+
+
+async def invite_preview(ctx: RequestContext, *, token: str) -> dto.InvitePreview:
+    from app.services.invites import hash_invite_token
+    from app.services.invites import invite_preview as preview_use_case
+
+    return dto.InvitePreview(**await preview_use_case(ctx.db, token_hash=hash_invite_token(token)))

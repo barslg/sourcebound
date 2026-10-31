@@ -227,6 +227,10 @@ async def test_list_courses_scoped_to_caller(t03_session: AsyncSession) -> None:
             "has_profile",
             "has_plan",
             "open_questions",
+            "scope_tags",
+            "audience",
+            "topic_count",
+            "block_count",
         }
         assert row["has_profile"] is True
     plain = next(row for row in rows if row["title"] == "A1")

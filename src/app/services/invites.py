@@ -26,7 +26,12 @@ from app.rbac.require import require, require_scope
 from app.services.audit import write_audit
 
 STUDENT_ROLE_NAME = "student"
-STUDENT_PERMISSION_CODES: tuple[str, ...] = ("section.courses",)
+STUDENT_PERMISSION_CODES: tuple[str, ...] = (
+    "section.courses",
+    "learn.read",
+    "learn.answer",
+    "learn.ask",
+)
 
 
 def hash_invite_token(token: str) -> str:
@@ -99,14 +104,27 @@ async def list_invites(session: AsyncSession, *, actor: Principal) -> list[dict[
     rows = (
         await session.execute(
             sa.text(
-                "SELECT id, course_tags, max_uses, used_count, expires_at, revoked_at"
-                " FROM invites ORDER BY created_at DESC"
+                "SELECT i.id, i.course_tags, i.max_uses, i.used_count, i.expires_at, i.revoked_at,"
+                " i.created_by, cu.display_name FROM invites i"
+                " LEFT JOIN users cu ON cu.id = i.created_by ORDER BY i.created_at DESC"
             )
         )
     ).all()
+    accepted: dict[str, list[dict[str, str]]] = {}
+    for invite_id, user_id, display_name in (
+        await session.execute(
+            sa.text(
+                "SELECT iu.invite_id, u.id, u.display_name FROM invite_uses iu"
+                " JOIN users u ON u.id = iu.user_id ORDER BY iu.created_at"
+            )
+        )
+    ).all():
+        accepted.setdefault(str(invite_id), []).append(
+            {"id": str(user_id), "display_name": str(display_name or "")}
+        )
     visible_scope = actor.scope_for_any(("invite.create", "invite.revoke"))
     visible: list[dict[str, Any]] = []
-    for invite_id, tags, max_uses, used_count, expires_at, revoked_at in rows:
+    for invite_id, tags, max_uses, used_count, expires_at, revoked_at, by, by_name in rows:
         if not actor.is_superadmin and visible_scope is not None:
             if set(tags or []).isdisjoint(visible_scope):
                 continue
@@ -114,13 +132,64 @@ async def list_invites(session: AsyncSession, *, actor: Principal) -> list[dict[
             {
                 "id": str(invite_id),
                 "course_tags": list(tags or []),
+                "course_titles": await course_titles(session, list(tags or [])),
                 "max_uses": max_uses,
                 "used_count": int(used_count),
                 "expires_at": expires_at.isoformat() if expires_at else None,
                 "revoked_at": revoked_at.isoformat() if revoked_at else None,
+                "created_by": ({"id": str(by), "display_name": str(by_name or "")} if by else None),
+                "accepted_by": accepted.get(str(invite_id), []),
             }
         )
     return visible
+
+
+async def course_titles(session: AsyncSession, tags: list[str]) -> list[str]:
+    """Titles of the courses an invite's tags open (a course id or a group tag)."""
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT title FROM courses WHERE id::text = ANY(:tags)"
+                " OR scope_tags && CAST(:tags AS text[]) ORDER BY title"
+            ),
+            {"tags": list(tags)},
+        )
+    ).all()
+    return [str(row[0]) for row in rows]
+
+
+async def invite_preview(session: AsyncSession, *, token_hash: str) -> dict[str, Any]:
+    """What the signed-out accept page may show: course titles and whether it can be used.
+
+    No creator, no seat count, no ids: the token holder learns only the
+    course names and why the link is unusable, when it is.
+    """
+    row = (
+        await session.execute(
+            sa.text(
+                "SELECT course_tags, max_uses, used_count, expires_at, revoked_at"
+                " FROM invites WHERE token_hash = :hash"
+            ),
+            {"hash": token_hash},
+        )
+    ).first()
+    if row is None:
+        raise NotFoundError("invite not found")
+    tags, max_uses, used_count, expires_at, revoked_at = row
+    reason: str | None = None
+    if revoked_at is not None:
+        reason = "revoked"
+    elif expires_at is not None and (
+        expires_at if expires_at.tzinfo else expires_at.replace(tzinfo=UTC)
+    ) <= datetime.now(UTC):
+        reason = "expired"
+    elif max_uses is not None and int(used_count) >= int(max_uses):
+        reason = "no_seats"
+    return {
+        "course_titles": await course_titles(session, list(tags or [])),
+        "usable": reason is None,
+        "reason": reason,
+    }
 
 
 async def revoke_invite(session: AsyncSession, *, actor: Principal, invite_id: UUID) -> None:
@@ -163,6 +232,15 @@ async def _ensure_student_role(session: AsyncSession, role_name: str) -> None:
             name=role_name,
             permission_codes=list(STUDENT_PERMISSION_CODES),
             actor=None,
+        )
+        return
+    for code in STUDENT_PERMISSION_CODES:
+        await session.execute(
+            sa.text(
+                "INSERT INTO role_permissions (role_id, permission_code) VALUES (:role, :code)"
+                " ON CONFLICT DO NOTHING"
+            ),
+            {"role": str(exists[0]), "code": code},
         )
 
 

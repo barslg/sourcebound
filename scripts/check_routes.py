@@ -38,6 +38,8 @@ EXEMPT = {
     ("GET", "/api/v1/auth/callback"),
     ("GET", "/api/v1/auth/csrf"),
     ("POST", "/api/v1/invites/{token}/accept"),
+    # Signed-out preview of one invite token: course names only, no secrets.
+    ("GET", "/api/v1/invites/{token}/preview"),
 }
 
 SELF_SCOPED = {

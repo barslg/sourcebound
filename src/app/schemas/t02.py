@@ -97,13 +97,27 @@ class InviteResponse(BaseModel):
     revoked_at: str | None
 
 
+class InviteUser(BaseModel):
+    id: str
+    display_name: str
+
+
 class InviteListItem(BaseModel):
     id: str
     course_tags: list[str]
+    course_titles: list[str] = []
     max_uses: int | None
     used_count: int
     expires_at: str | None
     revoked_at: str | None
+    created_by: InviteUser | None = None
+    accepted_by: list[InviteUser] = []
+
+
+class InvitePreview(BaseModel):
+    course_titles: list[str]
+    usable: bool
+    reason: str | None
 
 
 class PermissionResponse(BaseModel):

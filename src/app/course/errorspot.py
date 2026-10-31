@@ -303,6 +303,50 @@ def _norm(value: Any) -> str:
     return " ".join(str(value).strip().lower().split())
 
 
+def sentence_named_right(planted: dict[str, Any], submission: dict[str, Any]) -> bool:
+    """True when the submission names the planted sentence (by text or index)."""
+    named_index = submission.get("sentence_index", submission.get("planted_index"))
+    if isinstance(named_index, str) and named_index.isdigit():
+        named_index = int(named_index)
+    return _norm(submission.get("sentence", "")) == _norm(planted.get("planted_sentence", "")) or (
+        isinstance(named_index, int)
+        and named_index == planted.get("planted_index")
+        and named_index >= 0
+    )
+
+
+def classify_spot_attempt(planted: dict[str, Any], submission: dict[str, Any]) -> dict[str, Any]:
+    """Hit, false alarm or miss of one attempt, by kind (the teacher counters).
+
+    A hit is credited to the planted kind. A false alarm (naming a
+    sentence that holds no error) is credited to the kind the learner
+    claimed, `unspecified` when they claimed none. Missing the planted
+    sentence is a miss of the planted kind. Naming none on a clean
+    exercise is correct and counts nowhere.
+    """
+    claimed = _norm(submission.get("kind", ""))
+    claimed_kind = claimed if claimed in MUTATION_KINDS else "unspecified"
+    named = _norm(submission.get("sentence", "")) not in ("", "none") or isinstance(
+        submission.get("sentence_index"), int
+    )
+    if planted.get("fully_correct"):
+        return {
+            "kind": None,
+            "hit": False,
+            "miss": False,
+            "false_alarm": named,
+            "false_alarm_kind": claimed_kind if named else None,
+        }
+    hit = sentence_named_right(planted, submission)
+    return {
+        "kind": str(planted.get("kind", "")),
+        "hit": hit,
+        "miss": not hit,
+        "false_alarm": named and not hit,
+        "false_alarm_kind": claimed_kind if named and not hit else None,
+    }
+
+
 def grade_spot_error(planted: dict[str, Any], *, submission: dict[str, Any]) -> dict[str, Any]:
     """Code grading with partial credit: sentence, kind, passage, fix."""
     if planted.get("fully_correct"):
@@ -317,16 +361,7 @@ def grade_spot_error(planted: dict[str, Any], *, submission: dict[str, Any]) -> 
                 "habit": "Say none when every sentence holds.",
             },
         }
-    named_index = submission.get("sentence_index", submission.get("planted_index"))
-    if isinstance(named_index, str) and named_index.isdigit():
-        named_index = int(named_index)
-    sentence_right = _norm(submission.get("sentence", "")) == _norm(
-        planted.get("planted_sentence", "")
-    ) or (
-        isinstance(named_index, int)
-        and named_index == planted.get("planted_index")
-        and named_index >= 0
-    )
+    sentence_right = sentence_named_right(planted, submission)
     if not sentence_right:
         # kind, passage, and fix earn credit only behind the right sentence
         return {

@@ -517,6 +517,15 @@ TRANSLATOR_SCHEMA: dict[str, Any] = _strict_object(
 
 GLOSSARY_SCHEMA: dict[str, Any] = TRANSLATOR_SCHEMA
 
+TUTOR_SCHEMA: dict[str, Any] = _strict_object(
+    {
+        "quotes": {
+            "type": "array",
+            "items": _strict_object({"handle": _string(), "quote": _string()}),
+        },
+    }
+)
+
 CONTINUITY_SCHEMA: dict[str, Any] = _strict_object(
     {
         "handoffs": {

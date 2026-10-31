@@ -766,6 +766,13 @@ async def plan_architect_step(
             held=held,
         )
         await write_plan_citations(session, version_map=version_map, refs=refs)
+        from app.services.courses import record_source_passages
+
+        await record_source_passages(
+            session,
+            version_map=version_map,
+            handles=_handle_passages(parsed, handle_to_passage),
+        )
         await finish_step(session, step_id=claim["step_id"], output=resolved)
     await session.commit()
 
@@ -837,6 +844,20 @@ def _resolve_handles_tolerant(
                     quoted = ", ".join(sorted(set(unknown)))
                     held[str(block["plan_node_id"])] = f"unknown handle {quoted}"
     return dump, held
+
+
+def _handle_passages(parsed: Any, handle_to_passage: dict[str, Any]) -> dict[str, dict[str, str]]:
+    """Block plan_node_id to {handle: passage id} for the handles this step knows."""
+    out: dict[str, dict[str, str]] = {}
+    for module in parsed.modules:
+        for topic in module.topics:
+            for block in topic.blocks:
+                out[block.plan_node_id] = {
+                    ref.handle: str(handle_to_passage[ref.handle])
+                    for ref in block.source_refs
+                    if ref.handle in handle_to_passage
+                }
+    return out
 
 
 def _passage_refs(resolved: dict[str, Any]) -> dict[str, list[str]]:
@@ -2120,3 +2141,27 @@ def translation_handlers() -> dict[str, Any]:
         "translate_block": translate_block_step,
         "translate_glossary": translate_glossary_step,
     }
+
+
+async def tutor_call(
+    provider: Any,
+    *,
+    prompt: str,
+    schema: dict[str, Any],
+    check: Any,
+    subject_user_id: UUID,
+) -> dict[str, Any]:
+    """The learner tutor's one model call (outside any run, logged with its subject).
+
+    Caller: services/tutor.py ask. The reply is never stored for reuse
+    (a subject-attributed call is wiped with the learner), and no run
+    step exists: the tutor is a request, not a pipeline stage.
+    """
+    reply: dict[str, Any] = await provider.generate_json(
+        agent="tutor",
+        prompt=prompt,
+        schema=schema,
+        subject_user_id=subject_user_id,
+        check=check,
+    )
+    return reply

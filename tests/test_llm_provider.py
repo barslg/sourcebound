@@ -253,7 +253,7 @@ async def test_prompt_cache_key_is_sent_and_scoped() -> None:
 def test_prompt_version_uses_the_shared_hasher() -> None:
     from app.agents.base import prompt_version as system_version
 
-    assert MetaProvider.prompt_version("tutor", "hello") == version_of("tutor:hello")
+    assert MetaProvider.prompt_version("intake", "hello") == version_of("intake:hello")
     assert MetaProvider.prompt_version("reader", "hello") == system_version("reader")
 
 

@@ -22,6 +22,7 @@ courses_router = APIRouter(prefix="/courses", tags=["courses"])
 sources_router = APIRouter(prefix="/sources", tags=["sources"])
 runs_router = APIRouter(prefix="/runs", tags=["runs"])
 blocks_router = APIRouter(prefix="/blocks", tags=["blocks"])
+methodologies_router = APIRouter(prefix="/methodologies", tags=["methodologies"])
 human_queue_router = APIRouter(prefix="/human-queue", tags=["human-queue"])
 
 
@@ -80,6 +81,25 @@ async def get_plan(
 ) -> dict[str, Any]:
     """The plan tree, same shape as the PATCH response, with source handles."""
     return await controller.get_plan(ctx, course_id=course_id)
+
+
+@courses_router.get("/{course_id}/report", response_model=None)
+async def get_report(
+    course_id: Annotated[str, Depends(course_id_param)],
+    format: str = "json",  # noqa: A002 - the public query name is `format`
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> Any:
+    """Per learner and topic: completion, mastery, find-the-error counters; ?format=csv exports."""
+    report = await controller.get_report(ctx, course_id=course_id, as_csv=format == "csv")
+    if isinstance(report, str):
+        from fastapi.responses import PlainTextResponse
+
+        return PlainTextResponse(
+            report,
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="report-{course_id}.csv"'},
+        )
+    return report
 
 
 @courses_router.get("/{course_id}/estimate")
@@ -347,3 +367,11 @@ async def resolve_human_queue(
 ) -> dict[str, Any]:
     """Resolve one queued URL: approve ingests it, dismiss drops it."""
     return await controller.resolve_human_queue(ctx, item_id=item_id, body={"action": body.action})
+
+
+@methodologies_router.get("")
+async def list_methodologies(
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> list[dict[str, Any]]:
+    """Registered methodologies: code, name, one-line description (profile picker)."""
+    return await controller.list_methodologies(ctx)

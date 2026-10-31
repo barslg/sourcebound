@@ -26,6 +26,8 @@ PLAN_EDIT_OPS = (
     "delete_module",
     "delete_topic",
     "set_constraint",
+    "add_module",
+    "add_topic",
 )
 
 
@@ -217,6 +219,10 @@ async def write_tree(
     plan_node_id to a hold reason: those blocks are written held with
     the reason instead of draft (BRIEF §3: a hold returns the block).
     """
+    await session.execute(
+        sa.text("UPDATE courses SET status = 'draft' WHERE id = :course AND status = 'generated'"),
+        {"course": str(course_id)},
+    )
     kept = (
         await session.execute(
             sa.text(
@@ -419,6 +425,80 @@ async def validate_course_tree(session: AsyncSession, *, course_id: UUID) -> lis
     return validate_tree(contract, prescription)
 
 
+def _source_refs(content: Any) -> list[dict[str, Any]]:
+    """Handle plus the stored passage id; source_id and address_label fill in later."""
+    body = content if isinstance(content, dict) else {}
+    passages = body.get("source_passages")
+    mapping = passages if isinstance(passages, dict) else {}
+    return [
+        {
+            "handle": handle,
+            "passage_id": mapping.get(handle),
+            "source_id": None,
+            "address_label": None,
+        }
+        for handle in body.get("source_handles", [])
+    ]
+
+
+async def _resolve_source_refs(session: AsyncSession, tree: dict[str, Any]) -> None:
+    """Fill source_id and address_label of every ref whose passage id is known."""
+    from app.i18n.citations import format_citation_address
+
+    refs = [
+        ref
+        for module in tree["modules"]
+        for topic in module["topics"]
+        for block in topic["blocks"]
+        for ref in block["source_refs"]
+        if ref["passage_id"]
+    ]
+    if not refs:
+        return
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT id, source_id, address, address_key FROM passages"
+                " WHERE id::text = ANY(:ids)"
+            ),
+            {"ids": sorted({str(ref["passage_id"]) for ref in refs})},
+        )
+    ).all()
+    found = {
+        str(r[0]): (
+            str(r[1]),
+            format_citation_address({**dict(r[2] or {}), "address_key": r[3]}, "en"),
+        )
+        for r in rows
+    }
+    for ref in refs:
+        hit = found.get(str(ref["passage_id"]))
+        if hit is None:
+            ref["passage_id"] = None
+        else:
+            ref["source_id"], ref["address_label"] = hit
+
+
+async def record_source_passages(
+    session: AsyncSession,
+    *,
+    version_map: dict[str, dict[str, str]],
+    handles: dict[str, dict[str, str]],
+) -> None:
+    """Store handle -> passage id beside each plan version so refs can link to rows."""
+    for node_id, mapping in handles.items():
+        target = version_map.get(node_id)
+        if target is None or not mapping:
+            continue
+        await session.execute(
+            sa.text(
+                "UPDATE block_versions SET content = content ||"
+                " jsonb_build_object('source_passages', CAST(:m AS jsonb)) WHERE id = :v"
+            ),
+            {"m": json.dumps(mapping), "v": target["version_id"]},
+        )
+
+
 async def read_tree(session: AsyncSession, *, course_id: UUID) -> dict[str, Any]:
     """Read the plan tree back in ordinal order."""
     modules = (
@@ -481,14 +561,7 @@ async def read_tree(session: AsyncSession, *, course_id: UUID) -> dict[str, Any]
                             "brief": block[4],
                             "status": block[5],
                             "hold_reason": block[6],
-                            "source_refs": [
-                                {"handle": handle}
-                                for handle in (
-                                    (block[7] or {}).get("source_handles", [])
-                                    if isinstance(block[7], dict)
-                                    else []
-                                )
-                            ],
+                            "source_refs": _source_refs(block[7]),
                             "source_handles": list(
                                 (block[7] or {}).get("source_handles", [])
                                 if isinstance(block[7], dict)
@@ -500,6 +573,7 @@ async def read_tree(session: AsyncSession, *, course_id: UUID) -> dict[str, Any]
                 }
             )
         tree["modules"].append(module_node)
+    await _resolve_source_refs(session, tree)
     try:
         tree["through_line"] = await read_through_line(session, course_id=course_id) or None
     except NotFoundError:
@@ -565,11 +639,56 @@ async def edit_plan(
             await _delete(session, "topics", course_id, operation)
         elif op == "set_constraint":
             await _set_constraint_answer(session, course_id, operation)
+        elif op == "add_module":
+            await _add_module(session, course_id, operation)
+        elif op == "add_topic":
+            await _add_topic(session, course_id, operation)
     await session.execute(
         sa.text("UPDATE courses SET row_version = row_version + 1 WHERE id = :course"),
         {"course": str(course_id)},
     )
     return await read_tree(session, course_id=course_id)
+
+
+async def _add_module(session: AsyncSession, course_id: UUID, operation: dict[str, Any]) -> None:
+    """Append an empty module; the backend picks the next ordinal."""
+    title = str(operation.get("title", "")).strip()
+    if not title:
+        raise ValidationError("title must not be empty")
+    await session.execute(
+        sa.text(
+            "INSERT INTO modules (course_id, ordinal, title) VALUES (:course,"
+            " (SELECT COALESCE(max(ordinal), -1) + 1 FROM modules WHERE course_id = :course),"
+            " :title)"
+        ),
+        {"course": str(course_id), "title": title},
+    )
+
+
+async def _add_topic(session: AsyncSession, course_id: UUID, operation: dict[str, Any]) -> None:
+    """Append an empty topic to one module of this course (next ordinal)."""
+    title = str(operation.get("title", "")).strip()
+    if not title:
+        raise ValidationError("title must not be empty")
+    kind = str(operation.get("kind", "lesson"))
+    if kind not in ("lesson", "module_test"):
+        raise ValidationError("kind must be lesson or module_test")
+    module = (
+        await session.execute(
+            sa.text("SELECT id FROM modules WHERE id::text = :m AND course_id = :course"),
+            {"m": str(operation.get("module_id")), "course": str(course_id)},
+        )
+    ).first()
+    if module is None:
+        raise NotFoundError(f"plan node {operation.get('module_id')} not found")
+    await session.execute(
+        sa.text(
+            "INSERT INTO topics (module_id, ordinal, kind, title, plan_node_id) VALUES (:module,"
+            " (SELECT COALESCE(max(ordinal), -1) + 1 FROM topics WHERE module_id = :module),"
+            " :kind, :title, 'author-' || gen_random_uuid()::text)"
+        ),
+        {"module": str(module[0]), "kind": kind, "title": title},
+    )
 
 
 async def _rename(
@@ -752,11 +871,33 @@ async def _set_constraint_answer(
         raise NotFoundError(f"constraint {key} not found")
 
 
+async def _pin_block_versions(session: AsyncSession, tree: dict[str, Any]) -> None:
+    """Record each block's current version id in the snapshot (learners read it)."""
+    nodes = [
+        block
+        for module in tree["modules"]
+        for topic in module["topics"]
+        for block in topic["blocks"]
+    ]
+    if not nodes:
+        return
+    rows = (
+        await session.execute(
+            sa.text("SELECT id, current_version_id FROM blocks WHERE id::text = ANY(:ids)"),
+            {"ids": [block["id"] for block in nodes]},
+        )
+    ).all()
+    pinned = {str(row[0]): (str(row[1]) if row[1] else None) for row in rows}
+    for block in nodes:
+        block["version_id"] = pinned.get(block["id"])
+
+
 async def snapshot_version(
     session: AsyncSession, *, course_id: UUID, publish: bool = False
 ) -> UUID:
     """Freeze the current plan tree as an immutable course version."""
     tree = await read_tree(session, course_id=course_id)
+    await _pin_block_versions(session, tree)
     profile = await get_course(session, course_id=course_id)
     row = (
         await session.execute(
@@ -800,7 +941,13 @@ async def list_courses(
                 " EXISTS(SELECT 1 FROM course_profiles p WHERE p.course_id = c.id),"
                 " EXISTS(SELECT 1 FROM modules m WHERE m.course_id = c.id),"
                 " (SELECT count(*) FROM profile_constraints pc WHERE pc.course_id = c.id"
-                " AND pc.required AND pc.answer IS NULL)"
+                " AND pc.required AND pc.answer IS NULL),"
+                " c.scope_tags,"
+                " (SELECT p.audience FROM course_profiles p WHERE p.course_id = c.id),"
+                " (SELECT count(*) FROM topics tp JOIN modules m ON m.id = tp.module_id"
+                " WHERE m.course_id = c.id),"
+                " (SELECT count(*) FROM blocks b JOIN topics tp ON tp.id = b.topic_id"
+                " JOIN modules m ON m.id = tp.module_id WHERE m.course_id = c.id)"
                 " FROM courses c"
                 + ("" if is_superadmin else " WHERE c.owner_id = :owner")
                 + " ORDER BY c.created_at, c.id"
@@ -817,6 +964,10 @@ async def list_courses(
             "has_profile": bool(row[4]),
             "has_plan": bool(row[5]),
             "open_questions": int(row[6]),
+            "scope_tags": list(row[7] or []),
+            "audience": row[8] or "",
+            "topic_count": int(row[9]),
+            "block_count": int(row[10]),
         }
         for row in rows
     ]
@@ -837,6 +988,42 @@ async def course_estimate(session: AsyncSession, *, course_id: UUID) -> dict[str
         )
     ).scalar_one()
     return forecast({"blocks": int(count)})
+
+
+async def mark_generated_if_complete(session: AsyncSession, *, course_id: UUID) -> bool:
+    """draft -> generated when every block has a current version that passes its schema."""
+    from importlib import import_module
+
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT b.block_type, bv.content FROM blocks b JOIN topics t ON t.id = b.topic_id"
+                " JOIN modules m ON m.id = t.module_id"
+                " LEFT JOIN block_versions bv ON bv.id = b.current_version_id"
+                " WHERE m.course_id = :course"
+            ),
+            {"course": str(course_id)},
+        )
+    ).all()
+    if not rows:
+        return False
+    for block_type, content in rows:
+        if content is None:
+            return False
+        try:
+            errors = import_module(f"app.blocks.{block_type}.schema").validate(dict(content))
+        except ModuleNotFoundError:
+            return False
+        if errors:
+            return False
+    result = await session.execute(
+        sa.text(
+            "UPDATE courses SET status = 'generated' WHERE id = :course AND status = 'draft'"
+            " RETURNING id"
+        ),
+        {"course": str(course_id)},
+    )
+    return result.first() is not None
 
 
 async def block_course_id(session: AsyncSession, *, block_id: UUID) -> UUID:
@@ -1011,3 +1198,18 @@ async def publish_course(session: AsyncSession, *, course_id: UUID) -> UUID:
             f"course has {int(held)} held block(s); accept or rewrite each first"
         )
     return await snapshot_version(session, course_id=course_id, publish=True)
+
+
+def list_methodologies() -> list[dict[str, Any]]:
+    """The registered methodologies for the profile picker (code, name, one line)."""
+    from app.course.methodologies import METHODOLOGIES
+
+    return [
+        {
+            "code": entry["code"],
+            "name": entry["name"],
+            "description": entry["description"],
+            "compatible_with": list(entry["compatible_with"]),
+        }
+        for entry in METHODOLOGIES
+    ]

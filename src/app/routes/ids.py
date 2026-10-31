@@ -63,3 +63,11 @@ def invite_id_param(invite_id: str) -> str:
 
 def notification_id_param(notification_id: str) -> str:
     return _validated(notification_id)
+
+
+def topic_id_param(topic_id: str) -> str:
+    return _validated(topic_id)
+
+
+def passage_id_param(passage_id: str) -> str:
+    return _validated(passage_id)

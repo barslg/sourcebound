@@ -22,6 +22,7 @@ from app.llm.registry import validate_step_registry
 from app.logging import configure_logging
 from app.redact import settings_secrets
 from app.routes import auth as auth_routes
+from app.routes import learn as learn_routes
 from app.routes import ops as ops_routes
 from app.routes import t02 as t02_routes
 from app.routes import t03 as t03_routes
@@ -83,6 +84,8 @@ def create_app(settings: Settings | None = None, *, sync_on_startup: bool = True
     app.include_router(t03_routes.runs_router, prefix="/api/v1")
     app.include_router(t03_routes.blocks_router, prefix="/api/v1")
     app.include_router(t03_routes.human_queue_router, prefix="/api/v1")
+    app.include_router(t03_routes.methodologies_router, prefix="/api/v1")
+    app.include_router(learn_routes.router, prefix="/api/v1")
     return app
 
 
