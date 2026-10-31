@@ -81,17 +81,19 @@ export function createClient(options: ClientOptions = {}) {
       if (s) url += (url.includes('?') ? '&' : '?') + s
     }
     const headers: Record<string, string> = { Accept: 'application/json' }
-    let body: string | undefined
-    if (init.body !== undefined) {
+    let payload: BodyInit | undefined
+    if (init.body instanceof FormData) {
+      payload = init.body
+    } else if (init.body !== undefined) {
       headers['Content-Type'] = 'application/json'
-      body = JSON.stringify(init.body)
+      payload = JSON.stringify(init.body)
     }
     if (unsafe) headers['X-CSRF-Token'] = await csrfToken()
     const maxRetries = unsafe ? 0 : MAX_GET_RETRIES
     for (let attempt = 0; ; attempt += 1) {
       let res: Response
       try {
-        res = await doFetch(url, { method, headers, body, credentials: 'same-origin', redirect: 'manual', signal: init.signal })
+        res = await doFetch(url, { method, headers, body: payload, credentials: 'same-origin', redirect: 'manual', signal: init.signal })
       } catch (cause) {
         if (init.signal?.aborted) throw cause
         if (attempt < maxRetries) {

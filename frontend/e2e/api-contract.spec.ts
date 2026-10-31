@@ -1,9 +1,11 @@
 import { ENDPOINTS, LIVE_ENDPOINTS } from '../src/api/endpoints'
-import { expect, recordApi, signInAs, test } from './fixtures'
+import { expect, ids, recordApi, signInAs, test } from './fixtures'
 
 const known = new Set<string>(Object.values(ENDPOINTS))
 const patterns = [
   /^\/api\/v1\/users\/[^/]+(\/ban)?$/, /^\/api\/v1\/roles\/[^/]+(\/assign|\/revoke)?$/,
+  /^\/api\/v1\/courses\/[^/]+(\/(profile|plan|plan\/validate|plan\/submit|generate\/submit|sources|estimate|held|held\/rewrite|publish))?$/,
+  /^\/api\/v1\/sources\/[^/]+\/(approve|reject)$/, /^\/api\/v1\/runs\/[^/]+(\/(resume|cancel))?$/, /^\/api\/v1\/blocks\/[^/]+(\/(rewrite|accept))?$/,
   /^\/api\/v1\/operations\/[^/]+$/, /^\/api\/v1\/invites\/[^/]+\/(revoke|accept)$/,
 ]
 
@@ -19,6 +21,11 @@ test('every request path comes from the endpoint table and unsafe ones carry CSR
   await expect(page.getByTestId('bell-item').first()).toBeVisible()
   await page.goto('/courses')
   await expect(page.locator('[data-view]')).toBeVisible()
+  for (const path of [`/courses/${ids().course}/plan`, `/courses/${ids().course}/sources`, `/courses/${ids().course}/fix`, `/runs/${ids().run}`]) {
+    await page.goto(path)
+    await expect(page.locator('main h1, main h2').first()).toBeVisible()
+    await page.waitForLoadState('networkidle')
+  }
   expect(calls.length).toBeGreaterThan(4)
   for (const c of calls) {
     expect(known.has(c.path) || patterns.some((p) => p.test(c.path)), `unexpected path ${c.path}`).toBe(true)

@@ -6,6 +6,10 @@ import { test as base, expect, type BrowserContext, type Page } from '@playwrigh
 export interface Seeded { id: string; email: string; name: string; token: string; csrf: string }
 export type Who = 'admin' | 'waiting' | 'student' | 'other' | 'assignee' | 'banme' | 'deleteme' | 'inviteme'
 
+export function ids(): { course: string; editing: string; empty: string; run: string } {
+  return (JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../tmp/e2e-sessions.json'), 'utf8')) as { ids: { course: string; editing: string; empty: string; run: string } }).ids
+}
+
 export function sessions(): Record<Who, Seeded> {
   return JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../tmp/e2e-sessions.json'), 'utf8')) as Record<Who, Seeded>
 }

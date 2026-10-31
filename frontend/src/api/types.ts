@@ -41,3 +41,30 @@ export interface Operation {
   error: string | null
 }
 export interface AcceptResult { scopes: string[] }
+
+export interface Constraint {
+  key: string
+  kind: string
+  value: Record<string, unknown>
+  required: boolean
+  question: string | null
+  answer: Record<string, unknown> | null
+}
+export interface CourseDoc {
+  id: string
+  owner_id: string
+  title: string
+  language: string
+  status: string
+  scope_tags: string[]
+  row_version: number
+  published_version_id: string | null
+  profile: { methodology_codes: string[]; bloom_level: string; audience: string; dreyfus_start: string } | null
+  constraints: Constraint[]
+}
+export interface CourseRow { id: string; title: string; language: string; status: string }
+export interface Validation { blocking_questions: Array<{ key: string; kind: string; question: string | null }>; can_generate: boolean }
+export interface SourceRow { id: string; title: string; media: string; licence: string; as_of: string | null; approval: string; progress?: number }
+export interface HeldBlock { id: string; topic_title: string; brief: string; hold_reason: string; passage: string | null; address: string | null }
+export interface HeldDoc { blocks: HeldBlock[]; batch_quote_usd: string | null }
+export interface Estimate { blocks: number; calls: number; tokens: number; cost_usd: string; seconds: number; note: string }

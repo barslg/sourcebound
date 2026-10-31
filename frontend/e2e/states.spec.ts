@@ -33,15 +33,15 @@ test('a student is redirected from every author URL and sees no author nav entry
   await expect(nav.getByRole('link', { name: 'My courses' })).toBeVisible()
 })
 
-test('the course list shows the backend error while the endpoint does not exist', async ({ page, context }) => {
+test('the course list shows the backend error while the list route does not exist', async ({ page, context }) => {
   await signInAs(context, 'student')
   const res = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/v1/courses')
   await page.goto('/courses')
   const status = (await res).status()
-  expect(status).toBe(404)
+  expect(status).toBe(405)
   const box = page.locator('[data-view="error"]')
   await expect(box).toBeVisible()
-  await expect(box).toContainText('Not Found')
+  await expect(box).toContainText('Method Not Allowed')
   await expect(box.getByRole('button', { name: 'Try again' })).toBeVisible()
 })
 

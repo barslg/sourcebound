@@ -1,6 +1,6 @@
 import { sessions } from './fixtures'
 
-const API = 'http://127.0.0.1:8010/api/v1'
+const API = `http://127.0.0.1:${process.env.E2E_BACKEND_PORT ?? '8010'}/api/v1`
 
 async function call(who: 'admin', method: string, path: string, body?: unknown): Promise<Response> {
   const s = sessions()[who]

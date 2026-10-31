@@ -1,5 +1,6 @@
 import { defineConfig } from '@playwright/test'
 
+const apiPort = process.env.E2E_BACKEND_PORT ?? '8010'
 const base = process.env.E2E_BASE_URL ?? 'postgresql+asyncpg://muse:muse@localhost:5434/postgres'
 const e2eDb = base.replace(/\/[^/?]*(\?.*)?$/, '/muse_e2e')
 const backendEnv = {
@@ -22,9 +23,9 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
   webServer: [
     {
-      command: 'uv run uvicorn app.main:app --port 8010',
+      command: `uv run uvicorn app.main:app --port ${apiPort}`,
       cwd: '..',
-      url: 'http://127.0.0.1:8010/api/v1/health',
+      url: `http://127.0.0.1:${apiPort}/api/v1/health`,
       env: backendEnv,
       reuseExistingServer: false,
       timeout: 60000,
@@ -39,6 +40,7 @@ export default defineConfig({
     },
     {
       command: 'npx vite preview --port 4173 --strictPort --host 127.0.0.1',
+      env: { BACKEND_URL: `http://127.0.0.1:${apiPort}` },
       url: 'http://127.0.0.1:4173/',
       reuseExistingServer: false,
       timeout: 60000,

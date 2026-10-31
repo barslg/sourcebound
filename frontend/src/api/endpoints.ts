@@ -12,6 +12,9 @@ export const ENDPOINTS = {
   operationEcho: `${API}/operations/echo`,
   events: `${API}/events`,
   courses: `${API}/courses`,
+  sources: `${API}/sources`,
+  sourceUpload: `${API}/sources/upload`,
+  sourceFetch: `${API}/sources/fetch`,
 } as const
 
 export const userBan = (id: string): string => `${ENDPOINTS.users}/${encodeURIComponent(id)}/ban`
@@ -23,6 +26,28 @@ export const operationItem = (id: string): string => `${ENDPOINTS.operations}/${
 export const inviteRevoke = (token: string): string => `${ENDPOINTS.invites}/${encodeURIComponent(token)}/revoke`
 export const inviteAccept = (token: string): string => `${ENDPOINTS.invites}/${encodeURIComponent(token)}/accept`
 
+const enc = encodeURIComponent
+export const courseItem = (id: string): string => `${ENDPOINTS.courses}/${enc(id)}`
+export const courseProfile = (id: string): string => `${courseItem(id)}/profile`
+export const coursePlan = (id: string): string => `${courseItem(id)}/plan`
+export const coursePlanValidate = (id: string): string => `${coursePlan(id)}/validate`
+export const coursePlanSubmit = (id: string): string => `${coursePlan(id)}/submit`
+export const courseGenerate = (id: string): string => `${courseItem(id)}/generate/submit`
+export const sourceApprove = (id: string): string => `${ENDPOINTS.sources}/${enc(id)}/approve`
+export const runItem = (id: string): string => `${API}/runs/${enc(id)}`
+export const runResume = (id: string): string => `${runItem(id)}/resume`
+
+export const courseSources = (id: string): string => `${courseItem(id)}/sources`
+export const courseEstimate = (id: string): string => `${courseItem(id)}/estimate`
+export const courseHeld = (id: string): string => `${courseItem(id)}/held`
+export const coursePublish = (id: string): string => `${courseItem(id)}/publish`
+export const sourceReject = (id: string): string => `${ENDPOINTS.sources}/${enc(id)}/reject`
+export const runCancel = (id: string): string => `${runItem(id)}/cancel`
+export const blockItem = (id: string): string => `${API}/blocks/${enc(id)}`
+export const blockRewrite = (id: string): string => `${blockItem(id)}/rewrite`
+export const blockAccept = (id: string): string => `${blockItem(id)}/accept`
+export const courseRewriteHeld = (id: string): string => `${courseItem(id)}/held/rewrite`
+
 export function loginUrl(next?: string): string {
   const q = new URLSearchParams({ provider: 'google' })
   if (next) q.set('next', next)
@@ -31,7 +56,12 @@ export function loginUrl(next?: string): string {
 
 export const LIVE_ENDPOINTS: readonly string[] = [
   ENDPOINTS.csrf, ENDPOINTS.me, ENDPOINTS.logout, ENDPOINTS.users, ENDPOINTS.roles,
-  ENDPOINTS.invites, ENDPOINTS.operationEcho, ENDPOINTS.events,
+  ENDPOINTS.invites, ENDPOINTS.operationEcho, ENDPOINTS.events, ENDPOINTS.sourceUpload, ENDPOINTS.sourceFetch,
 ]
 
-export const PENDING_ENDPOINTS: readonly string[] = [ENDPOINTS.courses]
+export const MISSING_ROUTES: readonly string[] = [
+  'GET /api/v1/courses', 'GET /api/v1/courses/{id}/plan', 'GET /api/v1/courses/{id}/estimate',
+  'GET /api/v1/courses/{id}/sources', 'POST /api/v1/sources/{id}/reject', 'POST /api/v1/runs/{id}/cancel',
+  'GET /api/v1/courses/{id}/held', 'POST /api/v1/blocks/{id}/rewrite', 'POST /api/v1/blocks/{id}/accept',
+  'PATCH /api/v1/blocks/{id}', 'POST /api/v1/courses/{id}/held/rewrite', 'POST /api/v1/courses/{id}/publish',
+]

@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright'
-import { expect, signInAs, test } from './fixtures'
+import { expect, ids, signInAs, test } from './fixtures'
 
 const EMOJI_OR_ARROW = /[\p{Extended_Pictographic}←-⇿⟵-⟹⤀-⥿]/u
 
@@ -7,7 +7,7 @@ for (const theme of ['light', 'dark'] as const) {
   test(`axe finds no serious or critical violation in the ${theme} theme`, async ({ page, context }) => {
     await context.addInitScript((value) => localStorage.setItem('sourcebound.theme', value), theme)
     await signInAs(context, 'admin')
-    for (const path of ['/users', '/roles', '/courses']) {
+    for (const path of ['/users', '/roles', '/courses', `/courses/${ids().course}/plan`, `/courses/${ids().course}/sources`, `/courses/${ids().course}/publish`, `/runs/${ids().run}`]) {
       await page.goto(path)
       await expect(page.locator('main')).toBeVisible()
       await page.waitForLoadState('networkidle')
@@ -31,11 +31,18 @@ test('pseudo-locale brackets every interface string and no page has emoji or arr
   await signInAs(context, 'admin')
   await page.goto('/roles?lang=pseudo')
   await expect(page.getByTestId('roles-table')).toBeVisible()
+  await page.goto(`/runs/${ids().run}?lang=pseudo`)
+  await expect(page.getByTestId('run')).toBeVisible()
+  for (const text of await page.locator('main h1, main button, main .hint').allInnerTexts()) {
+    if (text.trim()) expect(text.trim(), text).toMatch(/^\[.*\]$/s)
+  }
+  await page.goto('/roles?lang=pseudo')
+  await expect(page.getByTestId('roles-table')).toBeVisible()
   const chrome = page.locator('header button, nav a, h1, th, main > div button')
   for (const text of await chrome.allInnerTexts()) {
     if (text.trim()) expect(text.trim(), text).toMatch(/\[.*\]/s)
   }
-  for (const path of ['/users', '/roles', '/courses', '/signin']) {
+  for (const path of ['/users', '/roles', '/courses', '/signin', `/courses/${ids().course}/plan`, `/runs/${ids().run}`]) {
     await page.goto(path)
     await page.waitForLoadState('networkidle')
     expect(EMOJI_OR_ARROW.test(await page.locator('body').innerText()), path).toBe(false)

@@ -12,10 +12,11 @@ import { notify } from '@/composables/notify'
 import { parseTags } from '@/composables/tags'
 import { useSessionStore } from '@/stores/session'
 
+const props = defineProps<{ embedded?: boolean; presetTags?: string[] }>()
 const { t, d } = useI18n()
 const router = useRouter()
 const session = useSessionStore()
-const tagsText = ref('')
+const tagsText = ref((props.presetTags ?? []).join(', '))
 const maxUses = ref<number | null>(null)
 const expires = ref('')
 const busy = ref(false)
@@ -36,7 +37,7 @@ async function create(): Promise<void> {
     const invite = await request<Invite>(ENDPOINTS.invites, { method: 'POST', body })
     created.value = [invite, ...created.value]
     notify('success', t('invites.created'))
-    tagsText.value = ''
+    tagsText.value = (props.presetTags ?? []).join(', ')
   } catch (cause) {
     error.value = cause instanceof ApiError ? cause.message : cause instanceof RangeError ? cause.message : String(cause)
   } finally {
@@ -61,7 +62,8 @@ async function copy(token: string): Promise<void> {
 </script>
 
 <template>
-  <h1 class="page-title">{{ t('invites.title') }}</h1>
+  <h2 v-if="embedded">{{ t('invites.title') }}</h2>
+  <h1 v-else class="page-title">{{ t('invites.title') }}</h1>
   <p class="muted">{{ t('invites.intro') }}</p>
   <form class="stack" @submit.prevent="create">
     <div class="field">
