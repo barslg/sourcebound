@@ -133,6 +133,32 @@ async def _build_demo_course(t03_session: AsyncSession, settings: Any) -> tuple[
         session_factory=factory,
     )
     run_id = UUID(result["run_id"])
+    # transient model failures stop the run; the product resume path
+    # continues from the last good step (bounded loop).
+    for _attempt in range(8):
+        row = (
+            await t03_session.execute(
+                sa.text("SELECT status FROM runs WHERE id = :r"), {"r": str(run_id)}
+            )
+        ).first()
+        if row is None or row[0] != "stopped":
+            break
+        await planruns.resume_run(t03_session, actor=actor, run_id=run_id)
+        resume_op = (
+            await t03_session.execute(
+                sa.text(
+                    "SELECT id FROM operations WHERE kind = 'resume_run'"
+                    " AND params->>'run_id' = :r ORDER BY created_at DESC LIMIT 1"
+                ),
+                {"r": str(run_id)},
+            )
+        ).scalar_one()
+        await planruns.run_resume_operation(
+            t03_session,
+            UUID(str(resume_op)),
+            provider_factory=_provider_factory(settings, factory),
+            session_factory=factory,
+        )
     row = (
         await t03_session.execute(
             sa.text("SELECT status FROM runs WHERE id = :r"), {"r": str(run_id)}

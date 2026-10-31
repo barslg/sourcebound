@@ -77,6 +77,7 @@ async def test_live_plan_on_synthetic_source(t03_session) -> None:  # type: igno
         filename="synthetic.txt",
         media="text",
         content=LIVE_TEXT.encode("utf-8"),
+        course_id=course_id,
     )
     await library.ingest_passages(
         t03_session,
@@ -84,7 +85,9 @@ async def test_live_plan_on_synthetic_source(t03_session) -> None:  # type: igno
         passages=library.chunk_text(LIVE_TEXT, kind="pdf"),
         ts_config="english",
     )
-    await library.approve_source(t03_session, source_id=source_id, approved_by=user_id)
+    await library.approve_source(
+        t03_session, source_id=source_id, approved_by=user_id, course_id=course_id
+    )
     await t03_session.commit()
 
     from app.rbac.principal import Principal
