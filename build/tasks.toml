@@ -1,0 +1,28 @@
+# Build ledger: one task per row, run by scripts/build.py. State = git log (a done task has a commit "build(ID): title").
+# Resumable: if the runner or the API stops mid-task, the next run resumes the same task from the working tree.
+[[task]]
+id = "T01"
+title = "day-1 backend harness: packaging, compose, layers, migration 0001, LLM layer, live smoke"
+prompt = "tmp/task-bootstrap.md"
+model = "muse-spark-1.3"
+effort = "high"
+max_steps = 500
+depends = []
+
+[[task]]
+id = "T02"
+title = "identity, RBAC catalogue, invites, ban/delete with heir, operations + SSE"
+prompt = "build/tasks/T02.md"
+model = "muse-spark-1.3"
+effort = "high"
+max_steps = 500
+depends = ["T01"]
+
+[[task]]
+id = "T03"
+title = "course model, sources with addressed passages, FTS retrieval, researcher/architect/estimator, resumable runs"
+prompt = "build/tasks/T03.md"
+model = "muse-spark-1.3"
+effort = "high"
+max_steps = 600
+depends = ["T02"]

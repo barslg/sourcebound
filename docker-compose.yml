@@ -1,5 +1,65 @@
-# Local development: one service. DB and queues join as separate services later.
+# Local: docker compose up -d --build. Postgres also reachable at localhost:5434.
 services:
-  app:
+  db:
+    image: postgres:16
+    container_name: muse-db
+    environment:
+      POSTGRES_USER: muse
+      POSTGRES_PASSWORD: muse
+      POSTGRES_DB: muse
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U muse -d muse"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
     build: .
-    container_name: muse-dev
+    container_name: muse-migrate
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://muse:muse@db:5432/muse
+    command: ["sh", "-c", "alembic upgrade head && python -m app.tasks.schema"]
+
+  api:
+    build: .
+    container_name: muse-api
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      APP_ENV: local
+      DATABASE_URL: postgresql+asyncpg://muse:muse@db:5432/muse
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: [
+        "CMD-SHELL",
+        "python -c \"import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/v1/health',timeout=3).status==200 else 1)\"",
+      ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build: .
+    container_name: muse-worker
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql+asyncpg://muse:muse@db:5432/muse
+    env_file:
+      - .env
+    command: ["procrastinate", "--app", "app.tasks.worker.app", "worker"]
+
+volumes:
+  pgdata:

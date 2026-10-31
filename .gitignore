@@ -23,7 +23,12 @@ __pycache__/
 node_modules/
 frontend/dist/
 
-# Docs stay local until the final publish (owner 2026-10-31); prompts and build tasks are product files
+# Docs, prompts and agent definitions stay local until the final publish (owner 2026-10-31): only code goes to git now
 *.md
-!prompts/**/*.md
-!build/**/*.md
+
+# Build runner state and logs (local)
+build/state.json
+build/logs/
+prompts/
+.agents/
+AGENTS.md

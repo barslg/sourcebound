@@ -1,0 +1,54 @@
+"""config.py is the only env reader; .env.example names every setting."""
+
+from pathlib import Path
+
+from app import config
+
+
+def _setting_names() -> set[str]:
+    return set(config.Settings.model_fields)
+
+
+def test_env_example_matches_settings() -> None:
+    names = {
+        line.split("=", 1)[0].strip()
+        for line in Path(".env.example").read_text().splitlines()
+        if line.strip() and not line.startswith("#")
+    }
+    assert names == {name.upper() for name in _setting_names()}, (
+        f"extra in .env.example: {names - {n.upper() for n in _setting_names()}}; "
+        f"missing: { {n.upper() for n in _setting_names()} - names }"
+    )
+
+
+def test_env_overrides_defaults(monkeypatch: object) -> None:
+    import pytest
+
+    mp = pytest.MonkeyPatch()
+    mp.setenv("LOG_LEVEL", "DEBUG")
+    try:
+        assert config.Settings().log_level == "DEBUG"
+    finally:
+        mp.undo()
+    assert config.Settings().log_level == "INFO"
+
+
+def test_test_database_url_derivation() -> None:
+    from conftest import derive_test_url
+
+    assert (
+        derive_test_url("postgresql+asyncpg://muse:muse@localhost:5434/muse")
+        == "postgresql+asyncpg://muse:muse@localhost:5434/muse_test"
+    )
+
+
+def test_api_key_is_a_secret() -> None:
+    from pydantic import SecretStr
+
+    keyed = config.Settings(_env_file=None, model_api_key="synthetic-key-value")
+    dumped = keyed.model_dump()
+    assert isinstance(dumped.get("model_api_key"), SecretStr)
+    assert "synthetic-key-value" not in str(dumped)
+    assert keyed.model_api_key is not None
+    assert "synthetic-key-value" not in repr(keyed.model_api_key)
+    assert keyed.model_api_key.get_secret_value() == "synthetic-key-value"
