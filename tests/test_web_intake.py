@@ -8,6 +8,8 @@ container chunked as raw HTML. The thin rule is the measured one.
 
 from __future__ import annotations
 
+from typing import Any
+
 from app.clients.web import FetchedPage
 from app.services.library import is_thin_page, web_passages
 
@@ -56,7 +58,9 @@ def test_html_page_becomes_addressed_passages_without_glue_or_chrome() -> None:
     assert (
         "First unclosed paragraph" in texts and "Second paragraph after an unclosed one." in texts
     )
-    assert any(t.startswith("bash cd /path/to/project muse") for t in texts)
+    assert "cd /path/to/project\nmuse" in texts, (
+        "a code block keeps its lines and drops the language label"
+    )
     joined = "\n".join(texts)
     for chrome in ("Home", "Copyright", "Copy code", "var x", "<"):
         assert chrome not in joined, chrome
@@ -95,3 +99,27 @@ def test_thin_rule_matches_the_measured_pages() -> None:
         "only where you already trust both the environment and the code."
     )
     assert not is_thin_page(readable)
+
+
+async def test_a_thin_source_cannot_be_approved(t03_session: Any) -> None:
+    """R8 data guard: approving a source that gave no readable text is refused with the message."""
+    from uuid import UUID
+
+    import pytest
+    import sqlalchemy as sa
+
+    from app.errors import ValidationError
+    from app.services.library import THIN_MESSAGE, approve_source
+
+    source = (
+        await t03_session.execute(
+            sa.text(
+                "INSERT INTO sources (content_sha256, kind, media, title, approval, storage_path,"
+                " ingest_status, ingest_message) VALUES ('thin-probe', 'url', 'text', 'u',"
+                " 'pending', '', 'thin', :m) RETURNING id"
+            ),
+            {"m": THIN_MESSAGE},
+        )
+    ).scalar_one()
+    with pytest.raises(ValidationError, match="no readable text"):
+        await approve_source(t03_session, source_id=UUID(str(source)), approved_by=None)

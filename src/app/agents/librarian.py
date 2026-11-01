@@ -25,8 +25,25 @@ _SELECTOR_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9]*(?:[.#][a-zA-Z0-9_-]+)?$")
 _MAX_PAGES = 20
 _HEADINGS = ("h1", "h2", "h3", "h4", "h5", "h6")
 _SKIP_TAGS = frozenset(
-    {"script", "style", "noscript", "svg", "template", "nav", "header", "footer", "aside", "button"}
+    {
+        "script",
+        "style",
+        "noscript",
+        "svg",
+        "template",
+        "nav",
+        "header",
+        "footer",
+        "aside",
+        "button",
+        "form",
+        "dialog",
+    }
 )
+_SKIP_ROLES = frozenset(
+    {"banner", "dialog", "complementary", "contentinfo", "navigation", "alertdialog"}
+)
+_CHROME_WORDS = ("cookie", "consent", "gdpr", "banner", "feedback", "newsletter", "breadcrumb")
 _BLOCK_TAGS = frozenset(
     {"p", "li", "pre", "blockquote", "dd", "dt", "td", "th", "figcaption", "summary"}
 )
@@ -93,6 +110,7 @@ class _SpecParser(HTMLParser):
         self._heading: list[tuple[int, str]] = []
         self._heading_text: list[str] = []
         self._heading_depth: int | None = None
+        self._heading_tag = "h6"
         self._title = ""
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -105,12 +123,13 @@ class _SpecParser(HTMLParser):
         depth = len(self._chain)
         if self._skip_depth is not None:
             return
-        if tag in _SKIP_TAGS:
+        if tag in _SKIP_TAGS or _is_chrome(tag, attr):
             self._skip_depth = depth
             return
         if tag in _HEADINGS:
             self._heading_text = []
             self._heading_depth = depth
+            self._heading_tag = tag
             return
         if self._container_depth is None:
             if _matches_here(self._chain, self._spec.container):
@@ -131,28 +150,30 @@ class _SpecParser(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         if tag in _VOID_TAGS or not self._chain:
             return
-        depth = len(self._chain)
+        index = next(
+            (i for i in range(len(self._chain) - 1, -1, -1) if self._chain[i][0] == tag), None
+        )
+        if index is None:
+            return  # a stray end tag closes nothing
+        depth = index + 1
+        attrs = self._chain[index][1]
         if self._skip_depth is not None:
-            if depth == self._skip_depth and self._chain[-1][0] == tag:
+            # closing a skipped element, or an ancestor of it, ends the skip; an
+            # unclosed <p> inside a cookie box must not swallow the rest of the page
+            del self._chain[index:]
+            if len(self._chain) < self._skip_depth:
                 self._skip_depth = None
-                self._chain.pop()
-            elif depth > self._skip_depth:
-                self._chain.pop()
             return
-        if self._heading_depth is not None and depth == self._heading_depth:
-            self._close_heading(tag)
+        if self._heading_depth is not None and depth <= self._heading_depth:
+            self._close_heading(self._heading_tag)
         else:
             self._flush_deeper(depth)
-            if self._blocks and self._blocks[-1][1] == "pre" and self._line_break_in_pre(tag):
+            if self._blocks and self._blocks[-1][1] == "pre" and _line_break_in_pre(tag, attrs):
                 # a code block renders its lines as child elements: keep them lines
                 self._blocks[-1][2].append("\n")
-        if self._container_depth is not None and depth == self._container_depth:
+        if self._container_depth is not None and depth <= self._container_depth:
             self._container_depth = None
-        self._chain.pop()
-
-    def _line_break_in_pre(self, tag: str) -> bool:
-        attrs = self._chain[-1][1] if self._chain else {}
-        return tag in ("div", "code") or (tag == "span" and "data-line" in attrs)
+        del self._chain[index:]
 
     def _flush_deeper(self, depth: int) -> None:
         """Close every block and list opened at `depth` or deeper (unclosed tags included)."""
@@ -192,7 +213,9 @@ class _SpecParser(HTMLParser):
         if tag == "li" and self._lists:
             self._lists[-1][2].append(" ".join(text.split()))
             return
-        self._emit(text)
+        if tag == "pre":
+            text = _code_lines(text)
+        self._emit(text, code=tag == "pre")
 
     def _close_list(self) -> None:
         _, kind, items = self._lists.pop()
@@ -209,7 +232,7 @@ class _SpecParser(HTMLParser):
             return
         self._emit(text)
 
-    def _emit(self, text: str) -> None:
+    def _emit(self, text: str, code: bool = False) -> None:
         if not text.strip():
             return
         rule = self._spec.address_rule
@@ -225,8 +248,46 @@ class _SpecParser(HTMLParser):
                 "title": self._heading[-1][1] if self._heading else self._title,
                 "body": text,
                 "address": address,
+                "code": "1" if code else "",
             }
         )
+
+
+def _line_break_in_pre(tag: str, attrs: dict[str, str]) -> bool:
+    return tag in ("div", "code") or (tag == "span" and "data-line" in attrs)
+
+
+_STRUCTURAL_TAGS = frozenset({"html", "body", "main", "article"})
+_TOKEN_SPLIT_RE = re.compile(r"[\s_-]+")
+
+
+def _is_chrome(tag: str, attr: dict[str, str]) -> bool:
+    """Page chrome by attributes: hidden elements, landmark roles, cookie/consent/feedback boxes.
+
+    Words match whole class or id tokens, never substrings, and never
+    on the page's structural elements: MS Learn's `<html class="…
+    show-breadcrumb …">` must not skip the whole document.
+    """
+    if attr.get("hidden") is not None or attr.get("aria-hidden") == "true":
+        return True
+    if attr.get("role", "") in _SKIP_ROLES:
+        return True
+    if tag in _STRUCTURAL_TAGS:
+        return False
+    tokens = set(_TOKEN_SPLIT_RE.split(f"{attr.get('class', '')} {attr.get('id', '')}".lower()))
+    return any(word in tokens for word in _CHROME_WORDS)
+
+
+def _code_lines(text: str) -> str:
+    """A code block's lines, trailing spaces dropped, a leading language label removed."""
+    lines = [line.rstrip() for line in text.splitlines()]
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if len(lines) > 1 and re.fullmatch(r"[A-Za-z][A-Za-z0-9+#-]{0,14}", lines[0].strip()):
+        lines = lines[1:]
+    return "\n".join(lines)
 
 
 def _matches_here(chain: list[tuple[str, dict[str, str]]], selector: str) -> bool:
@@ -278,8 +339,9 @@ def execute_parser_spec(html: str, spec: dict[str, Any]) -> list[dict[str, str]]
     return [
         {
             "title": record["title"].strip(),
-            "body": record["body"].strip(),
+            "body": record["body"].strip("\n") if record.get("code") else record["body"].strip(),
             "address": record["address"],
+            "code": record.get("code", ""),
         }
         for record in parser._records
         if record["body"].strip()
