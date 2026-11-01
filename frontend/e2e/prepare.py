@@ -75,7 +75,8 @@ def seed_tree(prefix: str) -> Any:
             "objectives": [f"Explain {title.lower()}"],
             "through_line_note": "Builds on the previous topic.",
             "blocks": [
-                block(f"{prefix}-{node}-a", "teach", f"What is {title.lower()}?"),
+                block(f"{prefix}-{node}-a", "teach", f"{title}: what it is and when it applies"),
+                block(f"{prefix}-{node}-c", "example", f"{title} on a ward, one worked case"),
                 block(f"{prefix}-{node}-b", "check", f"Why does {title.lower()} matter?"),
             ],
         }

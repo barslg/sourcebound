@@ -36,7 +36,7 @@ test('plan page: an open question blocks Generate, answering it on the Plan page
   await page.goto(`/courses/${ids().course}/generate`)
   await expect(page.getByTestId('generate')).toBeDisabled()
   await expect(page.getByText('Answer the open questions first.')).toBeVisible()
-  await expect(page.getByTestId('forecast')).toContainText('6 blocks')
+  await expect(page.getByTestId('forecast')).toContainText('9 blocks')
   await expect(page.getByText('A forecast, not a limit.', { exact: true })).toHaveCount(1)
   expect(calls.some((c) => c.method === 'GET' && c.path.endsWith('/estimate'))).toBe(true)
 
@@ -74,7 +74,7 @@ test('plan page: a topic opens inline to its blocks, rename autosaves on blur, m
   await expect(page.getByTestId('module-title').first()).toHaveValue('Foundations')
   const topic = page.getByTestId('plan-topic').filter({ has: page.getByRole('button', { name: `More actions for ${SEED_TOPIC}` }) })
   await topic.getByTestId('topic-toggle').click()
-  await expect(page.getByTestId('plan-block')).toHaveCount(2)
+  await expect(page.getByTestId('plan-block')).toHaveCount(3)
   await expect(page.getByTestId('plan-block').first()).toContainText('Teaches')
   await expect(page.getByTestId('plan-block').first()).toContainText('P1')
   await topic.getByTestId('topic-title').fill('Basics renamed')

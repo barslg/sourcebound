@@ -78,8 +78,8 @@ test('course header shows language, audience and the topic and block counts of t
   await expect(facts).toContainText('English')
   await expect(facts).toContainText('new nurses')
   await expect(facts).toContainText('3 topics')
-  await expect(facts).toContainText('6 blocks')
-  expect(rows[0]).toMatchObject({ language: 'en', topic_count: 3, block_count: 6 })
+  await expect(facts).toContainText('9 blocks')
+  expect(rows[0]).toMatchObject({ language: 'en', topic_count: 3, block_count: 9 })
 })
 
 test('translations: done, held and failed states come from the backend with the held count', async ({ page, context }) => {

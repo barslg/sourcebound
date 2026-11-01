@@ -41,7 +41,8 @@ const facts = computed(() => {
   const questions = validation.data.value?.blocking_questions ?? []
   const stoppedPlan = (runs.data.value ?? []).find((r) => r.kind === 'plan' && r.status === 'stopped') ?? null
   return {
-    ...factsOfRow({ ...c, has_profile: c.profile !== null, has_plan: blocks.length > 0, open_questions: questions.length }),
+    // the course row already knows whether a plan exists: never say 'build the plan' while the plan is still loading
+    ...factsOfRow({ ...c, has_profile: c.profile !== null, has_plan: plan.data.value ? blocks.length > 0 : (c.block_count ?? 0) > 0, open_questions: questions.length }),
     firstQuestionKey: questions[0]?.key ?? null,
     firstPendingId: pending[0]?.id ?? null,
     firstHeldId: heldList[0]?.id ?? null,

@@ -3,6 +3,7 @@
 import json
 import re
 import sys
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from app.agents.reader import RUBRIC_ITEMS
@@ -55,6 +56,10 @@ def carried(text):
 def reply_for(prompt, schema):
     CALLS[0] += 1
     head = prompt[:30]
+    if head.startswith("# Block"):
+        # a real block takes seconds; without this pause a 10-step run ends
+        # before the flow spec can observe it running and cancel it
+        time.sleep(0.8)
     LOG.write(json.dumps({"call": CALLS[0], "head": head}) + "\n")
     LOG.flush()
     base = fill(schema)
@@ -200,11 +205,12 @@ def reply_for(prompt, schema):
         "block_type": block_type,
         "text": f"Staff apply the cited passage at work (take {CALLS[0]}).",
         "citations": [{"passage_id": h, "quote": quote}],
-        "answer": "key",
-        "options": [{"text": "Yes", "correct": True}, {"text": "No", "correct": False}],
-        "pairs": [{"left": "a", "right": "b"}],
-        "blanks": ["x"],
-        "items": [{"text": "i", "passage_id": h, "tier": "high"}],
+        # keys are quoted from the passage: the taught check asks provenance
+        "answer": quote,
+        "options": [{"text": quote, "correct": True}, {"text": "No", "correct": False}],
+        "pairs": [{"left": "a", "right": quote}],
+        "blanks": [quote.split()[0] if quote.split() else "x"],
+        "items": [{"text": quote, "passage_id": h, "tier": "correct"}],
         "sentences": ["Alpha is apply.", "Beta is apply."],
     }
 
