@@ -1,1 +1,9 @@
 # path:line:operator reason - a changed line the permanent suite cannot guard, with the reason
+src/app/clients/replay.py:40:int+1 lru_cache size: a cache bound, no behaviour
+src/app/clients/replay.py:78:int+1 default argument of a signature kept equal to MetaClient, never read by the replay path
+src/app/clients/replay.py:95:int+1 default argument of a signature kept equal to MetaClient, never read by the replay path
+src/app/clients/replay.py:53:bool:And ledger row shape filter: rows are exports of the product itself; the loud miss guards a bad row
+src/app/controllers/auth.py:76:bool:And feat/frontend's repeated-callback redirect, brought over unchanged; its guard test lives on that branch
+src/app/controllers/auth.py:76:cmp:IsNot same as above
+src/app/controllers/auth.py:77:cmp:IsNot same as above
+src/app/controllers/auth.py:78:not same as above
