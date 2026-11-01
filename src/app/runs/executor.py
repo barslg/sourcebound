@@ -739,10 +739,18 @@ async def plan_architect_step(
         budget += size
     if not picked:
         raise ValidationError("Add and approve at least one source before building a plan.")
-    handle_to_passage = {f"P{index}": row[0] for index, row in enumerate(picked, 1)}
+    from app.services.library import rejoin_list_passages
+
+    merged = rejoin_list_passages(
+        [
+            {"id": row[0], "address_key": row[1], "text": str(row[2]), "source_id": str(row[3])}
+            for row in picked
+        ]
+    )
+    handle_to_passage = {f"P{index}": row["id"] for index, row in enumerate(merged, 1)}
     passages = [
-        {"handle": f"P{index}", "address_key": row[1], "text": str(row[2])}
-        for index, row in enumerate(picked, 1)
+        {"handle": f"P{index}", "address_key": row["address_key"], "text": str(row["text"])}
+        for index, row in enumerate(merged, 1)
     ]
     source_languages = sorted(
         {TS_CONFIG_TO_LANGUAGE.get(str(row[4]), str(row[4])) for row in picked if row[4]}
@@ -1533,6 +1541,19 @@ async def generate_block_step(
                     }
                 )
                 citation_pids.append(pid)
+        # R1/R3: teach/example blocks carry the complete claim of every
+        # cited passage (its list items) and never join two passages
+        # into one paragraph without a handle marker between them.
+        role = str(dict(entry.get("skeleton", {})).get("role", ""))
+        if agent in ("block_teach", "block_example") or role in ("teach", "example"):
+            from app.course.grounding import adjacency_holds, coverage_holds
+
+            cited_texts = {
+                cit["handle"]: stored.get(handle_to_passage.get(cit["handle"], cit["handle"]), "")
+                for cit in resolved_citations
+            }
+            holds += coverage_holds(text, cited_texts)
+            holds += adjacency_holds(text, [cit["handle"] for cit in resolved_citations])
         holds += check_language(text, course_language=str(entry.get("course_language", "en")))
         content, key, type_errors = _typed_content(
             output, block_type=block_type, citations=resolved_citations

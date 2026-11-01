@@ -428,7 +428,7 @@ def extract_pdf_pages(content: bytes) -> list[dict[str, Any]]:
             raise ValidationError(f"unreadable PDF page {page_no}: {exc}") from exc
         paragraph = 0
         for para in re.split(r"\n\s*\n", text):
-            cleaned = " ".join(para.split())
+            cleaned = _clean_block(para)
             if not cleaned:
                 continue
             paragraph += 1
@@ -439,7 +439,7 @@ def extract_pdf_pages(content: bytes) -> list[dict[str, Any]]:
                     "address_key": f"p{page_no}/para{paragraph}",
                 }
             )
-    return passages
+    return rejoin_list_passages(passages)
 
 
 def chunk_upload(content: bytes, *, media: str, filename: str) -> list[dict[str, Any]]:
@@ -461,6 +461,62 @@ def chunk_upload(content: bytes, *, media: str, filename: str) -> list[dict[str,
     raise UnsupportedMediaError(f"unsupported media: {media}")
 
 
+_BULLET_LINE_RE = re.compile(r"^\s*(?:[-•*]|\d+[.)])\s+\S")
+
+
+def _clean_block(block: str) -> str:
+    """Clean one block, keeping numbered/bulleted list lines on their own lines.
+
+    Collapsing a list into one running sentence would split the claim
+    (intro sentence ending with a colon plus its items) into fragments
+    no generator can carry whole.
+    """
+    lines = [" ".join(line.split()) for line in str(block).splitlines()]
+    lines = [line for line in lines if line]
+    if not any(_BULLET_LINE_RE.match(line) for line in lines):
+        return " ".join(lines)
+    out: list[str] = []
+    prose: list[str] = []
+    for line in lines:
+        if _BULLET_LINE_RE.match(line):
+            if prose:
+                out.append(" ".join(prose))
+                prose = []
+            out.append(line)
+        else:
+            prose.append(line)
+    if prose:
+        out.append(" ".join(prose))
+    return "\n".join(out)
+
+
+def rejoin_list_passages(passages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Re-join a colon-intro passage with the list passages that follow it.
+
+    Ingest keeps "intro sentence + its list items" as one passage; this
+    also repairs already-split passages at read time: a passage whose
+    text ends with ':' absorbs following passages whose lines are all
+    list items, keeping the first passage's address.
+    """
+    out: list[dict[str, Any]] = []
+    for passage in passages:
+        text = str(passage.get("text", ""))
+        lines = [line for line in text.splitlines() if line.strip()]
+        is_list = bool(lines) and all(_BULLET_LINE_RE.match(line) for line in lines)
+        same_source = out and (
+            "source_id" not in passage
+            or "source_id" not in out[-1]
+            or passage.get("source_id") == out[-1].get("source_id")
+        )
+        if same_source and is_list and str(out[-1].get("text", "")).rstrip().endswith(":"):
+            merged = dict(out[-1])
+            merged["text"] = str(merged["text"]).rstrip() + "\n" + text.strip()
+            out[-1] = merged
+            continue
+        out.append(passage)
+    return out
+
+
 def chunk_text(text: str, *, kind: str = "pdf", page_of: int = 0) -> list[dict[str, Any]]:
     """Split plain text into addressed passages (page/paragraph).
 
@@ -473,7 +529,7 @@ def chunk_text(text: str, *, kind: str = "pdf", page_of: int = 0) -> list[dict[s
     for block in re.split(r"\f", text):
         paragraph = 0
         for para in re.split(r"\n\s*\n", block):
-            cleaned = " ".join(para.split())
+            cleaned = _clean_block(para)
             if not cleaned:
                 continue
             paragraph += 1
@@ -485,7 +541,7 @@ def chunk_text(text: str, *, kind: str = "pdf", page_of: int = 0) -> list[dict[s
                 }
             )
         page += 1
-    return passages
+    return rejoin_list_passages(passages)
 
 
 def chunk_markdown(text: str) -> list[dict[str, Any]]:
@@ -507,12 +563,12 @@ def chunk_markdown(text: str) -> list[dict[str, Any]]:
         path = ">".join(headings) if headings else "body"
         passages.append(
             {
-                "text": " ".join(cleaned.split()),
+                "text": _clean_block(cleaned),
                 "address": {"kind": "md", "heading_path": path, "para": paragraph},
                 "address_key": f"h:{path}/para{paragraph}",
             }
         )
-    return passages
+    return rejoin_list_passages(passages)
 
 
 def chunk_transcript(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -548,6 +604,7 @@ async def ingest_passages(
     """
     from app.course.errorspot import is_content_text
 
+    passages = rejoin_list_passages(list(passages))
     count = 0
     for passage in passages:
         await session.execute(
