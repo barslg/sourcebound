@@ -25,6 +25,7 @@ GATES = (
     "check_public_tree",
     "check_routes",
     "check_callers",
+    "check_scoped_sql",
 )
 
 SUMMARY_RE = re.compile(r"^(?P<name>\w+): (?P<count>\d+) (?P<unit>[\w ]+?) checked$")
