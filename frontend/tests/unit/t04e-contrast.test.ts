@@ -22,9 +22,11 @@ export function ratio(a: string, b: string): number {
 }
 
 const TEXT: Array<[string, string]> = [
-  ['fg', 'bg'], ['fg', 'surface'], ['muted', 'bg'], ['muted', 'surface'], ['accent', 'bg'], ['accent', 'surface'],
-  ['accent-fg', 'accent'], ['warn-fg', 'warn-bg'], ['danger', 'surface'], ['danger', 'bg'], ['ok', 'surface'], ['ok', 'bg'],
-  ['danger-fg', 'danger-bg'], ['ok-fg', 'ok-bg'], ['info-fg', 'info-bg'],
+  ['fg', 'bg'], ['fg', 'surface'], ['fg', 'surface-2'], ['muted', 'bg'], ['muted', 'surface'], ['muted', 'surface-2'],
+  ['link', 'bg'], ['link', 'surface'], ['link', 'surface-2'], ['accent-fg', 'accent'], ['primary-fg', 'primary'], ['primary-fg', 'primary-hover'],
+  ['ink-fg', 'ink'], ['ink-muted', 'ink'], ['ink-fg', 'ink-hover'], ['ink-muted', 'ink-hover'],
+  ['warn-fg', 'warn-bg'], ['danger', 'surface'], ['danger', 'bg'], ['ok', 'surface'], ['ok', 'bg'],
+  ['danger-fg', 'danger-bg'], ['ok-fg', 'ok-bg'], ['info-fg', 'info-bg'], ['fg', 'ok-bg'], ['fg', 'warn-bg'],
 ]
 
 for (const [name, tokens] of [['light', light], ['dark', dark]] as const) {
@@ -41,6 +43,12 @@ for (const [name, tokens] of [['light', light], ['dark', dark]] as const) {
         expect(ratio(tokens.focus as string, tokens[bg] as string)).toBeGreaterThanOrEqual(3)
       })
     }
+    it('focus ring on the ink sidebar is at least 3:1', () => {
+      expect(ratio(tokens['focus-ink'] as string, tokens.ink as string)).toBeGreaterThanOrEqual(3)
+    })
+    it('the single accent (saffron) is the same hex in both themes', () => {
+      expect(tokens.accent).toBe('#f2a73b')
+    })
     it('large text (headings use fg) keeps at least 3:1 on both surfaces', () => {
       expect(ratio(tokens.fg as string, tokens.bg as string)).toBeGreaterThanOrEqual(3)
     })
