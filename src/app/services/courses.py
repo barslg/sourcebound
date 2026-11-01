@@ -180,24 +180,22 @@ async def get_course(session: AsyncSession, *, course_id: UUID) -> dict[str, Any
         ).first()
         current_version = latest[0] if latest else None
     translations = (
-        (
-            await session.execute(
-                sa.text(
-                    "SELECT ct.language, ct.status,"
-                    " count(*) FILTER (WHERE tb.status = 'ok'),"
-                    " count(*) FILTER (WHERE tb.status = 'held'),"
-                    " count(*) FILTER (WHERE tb.status = 'failed')"
-                    " FROM course_translations ct"
-                    " LEFT JOIN translation_blocks tb ON tb.translation_id = ct.id"
-                    " WHERE ct.course_version_id = :version GROUP BY ct.language, ct.status"
-                    " ORDER BY ct.language"
-                ),
-                {"version": str(current_version)},
-            )
-        ).all()
-        if current_version is not None
-        else []
-    )
+        await session.execute(
+            sa.text(
+                "SELECT ct.language, ct.status,"
+                " count(*) FILTER (WHERE tb.status = 'ok'),"
+                " count(*) FILTER (WHERE tb.status = 'held'),"
+                " count(*) FILTER (WHERE tb.status = 'failed')"
+                " FROM (SELECT DISTINCT ON (t.language) t.id, t.language, t.status"
+                " FROM course_translations t JOIN course_versions cv"
+                " ON cv.id = t.course_version_id WHERE cv.course_id = :course"
+                " ORDER BY t.language, t.created_at DESC) ct"
+                " LEFT JOIN translation_blocks tb ON tb.translation_id = ct.id"
+                " GROUP BY ct.language, ct.status ORDER BY ct.language"
+            ),
+            {"course": str(course_id)},
+        )
+    ).all()
     facts = (await course_facts(session, [course_id]))[str(course_id)]
     return {
         **facts,
