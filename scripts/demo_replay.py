@@ -206,7 +206,6 @@ def main() -> int:
     settings = get_settings()
     if not settings.model_replay_ledger:
         settings = settings.model_copy(update={"model_replay_ledger": default_ledger_paths()})
-    settings = settings.model_copy(update={"model_replay_loose": True})
     if not settings.model_replay_ledger:
         print("demo_replay: no ledger found; set MODEL_REPLAY_LEDGER", file=sys.stderr)
         return 1

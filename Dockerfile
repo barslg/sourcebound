@@ -4,7 +4,7 @@ ARG PYTHON_VERSION=3.12
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS uv
 
 FROM python:${PYTHON_VERSION}-slim-bookworm AS builder
-COPY --from=uv /uv /usr/local/bin/uv
+COPY --from=uv /usr/local/bin/uv /usr/local/bin/uv
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1
 COPY pyproject.toml uv.lock .python-version ./

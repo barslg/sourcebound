@@ -83,9 +83,7 @@ class MetaProvider:
         """The Meta client, or the free replay client when MODEL_REPLAY_LEDGER is set."""
         if self._client is None:
             if self._settings.model_replay_ledger:
-                self._client = ReplayClient(
-                    self._settings.model_replay_ledger, loose=self._settings.model_replay_loose
-                )
+                self._client = ReplayClient(self._settings.model_replay_ledger)
             else:
                 self._client = MetaClient(self._settings, self._http_client)
         return self._client

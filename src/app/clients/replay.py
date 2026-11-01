@@ -7,11 +7,8 @@ the prompt version pinned to a constant and the course-specific cache key
 left out: the recorded request body already
 embeds the complete system prompt, so any edit to a prompt changes the
 digest and the request is a miss. A miss fails loudly with the step name
-and never reaches the network. Loose mode (MODEL_REPLAY_LOOSE, the demo
-script only) additionally serves the one recorded reply of a schema that
-has exactly one, when its request changed since the recording; the
-executor still runs every code check on it. Caller: providers/llm.py,
-selected by MODEL_REPLAY_LEDGER.
+and never reaches the network. Caller: providers/llm.py, selected by
+MODEL_REPLAY_LEDGER.
 """
 
 from __future__ import annotations
@@ -58,26 +55,6 @@ def load_ledgers(paths: tuple[str, ...]) -> dict[str, dict[str, Any]]:
     return replies
 
 
-def schema_key(model: str, body: dict[str, Any]) -> str:
-    """Model plus the response schema: what identifies the agent that asked."""
-    schema = body.get("text", {}).get("format", {}).get("schema", {})
-    return request_hash(model, REPLAY_PROMPT_VERSION, {"schema": schema})
-
-
-@lru_cache(maxsize=4)
-def load_singletons(paths: tuple[str, ...]) -> dict[str, dict[str, Any] | None]:
-    """Schema key -> its recorded reply when exactly one distinct reply exists, else None."""
-    found: dict[str, list[dict[str, Any]]] = {}
-    for raw in paths:
-        for row in json.loads(Path(raw).read_text(encoding="utf-8")):
-            request, response = row.get("request"), row.get("response")
-            if isinstance(request, dict) and isinstance(response, dict) and row.get("model"):
-                bucket = found.setdefault(schema_key(str(row["model"]), request), [])
-                if response not in bucket:
-                    bucket.append(response)
-    return {key: (bucket[0] if len(bucket) == 1 else None) for key, bucket in found.items()}
-
-
 def parse_paths(value: str) -> tuple[str, ...]:
     """Comma-separated ledger paths from the setting."""
     return tuple(item.strip() for item in value.split(",") if item.strip())
@@ -86,10 +63,8 @@ def parse_paths(value: str) -> tuple[str, ...]:
 class ReplayClient:
     """MetaClient look-alike over recorded replies; every call is free."""
 
-    def __init__(self, ledger_paths: str, *, loose: bool = False) -> None:
-        paths = parse_paths(ledger_paths)
-        self._replies = load_ledgers(paths)
-        self._singletons = load_singletons(paths) if loose else {}
+    def __init__(self, ledger_paths: str) -> None:
+        self._replies = load_ledgers(parse_paths(ledger_paths))
 
     async def respond_json(
         self,
@@ -114,8 +89,6 @@ class ReplayClient:
         )
         digest = replay_digest(model, body)
         recorded = self._replies.get(digest)
-        if recorded is None and self._singletons:
-            recorded = self._singletons.get(schema_key(model, body))
         if recorded is None:
             raise ReplayMissError(
                 f"replay mode: no recorded reply for this request (model {model}, request"
