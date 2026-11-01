@@ -133,7 +133,6 @@ class StepSpec:
 
 STEPS: dict[str, StepSpec] = {
     "intake": StepSpec(model="muse-spark-1.3", effort="medium", max_output_tokens=4000),
-    "librarian": StepSpec(model="muse-spark-1.3", effort="medium", max_output_tokens=2000),
     "researcher": StepSpec(model="muse-spark-1.3", effort="low", max_output_tokens=4000),
     "architect": StepSpec(model="muse-wonder-1.0", effort="high", max_output_tokens=8000),
     "block_teach": StepSpec(model="muse-spark-1.3", effort="medium", max_output_tokens=4000),

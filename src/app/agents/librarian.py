@@ -1,9 +1,11 @@
-"""Librarian: the model writes a DECLARATIVE parser spec; code runs it.
+"""Declarative parser specs: code derives or validates a spec and runs it.
 
-No generated code is ever executed: validate_parser_spec() accepts
-only container/field selectors, one address rule, and one pagination
-rule, and execute_parser_spec() interprets the spec with the stdlib
-HTML parser. The spec is stored with the source so re-crawls reuse it.
+No model call writes a spec (derive_parser_spec builds the first one from
+the page structure) and no generated code is ever executed:
+validate_parser_spec() accepts only container/field selectors, one
+address rule, and one pagination rule, and execute_parser_spec()
+interprets the spec with the stdlib HTML parser. The spec is stored with
+the source so re-crawls reuse it. Caller: services/library.py.
 """
 
 from __future__ import annotations
@@ -162,8 +164,8 @@ def execute_parser_spec(html: str, spec: dict[str, Any]) -> list[dict[str, str]]
 def derive_parser_spec(html: str) -> dict[str, Any] | None:
     """Deterministic first-intake spec from page structure (stored + reused).
 
-    Model-written specs (build_prompt) still win when supplied or
-    stored; this covers the first crawl so a spec is always written.
+    A supplied or stored spec wins; this covers the first crawl so a
+    spec is always written.
     """
     container = "article" if "<article" in html else "section" if "<section" in html else "body"
     heading = next((tag for tag in ("h1", "h2", "h3") if f"<{tag}" in html), "h2")

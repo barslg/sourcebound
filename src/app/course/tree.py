@@ -15,31 +15,36 @@ from pydantic import BaseModel, Field
 
 from app.blocks.registry import BLOCK_TYPES as REGISTRY_BLOCK_TYPES
 from app.course.errorspot import MUTATION_KINDS
+from app.course.methodologies import METHODOLOGIES
 
 ROLES = ("teach", "example", "check", "practice", "test")
 QUESTION_ROLES = frozenset({"check", "practice", "test"})
 TOPIC_KINDS = ("lesson", "module_test")
 TS_CONFIGS = {"en": "english", "nb": "norwegian", "uk": "simple"}
-# Block-type registry per topic kind (item 14): block_type is not free
-# text. Lessons teach with readings/figures/examples and check with
-# exercises; module tests only assess.
-BLOCK_TYPES: dict[str, tuple[str, ...]] = {
-    "lesson": (
-        "reading",
-        "figure",
-        "choice",
-        "matching",
-        "cloze",
-        "scenario_practice",
-    ),
-    "module_test": (
-        "choice",
-        "matching",
-        "cloze",
-        "scenario_practice",
-        "spot_the_error",
-    ),
-}
+
+
+def _block_types_by_kind() -> dict[str, tuple[str, ...]]:
+    """Block types a topic kind may hold: exactly those the methodology prescriptions name.
+
+    One source: course.methodologies. A lesson allows every type any
+    methodology puts in `lesson_blocks`, a module test every type in
+    `module_test_blocks`; the registry order keeps the architect prompt
+    stable. Callers: validate_tree, agents.architect.build_dynamic.
+    """
+    named: dict[str, set[str]] = {"lesson": set(), "module_test": set()}
+    for entry in METHODOLOGIES:
+        prescription = entry["prescription"]
+        for pairs in dict(prescription.get("lesson_blocks", {})).values():
+            named["lesson"].update(block_type for _role, block_type in pairs)
+        named["module_test"].update(
+            block_type for _role, block_type in prescription.get("module_test_blocks", [])
+        )
+    return {
+        kind: tuple(t for t in REGISTRY_BLOCK_TYPES if t in types) for kind, types in named.items()
+    }
+
+
+BLOCK_TYPES: dict[str, tuple[str, ...]] = _block_types_by_kind()
 KNOWN_BLOCK_TYPES = frozenset(
     block_type for allowed in BLOCK_TYPES.values() for block_type in allowed
 )
@@ -293,28 +298,6 @@ ARCHITECT_SCHEMA: dict[str, Any] = _strict_object(
                     "type": "array",
                     "items": _strict_object({"topic_plan_node_id": _string(), "note": _string()}),
                 },
-            }
-        ),
-    }
-)
-
-LIBRARIAN_SCHEMA: dict[str, Any] = _strict_object(
-    {
-        "container": _string(),
-        "fields": _strict_object({"title": _string(), "body": _string()}),
-        "address_rule": _strict_object(
-            {
-                "kind": {"type": "string", "enum": ["heading_path", "anchor_id"]},
-                "selector": _string(),
-            }
-        ),
-        "pagination": _strict_object(
-            {
-                "next_selector": {
-                    "anyOf": [{"type": "string"}, {"type": "null"}],
-                    "description": "Next-page link selector, or null when single page.",
-                },
-                "max_pages": {"type": "integer"},
             }
         ),
     }
