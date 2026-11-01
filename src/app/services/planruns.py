@@ -18,7 +18,7 @@ from uuid import UUID
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.errors import NotFoundError, UnprocessableError, ValidationError
+from app.errors import ConflictError, NotFoundError, UnprocessableError, ValidationError
 from app.rbac.principal import Principal
 from app.rbac.require import require
 from app.services.audit import write_audit
@@ -50,6 +50,24 @@ async def _submit(
         ).first()
         if existing is not None:
             return UUID(str(existing[0]))
+    live_run = (
+        await session.execute(
+            sa.text("SELECT id FROM runs WHERE course_id = :c AND status IN ('queued', 'running')"),
+            {"c": str(course_id)},
+        )
+    ).first()
+    live_op = (
+        await session.execute(
+            sa.text(
+                "SELECT id FROM operations WHERE kind IN"
+                " ('submit_plan', 'submit_generate', 'submit_translate')"
+                " AND status IN ('queued', 'running') AND params->>'course_id' = :c"
+            ),
+            {"c": str(course_id)},
+        )
+    ).first()
+    if live_run is not None or live_op is not None:
+        raise ConflictError("A run is already going")
     row = (
         await session.execute(
             sa.text(

@@ -430,24 +430,40 @@ async def test_second_identical_run_pays_zero(t03_session: AsyncSession) -> None
         user_id, frozenset({"run.start", "operation.run", "course.edit", "course.plan"})
     )
     settings = _plan_settings()
-    run_ids = []
-    for _ in range(2):
-        operation_id = await planruns.submit_plan(
-            t03_session,
-            actor=actor,
-            course_id=course_id,
-            queries=["literacy duty"],
-            defer=None,
-        )
-        await t03_session.commit()
-        detail = await planruns.run_plan_operation(t03_session, operation_id)
-        run_ids.append(UUID(str(detail["run_id"])))
+    operation_id = await planruns.submit_plan(
+        t03_session,
+        actor=actor,
+        course_id=course_id,
+        queries=["literacy duty"],
+        defer=None,
+    )
+    await t03_session.commit()
+    detail = await planruns.run_plan_operation(t03_session, operation_id)
+    first_id = UUID(str(detail["run_id"]))
     first_handler = _plan_mock_handler()
-    first = await _plan_drive(t03_session, run_ids[0], first_handler, settings)
+    first = await _plan_drive(t03_session, first_id, first_handler, settings)
     assert first["status"] == "done"
     assert first_handler.seen != []
+    # A second submit is a new run only once the first finished: the
+    # single-active-run guard refuses while it is going, so the operation
+    # is marked done here the way the worker leaves it in production.
+    await t03_session.execute(
+        sa.text("UPDATE operations SET status = 'done' WHERE id = :o"),
+        {"o": str(operation_id)},
+    )
+    await t03_session.commit()
+    second_op = await planruns.submit_plan(
+        t03_session,
+        actor=actor,
+        course_id=course_id,
+        queries=["literacy duty"],
+        defer=None,
+    )
+    await t03_session.commit()
+    second_detail = await planruns.run_plan_operation(t03_session, second_op)
+    second_id = UUID(str(second_detail["run_id"]))
     second_handler = _plan_mock_handler()
-    second = await _plan_drive(t03_session, run_ids[1], second_handler, settings)
+    second = await _plan_drive(t03_session, second_id, second_handler, settings)
     assert second["status"] == "done"
     assert second_handler.seen == []
 
