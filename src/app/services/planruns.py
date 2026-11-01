@@ -971,7 +971,7 @@ async def run_rewrite_operation(
         )
     from app.runs.executor import drive_run, new_run
 
-    run_id = await new_run(session, course_id=course_id, kind="generation", dag=dag)
+    run_id = await new_run(session, course_id=course_id, kind="rewrite", dag=dag)
     await session.commit()
     if provider_factory is not None and session_factory is not None:
         try:

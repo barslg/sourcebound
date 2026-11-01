@@ -888,6 +888,7 @@
       "label": "Kind",
       "generate": "Generation",
       "generation": "Generation",
+      "rewrite": "Rewrite",
       "plan": "Plan",
       "translation": "Translation"
     },

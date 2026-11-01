@@ -888,6 +888,7 @@
       "label": "Вид",
       "generate": "Генерація",
       "generation": "Генерація",
+      "rewrite": "Переписування",
       "plan": "План",
       "translation": "Переклад"
     },

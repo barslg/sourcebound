@@ -888,6 +888,7 @@
       "label": "Type",
       "generate": "Generering",
       "generation": "Generering",
+      "rewrite": "Omskriving",
       "plan": "Plan",
       "translation": "Oversetting"
     },

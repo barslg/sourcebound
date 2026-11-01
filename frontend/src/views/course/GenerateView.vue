@@ -32,7 +32,7 @@ const estimate = useResource<Estimate>(`estimate:${courseId.value}`, (signal) =>
 const runs = useResource<RunListItem[]>(`runs:${courseId.value}`, (signal) => request<RunListItem[]>(courseRuns(courseId.value), { signal }))
 const hasPlan = computed(() => (plan.data.value?.modules ?? []).length > 0)
 const alreadyGenerated = computed(() => (plan.data.value?.modules ?? []).some((m) => m.topics.some((x) => x.blocks.some((b) => b.status !== 'draft'))))
-const latest = computed(() => (runs.data.value ?? []).find((r) => r.kind === 'generation' || r.kind === 'generate') ?? null)
+const latest = computed(() => (runs.data.value ?? []).find((r) => r.kind === 'generation') ?? null)
 
 const runDoc = ref<RunDoc | null>(null)
 let timer: ReturnType<typeof setInterval> | null = null
@@ -100,7 +100,7 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
 
 <template>
   <CourseHeader ref="header" :course-id="courseId">
-    <template #default="{ course, validation, heldCount }">
+    <template #default="{ course, validation, heldCount, draftCount }">
       <ResourceState :loading="plan.loading.value" :error="plan.error.value" :empty="false" @retry="plan.reload()">
         <section v-if="!hasPlan" class="state" data-view="empty" data-testid="generate-no-plan">
           <h2>{{ t('generate.noPlan') }}</h2>
@@ -148,7 +148,7 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
             <div v-if="active" class="row">
               <ActionButton action="stop-run" :label="t('run.cancel')" :loading="working === 'cancel'" :reason="lacking('run.cancel')" data-testid="run-cancel" @click="confirmCancel = true" />
             </div>
-            <div v-if="runStatus === 'done'" class="done-card stack" data-testid="generate-done">
+            <div v-if="hasPlan && (draftCount ?? 0) === 0" class="done-card stack" data-testid="generate-done">
               <strong>{{ t('generate.doneTitle') }}</strong>
               <div class="row">
                 <router-link class="link-button" :to="`/courses/${courseId}/fix`" data-testid="go-fix">{{ t('generate.goFixHeld', { held: heldCount }) }}</router-link>
