@@ -62,7 +62,7 @@ def seed_tree(prefix: str) -> Any:
         return {
             "plan_node_id": f"{prefix}-{node}",
             "role": role,
-            "block_type": "text",
+            "block_type": "reading",
             "brief": brief,
             "source_refs": [{"handle": "P1"}],
         }
@@ -186,7 +186,15 @@ async def hold_blocks(
                     "INSERT INTO block_versions (block_id, version_no, content)"
                     " SELECT :b, COALESCE(MAX(version_no), 0) + 1, CAST(:c AS jsonb) FROM block_versions WHERE block_id = :b RETURNING id"
                 ),
-                {"b": str(block_id), "c": json.dumps({"text": "Draft that the checker held."})},
+                {
+                    "b": str(block_id),
+                    "c": json.dumps(
+                        {
+                            "text": "Draft that the checker held.",
+                            "body": "Draft that the checker held.",
+                        }
+                    ),
+                },
             )
         ).scalar_one()
         await session.execute(
@@ -223,7 +231,12 @@ async def give_content(session: AsyncSession, course: Any) -> list[str]:
                     " SELECT :b, COALESCE(MAX(version_no), 0) + 1, CAST(:c AS jsonb)"
                     " FROM block_versions WHERE block_id = :b RETURNING id"
                 ),
-                {"b": str(block_id), "c": json.dumps({"text": f"Source text of {node}"})},
+                {
+                    "b": str(block_id),
+                    "c": json.dumps(
+                        {"text": f"Source text of {node}", "body": f"Source text of {node}"}
+                    ),
+                },
             )
         ).scalar_one()
         await session.execute(
@@ -281,7 +294,11 @@ async def add_translation(
                 "t": str(translation),
                 "n": node,
                 "s": state,
-                "c": json.dumps({"text": f"{language} text of {node}"}) if state == "ok" else "{}",
+                "c": json.dumps(
+                    {"text": f"{language} text of {node}", "body": f"{language} text of {node}"}
+                )
+                if state == "ok"
+                else "{}",
             },
         )
 
