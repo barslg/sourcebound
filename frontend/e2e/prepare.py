@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 ROOT = Path(__file__).resolve().parents[2]
 BASE = os.environ.get("E2E_BASE_URL", "postgresql+asyncpg://muse:muse@localhost:5434/postgres")
-DB_NAME = "muse_e2e"
+DB_NAME = os.environ.get("E2E_DB_NAME", "muse_e2e")
 URL = re.sub(r"/[^/?]*(\?.*)?$", f"/{DB_NAME}", BASE)
 
 USERS = {
