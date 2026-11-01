@@ -285,9 +285,10 @@
     "stages": "Kursets trinn",
     "help": {
       "sources": "Legg til kildene kurset kan sitere, og godkjenn hver av dem før bruk.",
-      "plan": "Rediger oppsettet, svar på åpne spørsmål og lag deretter kurset.",
+      "plan": "Oversikten kurset skal skrives fra. Åpne et emne for å se blokkene.",
       "fix": "Blokker kontrollen holdt tilbake, med årsak og kildeavsnitt.",
-      "publish": "Sjekk oppsummeringen, publiser og del kurset med deltakere."
+      "publish": "Sjekk oppsummeringen, publiser og del kurset med deltakere.",
+      "generate": "Skriver hver blokk fra planen og de godkjente kildene. Det kjører i bakgrunnen."
     },
     "stage": {
       "sources": "Kilder",
@@ -386,22 +387,15 @@
     "fileRemove": "Fjern filen"
   },
   "plan": {
-    "unsaved": "Ulagrede endringer",
-    "save": "Lagre plan",
     "saved": "Planen er lagret.",
     "conflict": "Noen endret denne planen mens du redigerte.",
     "reloadTheirs": "Last inn deres",
     "keepMine": "Behold min",
-    "treeLabel": "Plantre",
-    "topicLabel": "Valgt del",
-    "empty": "Planen er tom. Velg metode og hva som skal letes etter, og bygg den.",
-    "pick": "Velg en modul eller et emne i treet.",
-    "nodeTitle": "Tittel",
     "rename": "Bruk ny tittel",
     "moveUp": "Flytt opp",
     "moveDown": "Flytt ned",
     "deleteTitle": "Slett {name}",
-    "deleteBody": "{name} og alt under blir fjernet fra planen når du lagrer. Dette kan ikke angres.",
+    "deleteBody": "{name} og alt under blir fjernet fra planen. Dette kan ikke angres.",
     "objectives": "Mål",
     "blocks": "Blokker",
     "role": {
@@ -418,7 +412,6 @@
     "forecastLine": "Omtrent {blocks}, omtrent {cost}",
     "forecastNote": "En prognose, ikke en grense.",
     "generate": "Generer kurset",
-    "saveFirst": "Lagre planen før du genererer.",
     "questionsOpen": "Svar på de åpne spørsmålene først.",
     "openRun": "Åpne kjøringen",
     "build": "Bygg planen",
@@ -433,28 +426,18 @@
     "alreadyFirst": "Allerede først.",
     "alreadyLast": "Allerede sist.",
     "alreadyQueued": "Allerede i kø; vent til den er ferdig.",
-    "answered": "Besvarte spørsmål",
-    "answeredHelp": "Det du har fortalt kurset om deltakerne.",
     "beforeHelp": "Spørsmål kurset trenger svar på før det kan skrives. Hvert kort lagres for seg.",
     "blocksHelp": "Delene dette temaet skrives som, hver knyttet til sine kildeavsnitt.",
     "bloom": "Tenkenivå",
     "bloomHint": "Hva deltakerne skal kunne til slutt. Eksempel: bruke",
     "buildHelp": "Velg hvordan kurset underviser og hva som skal letes etter i kildene; oppsettet skrives for deg.",
     "deleteButton": "Slett fra planen",
-    "emptyAction": "Bygg planen",
     "estimate": "Anslag",
-    "generateHelp": "Skriver hver blokk fra planen og de godkjente kildene. Kjører i bakgrunnen.",
-    "generateTitle": "Lag kurset",
     "handleTitle": "Kildeavsnitt {handle}; åpne kildene",
-    "nodeTitleHint": "Eksempel: Hvorfor hender må være rene",
-    "nothingToSave": "Ingenting å lagre ennå.",
     "objectivesHelp": "Hva en deltaker kan etter dette temaet.",
     "pickMethodology": "Velg minst én metode først.",
     "purpose": "Formål",
     "purposeHelp": "Hvorfor modulen finnes og hvilke temaer den har.",
-    "renameFirst": "Skriv en annen tittel først.",
-    "topicHelp": "Rediger valgt modul eller tema og se blokkene.",
-    "treeHelp": "Kursets oppsett. Dra for å endre rekkefølge; endringer lagres med Lagre plan.",
     "typeAnswer": "Skriv et svar først.",
     "typeQueries": "Skriv minst én ting å lete etter.",
     "blockType": {
@@ -467,13 +450,34 @@
       "scenario_practice": "Scenariotrening",
       "spot_the_error": "Finn feilen"
     },
-    "tabPlan": "Plan",
-    "tabs": "Planseksjoner",
     "addSourceFirst": "Legg til og godkjenn en kilde først",
     "goSources": "Gå til Kilder",
     "regenerateTitle": "Generere kurset på nytt?",
     "regenerateBody": "Kurset er allerede generert. Hver blokk i planen skrives og sjekkes på nytt, noe som koster omtrent {cost}. For å endre bare én blokk, skriv den om på siden Hva som må rettes.",
-    "tabBefore": "Spørsmål og generering"
+    "buildCard": "Bygg planen fra kildene dine",
+    "outline": "Kursoversikt",
+    "outlineHelp": "Titler lagres når du forlater feltet. Åpne et emne for å se blokkene.",
+    "moreFor": "Flere handlinger for {name}",
+    "kind": {
+      "lesson": "Leksjon",
+      "module_test": "Modultest"
+    },
+    "addModule": "Legg til modul",
+    "addTopic": "Legg til emne",
+    "addTopicBelow": "Legg til emne under",
+    "newModule": "Ny modul",
+    "newTopic": "Nytt emne",
+    "savedLine": "Lagret nettopp",
+    "saving": "Lagrer…",
+    "saveFailed": "Kunne ikke lagre: {message}",
+    "nextTitle": "Neste: generer kurset",
+    "nextHelp": "Skriv hver blokk i denne oversikten på Generer-siden.",
+    "nextOpen": "Åpne Generer-siden",
+    "titleOf": "Tittel på {name}",
+    "topicToggle": "Vis eller skjul blokkene til {name}",
+    "noBlocks": "Ingen blokker ennå. De skrives når kurset genereres.",
+    "conflictTitle": "Planen ble endret",
+    "conflictBody": "Noen endret denne planen mens du redigerte. Last inn deres versjon, eller behold din og overskriv."
   },
   "run": {
     "title": "Genereringskjøring",
@@ -533,7 +537,11 @@
   },
   "fix": {
     "lectures": "Forelesninger",
-    "sq": { "ok": "bestått kontrollen", "held": "holdt tilbake", "draft": "venter på å bli lest" },
+    "sq": {
+      "ok": "bestått kontrollen",
+      "held": "holdt tilbake",
+      "draft": "venter på å bli lest"
+    },
     "title": "Hva som må rettes",
     "empty": "Ingenting er holdt tilbake. Alle blokker som ble laget, besto kontrollene.",
     "rewrite": "Skriv blokken om",
@@ -694,7 +702,9 @@
     "retake": "Ta testen på nytt",
     "ask": "Spør kurset",
     "continue": "Fortsett",
-    "export": "Eksporter CSV"
+    "export": "Eksporter CSV",
+    "add-module": "Legg til modul",
+    "add-topic": "Legg til emne"
   },
   "form": {
     "required": "påkrevd",
@@ -933,5 +943,18 @@
     "courseErrors": "Feilfinning, hele kurset",
     "courseErrorsHelp": "Treff, falske alarmer og bom etter feiltype for alle elever.",
     "noErrors": "Ingen feilfinningsforsøk ennå."
+  },
+  "generate": {
+    "noPlan": "Bygg planen først",
+    "noPlanHelp": "Kurset skrives fra planen, så oversikten kommer først.",
+    "goPlan": "Gå til Plan-siden",
+    "goQuestions": "Svar på spørsmålene på Plan-siden",
+    "runTitle": "Genereringskjøring",
+    "runHelp": "Denne eller forrige gang kurset ble skrevet.",
+    "noRun": "Ikke generert ennå.",
+    "doneTitle": "Alt er skrevet",
+    "goFixHeld": "Hva som må fikses ({held} holdt tilbake)",
+    "goPublish": "Publiser",
+    "generateAgain": "Generer igjen"
   }
 }

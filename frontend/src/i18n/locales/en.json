@@ -285,9 +285,10 @@
     "stages": "Course stages",
     "help": {
       "sources": "Add the sources the course may quote and approve each one before it is used.",
-      "plan": "Edit the outline, answer the open questions, then generate the course.",
+      "plan": "The outline the course will be written from. Open a topic to see its blocks.",
       "fix": "Blocks the checker held back, each with the reason and the source passage.",
-      "publish": "Check the summary, publish, and share the course with learners."
+      "publish": "Check the summary, publish, and share the course with learners.",
+      "generate": "Writes every block from the plan and the approved sources. It runs in the background."
     },
     "stage": {
       "sources": "Sources",
@@ -386,22 +387,15 @@
     "fileRemove": "Remove file"
   },
   "plan": {
-    "unsaved": "Unsaved changes",
-    "save": "Save plan",
     "saved": "Plan saved.",
     "conflict": "Someone changed this plan while you were editing.",
     "reloadTheirs": "Reload theirs",
     "keepMine": "Keep mine",
-    "treeLabel": "Plan tree",
-    "topicLabel": "Selected part",
-    "empty": "The plan is empty. Choose a method and what to look for, then build it.",
-    "pick": "Pick a module or a topic in the tree.",
-    "nodeTitle": "Title",
     "rename": "Apply new title",
     "moveUp": "Move up",
     "moveDown": "Move down",
     "deleteTitle": "Delete {name}",
-    "deleteBody": "{name} and everything under it will be removed from the plan once you save. This cannot be undone.",
+    "deleteBody": "{name} and everything under it will be removed from the plan. This cannot be undone.",
     "objectives": "Objectives",
     "blocks": "Blocks",
     "role": {
@@ -418,7 +412,6 @@
     "forecastLine": "About {blocks}, about {cost}",
     "forecastNote": "A forecast, not a limit.",
     "generate": "Generate course",
-    "saveFirst": "Save the plan before generating.",
     "questionsOpen": "Answer the open questions first.",
     "openRun": "Open the run",
     "build": "Build the plan",
@@ -433,28 +426,18 @@
     "alreadyFirst": "Already first.",
     "alreadyLast": "Already last.",
     "alreadyQueued": "Already queued; wait for it to finish.",
-    "answered": "Answered questions",
-    "answeredHelp": "What you told the course about its learners.",
     "beforeHelp": "Questions the course needs answered before it can be written. Each card saves on its own.",
     "blocksHelp": "The pieces this topic will be written as, each tied to its source passages.",
     "bloom": "Level of thinking",
     "bloomHint": "What learners should be able to do at the end. Example: apply",
     "buildHelp": "Choose how the course teaches and what to look for in the sources; the outline is written for you.",
     "deleteButton": "Delete from plan",
-    "emptyAction": "Build the plan",
     "estimate": "Estimate",
-    "generateHelp": "Writes every block from the plan and the approved sources. It runs in the background.",
-    "generateTitle": "Generate the course",
     "handleTitle": "Source passage {handle}; open the sources",
-    "nodeTitleHint": "Example: Why hands must be clean",
-    "nothingToSave": "Nothing to save yet.",
     "objectivesHelp": "What a learner can do after this topic.",
     "pickMethodology": "Choose at least one method first.",
     "purpose": "Purpose",
     "purposeHelp": "Why this module exists and which topics it holds.",
-    "renameFirst": "Type a different title first.",
-    "topicHelp": "Edit the chosen module or topic and see its blocks.",
-    "treeHelp": "The outline of the course. Drag to reorder; changes are saved with Save plan.",
     "typeAnswer": "Type an answer first.",
     "typeQueries": "Write at least one thing to look for.",
     "blockType": {
@@ -467,13 +450,34 @@
       "scenario_practice": "Scenario practice",
       "spot_the_error": "Spot the error"
     },
-    "tabPlan": "Plan",
-    "tabs": "Plan sections",
     "addSourceFirst": "Add and approve a source first",
     "goSources": "Go to Sources",
     "regenerateTitle": "Generate the course again?",
     "regenerateBody": "The course was generated already. Every block of the plan is written and checked again, which costs about {cost}. To change one block only, rewrite it on the What to fix page.",
-    "tabBefore": "Questions and generate"
+    "buildCard": "Build the plan from your sources",
+    "outline": "Course outline",
+    "outlineHelp": "Titles save when you leave the field. Open a topic to see its blocks.",
+    "moreFor": "More actions for {name}",
+    "kind": {
+      "lesson": "Lesson",
+      "module_test": "Module test"
+    },
+    "addModule": "Add module",
+    "addTopic": "Add topic",
+    "addTopicBelow": "Add topic below",
+    "newModule": "New module",
+    "newTopic": "New topic",
+    "savedLine": "Saved just now",
+    "saving": "Saving…",
+    "saveFailed": "Could not save: {message}",
+    "nextTitle": "Next: generate the course",
+    "nextHelp": "Write every block of this outline on the Generate page.",
+    "nextOpen": "Open the Generate page",
+    "titleOf": "Title of {name}",
+    "topicToggle": "Show or hide the blocks of {name}",
+    "noBlocks": "No blocks yet. They are written when the course is generated.",
+    "conflictTitle": "The plan changed",
+    "conflictBody": "Someone changed this plan while you were editing. Reload their version, or keep yours and overwrite it."
   },
   "run": {
     "title": "Generation run",
@@ -533,7 +537,11 @@
   },
   "fix": {
     "lectures": "Lectures",
-    "sq": { "ok": "passed the checks", "held": "held back", "draft": "waiting to be read" },
+    "sq": {
+      "ok": "passed the checks",
+      "held": "held back",
+      "draft": "waiting to be read"
+    },
     "title": "What to fix",
     "empty": "Nothing is held back. Every generated block passed its checks.",
     "rewrite": "Rewrite block",
@@ -694,7 +702,9 @@
     "retake": "Retake test",
     "ask": "Ask the course",
     "continue": "Continue",
-    "export": "Export CSV"
+    "export": "Export CSV",
+    "add-module": "Add module",
+    "add-topic": "Add topic"
   },
   "form": {
     "required": "required",
@@ -933,5 +943,18 @@
     "courseErrors": "Find-the-error, whole course",
     "courseErrorsHelp": "Hits, false alarms and misses by error kind across all learners.",
     "noErrors": "No find-the-error attempts yet."
+  },
+  "generate": {
+    "noPlan": "Build the plan first",
+    "noPlanHelp": "The course is written from the plan, so the outline comes first.",
+    "goPlan": "Go to the Plan page",
+    "goQuestions": "Answer the questions on the Plan page",
+    "runTitle": "Generation run",
+    "runHelp": "The current or last time the course was written.",
+    "noRun": "Not generated yet.",
+    "doneTitle": "Everything is written",
+    "goFixHeld": "What to fix ({held} held)",
+    "goPublish": "Publish",
+    "generateAgain": "Generate again"
   }
 }

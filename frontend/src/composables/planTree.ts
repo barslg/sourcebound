@@ -62,6 +62,8 @@ export type PlanOp =
   | { op: 'delete_module' | 'delete_topic'; id: string }
   | MoveOp
   | { op: 'set_constraint'; key: string; answer: Record<string, unknown> }
+  | { op: 'add_module'; title: string }
+  | { op: 'add_topic'; module_id: string; title: string; kind?: string }
 
 function reorder<T extends { id: string }>(items: T[], id: string, ordinal: number): T[] {
   const from = items.findIndex((x) => x.id === id)
