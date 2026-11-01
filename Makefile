@@ -7,6 +7,8 @@ check:
 	uv run python scripts/run_gates.py
 gates:
 	uv run python scripts/run_gates.py
+replay-holds:
+	uv run python scripts/replay_holds.py --course $(COURSE) --database-url $(DATABASE_URL)
 check-contract:
 	uv run python scripts/check_contract.py
 check-live:

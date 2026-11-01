@@ -437,7 +437,8 @@ def test_0015_downgrade_drops_only_the_column_and_upgrade_restores_it() -> None:
     before = set(_harness_tables(url)["passages"])
     command.downgrade(_cfg(url), "0014")
     assert _m0015_column(url) is None
-    assert set(_harness_tables(url)["passages"]) == before - {"is_content"}
+    # 0023 (ordinal) is downgraded on the way to 0014 as well
+    assert set(_harness_tables(url)["passages"]) == before - {"is_content", "ordinal"}
     assert _m0015_passage_count(url) == kept, "downgrade keeps every passage row"
     command.upgrade(_cfg(url), "head")
     assert _m0015_column(url) == ("NO", "true")
@@ -777,3 +778,32 @@ def test_0022_allows_thin_and_downgrade_turns_it_into_failed_keeping_the_message
             "UPDATE sources SET ingest_status = 'thin' WHERE content_sha256 = %s", (digest,)
         )
         conn.execute("DELETE FROM sources WHERE content_sha256 = %s", (digest,))
+
+
+def test_0023_adds_passage_ordinal_backfilled_in_address_order_and_downgrade_drops_it() -> None:
+    url = _db_url()
+    require_postgres(url)
+    command.upgrade(_cfg(url), "head")
+    sync = _sync_url(url)
+    with psycopg.connect(sync, autocommit=True) as conn:
+        conn.execute("DELETE FROM sources WHERE content_sha256 = 'm23'")
+        source = conn.execute(
+            "INSERT INTO sources (content_sha256, kind, media, title, approval, storage_path)"
+            " VALUES ('m23', 'upload', 'text', 'm23', 'pending', '') RETURNING id"
+        ).fetchone()[0]  # type: ignore[index]
+        for key in ("p1/para2", "p1/para1"):
+            conn.execute(
+                "INSERT INTO passages (source_id, text, address, address_key, ts_config)"
+                " VALUES (%s, 'x.', '{}', %s, 'english')",
+                (source, key),
+            )
+    command.downgrade(_cfg(url), "0022")
+    assert "ordinal" not in _harness_tables(url)["passages"]
+    command.upgrade(_cfg(url), "head")
+    with psycopg.connect(sync, autocommit=True) as conn:
+        rows = conn.execute(
+            "SELECT address_key, ordinal FROM passages WHERE source_id = %s ORDER BY ordinal",
+            (source,),
+        ).fetchall()
+        assert rows == [("p1/para1", 0), ("p1/para2", 1)], rows
+        conn.execute("DELETE FROM sources WHERE id = %s", (source,))

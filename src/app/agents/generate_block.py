@@ -22,8 +22,11 @@ _UUID_RE = re.compile(
 
 
 def ordered_sources(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Approved sources sorted by (source_id, address) in reading order."""
-    from app.runs.executor import address_sort_key
+    """Approved sources in handle order; items without handles fall back to document order."""
+    from app.course.handles import address_sort_key, handle_number
+
+    if sources and all(item.get("handle") for item in sources):
+        return sorted(sources, key=lambda item: handle_number(str(item["handle"])))
 
     def _key(item: dict[str, Any]) -> tuple[Any, ...]:
         return (str(item.get("source_id", "")), address_sort_key(str(item.get("address", ""))))

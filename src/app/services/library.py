@@ -25,6 +25,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
+from app.course.passages import BULLET_LINE_RE, rejoin_list_passages
 from app.course.tree import TS_CONFIGS
 from app.errors import NotFoundError, UnsupportedMediaError, ValidationError
 from app.providers.web import FetchedPage as FetchedPage
@@ -461,9 +462,6 @@ def chunk_upload(content: bytes, *, media: str, filename: str) -> list[dict[str,
     raise UnsupportedMediaError(f"unsupported media: {media}")
 
 
-_BULLET_LINE_RE = re.compile(r"^\s*(?:[-•*]|\d+[.)])\s+\S")
-
-
 def _clean_block(block: str) -> str:
     """Clean one block, keeping numbered/bulleted list lines on their own lines.
 
@@ -473,12 +471,12 @@ def _clean_block(block: str) -> str:
     """
     lines = [" ".join(line.split()) for line in str(block).splitlines()]
     lines = [line for line in lines if line]
-    if not any(_BULLET_LINE_RE.match(line) for line in lines):
+    if not any(BULLET_LINE_RE.match(line) for line in lines):
         return " ".join(lines)
     out: list[str] = []
     prose: list[str] = []
     for line in lines:
-        if _BULLET_LINE_RE.match(line):
+        if BULLET_LINE_RE.match(line):
             if prose:
                 out.append(" ".join(prose))
                 prose = []
@@ -488,33 +486,6 @@ def _clean_block(block: str) -> str:
     if prose:
         out.append(" ".join(prose))
     return "\n".join(out)
-
-
-def rejoin_list_passages(passages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Re-join a colon-intro passage with the list passages that follow it.
-
-    Ingest keeps "intro sentence + its list items" as one passage; this
-    also repairs already-split passages at read time: a passage whose
-    text ends with ':' absorbs following passages whose lines are all
-    list items, keeping the first passage's address.
-    """
-    out: list[dict[str, Any]] = []
-    for passage in passages:
-        text = str(passage.get("text", ""))
-        lines = [line for line in text.splitlines() if line.strip()]
-        is_list = bool(lines) and all(_BULLET_LINE_RE.match(line) for line in lines)
-        same_source = out and (
-            "source_id" not in passage
-            or "source_id" not in out[-1]
-            or passage.get("source_id") == out[-1].get("source_id")
-        )
-        if same_source and is_list and str(out[-1].get("text", "")).rstrip().endswith(":"):
-            merged = dict(out[-1])
-            merged["text"] = str(merged["text"]).rstrip() + "\n" + text.strip()
-            out[-1] = merged
-            continue
-        out.append(passage)
-    return out
 
 
 def chunk_text(text: str, *, kind: str = "pdf", page_of: int = 0) -> list[dict[str, Any]]:
@@ -606,12 +577,13 @@ async def ingest_passages(
 
     passages = rejoin_list_passages(list(passages))
     count = 0
-    for passage in passages:
+    for ordinal, passage in enumerate(passages):
+        heading = str(dict(passage.get("address") or {}).get("heading_path", ""))
         await session.execute(
             sa.text(
                 "INSERT INTO passages (source_id, text, address, address_key, ts_config,"
-                " is_content)"
-                " VALUES (:source, :text, CAST(:address AS jsonb), :key, :cfg, :content)"
+                " is_content, ordinal)"
+                " VALUES (:source, :text, CAST(:address AS jsonb), :key, :cfg, :content, :ord)"
                 " ON CONFLICT (source_id, address_key) DO NOTHING"
             ),
             {
@@ -620,11 +592,24 @@ async def ingest_passages(
                 "address": json.dumps(passage["address"]),
                 "key": passage["address_key"],
                 "cfg": ts_config_for_passage(passage["text"], ts_config),
-                "content": bool(passage.get("is_content", is_content_text(passage["text"]))),
+                "content": bool(passage.get("is_content", is_content_text(passage["text"])))
+                and not is_navigation_heading(heading),
+                "ord": ordinal,
             },
         )
         count += 1
     return count
+
+
+_NAVIGATION_HEADINGS = frozenset(
+    {"next steps", "what to read next", "see also", "related", "related articles", "navigation"}
+)
+
+
+def is_navigation_heading(heading_path: str) -> bool:
+    """True under a heading that lists links, not claims ("Next steps", "See also")."""
+    last = heading_path.rsplit(">", 1)[-1].strip().lower()
+    return last in _NAVIGATION_HEADINGS
 
 
 def ts_config_for_language(language: str) -> str:
@@ -718,20 +703,26 @@ async def approve_source(
 
 THIN_MESSAGE = "The page gave no readable text; paste or upload its content"
 _MIN_PAGE_TOKENS = 40
-_MAX_GLUE_PER_100_TOKENS = 3.0
-# A lowercase letter run straight into a capital, or a sentence end with no
-# space before the next capital: words glued across element boundaries.
-_GLUE_RE = re.compile(r"[a-z][A-Z]|[a-z][.:!?][A-Z]")
+_MAX_GLUE_PER_100_TOKENS = 1.0
+# A sentence end with no space before the next capital ("path:Run",
+# "preview.Call"): text glued across element boundaries. Measured
+# 2026-11-01: 2.5 per 100 tokens on both tag-stripped docs pages, 0.0 on
+# ten readable pages (camelCase identifiers were excluded on purpose:
+# MDN prose carries 5.9 of them per 100 tokens and reads fine).
+_GLUE_RE = re.compile(r"[a-z][.:!?][A-Z]")
 
 
 def is_thin_page(text: str) -> bool:
-    """True when a fetched page gave no readable text: too little, no sentence, or glued.
+    """True when a fetched page gave no readable prose: too little, no sentence, or glued.
 
     Measured on muse_stand 2026-11-01: the two tag-stripped docs pages
     carried 6.3 and 8.4 glued joins per 100 tokens ("built for Muse
     SparkMuse Code and the Model APIWorkflowsSession messaging");
     every readable page and upload stayed under 1.2. Fewer than 40
     tokens, or no sentence punctuation at all, is a shell or a menu.
+    Callers pass PROSE only: code blocks carry camelCase identifiers
+    that look like glue (MDN 9.8, Fowler 3.7 per 100 on the review's
+    pages) and are left out by thin_text().
     """
     tokens = re.findall(r"[^\W\d_]+", str(text))
     if len(tokens) < _MIN_PAGE_TOKENS:
@@ -739,6 +730,11 @@ def is_thin_page(text: str) -> bool:
     if not re.search(r"[.!?]", str(text)):
         return True
     return 100 * len(_GLUE_RE.findall(str(text))) / len(tokens) >= _MAX_GLUE_PER_100_TOKENS
+
+
+def thin_text(chunks: list[dict[str, Any]]) -> str:
+    """The prose of a page's passages (code passages excluded) for the thin verdict."""
+    return "\n".join(str(chunk.get("text", "")) for chunk in chunks if not chunk.get("code"))
 
 
 def _is_html(content_type: str, text: str) -> bool:
@@ -764,22 +760,34 @@ def web_passages(
         return chunk_text(page.text, kind="web"), None
     from app.agents import librarian
 
-    candidates: list[dict[str, Any]] = [spec for spec in (parser_spec,) if spec]
-    derived = librarian.derive_parser_spec(page.text)
-    if derived is not None:
-        candidates.append(derived)
-    candidates.append(librarian.body_spec())
-    for spec in candidates:
+    if parser_spec:
         try:
-            records = librarian.execute_parser_spec(page.text, spec)
+            records = librarian.execute_parser_spec(page.text, parser_spec)
         except ValueError as exc:
-            if spec is parser_spec:
-                raise ValidationError(f"invalid parser spec: {exc}") from exc
-            continue
+            raise ValidationError(f"invalid parser spec: {exc}") from exc
         passages = _web_records_to_passages(records)
         if passages:
-            return passages, spec
-    return [], None
+            return passages, parser_spec
+    # the derived container wins only when it holds at least half of the
+    # page's prose: a "<section" that is the feedback box must not hide
+    # the article (the review's MS Learn page gave 5 passages of forms)
+    best: tuple[int, list[dict[str, Any]], dict[str, Any] | None] = (0, [], None)
+    whole = _web_records_to_passages(
+        librarian.execute_parser_spec(page.text, librarian.body_spec())
+    )
+    whole_size = sum(len(p["text"]) for p in whole)
+    derived = librarian.derive_parser_spec(page.text)
+    if derived is not None and derived["container"] != "body":
+        try:
+            scoped = _web_records_to_passages(librarian.execute_parser_spec(page.text, derived))
+        except ValueError:
+            scoped = []
+        size = sum(len(p["text"]) for p in scoped)
+        if scoped and size * 2 >= whole_size:
+            best = (size, scoped, derived)
+    if not best[1] and whole:
+        best = (whole_size, whole, librarian.body_spec())
+    return best[1], best[2]
 
 
 def _web_records_to_passages(records: list[dict[str, str]]) -> list[dict[str, Any]]:
@@ -787,18 +795,20 @@ def _web_records_to_passages(records: list[dict[str, str]]) -> list[dict[str, An
     counts: dict[str, int] = {}
     passages: list[dict[str, Any]] = []
     for record in records:
-        text = _clean_block(record["body"])
-        if not text:
+        code = bool(record.get("code"))
+        text = record["body"] if code else _clean_block(record["body"])
+        if not text.strip():
             continue
         path = record["address"] or "body"
         counts[path] = counts.get(path, 0) + 1
-        passages.append(
-            {
-                "text": text,
-                "address": {"kind": "web", "heading_path": path, "para": counts[path]},
-                "address_key": f"h:{path}/para{counts[path]}",
-            }
-        )
+        passage: dict[str, Any] = {
+            "text": text,
+            "address": {"kind": "web", "heading_path": path, "para": counts[path]},
+            "address_key": f"h:{path}/para{counts[path]}",
+        }
+        if code:
+            passage["code"] = True
+        passages.append(passage)
     return rejoin_list_passages(passages)
 
 
@@ -919,7 +929,7 @@ async def intake_url(
             sa.text("UPDATE sources SET parser_spec = CAST(:spec AS jsonb) WHERE id = :source"),
             {"spec": json.dumps(used_spec), "source": str(source_id)},
         )
-    if is_thin_page("\n".join(str(chunk.get("text", "")) for chunk in chunks)):
+    if is_thin_page(thin_text(chunks)):
         await set_ingest_status(session, source_id=source_id, status="thin", message=THIN_MESSAGE)
         await set_source_as_of(session, source_id=source_id, as_of=date.today())
         return {"source_id": str(source_id)}
@@ -1011,7 +1021,7 @@ async def approve_candidate(
     if page.status != 200:
         raise ValidationError(f"URL fetch failed with status {page.status}: {url!r}")
     chunks, _spec = web_passages(page, None)
-    if is_thin_page("\n".join(str(chunk.get("text", "")) for chunk in chunks)):
+    if is_thin_page(thin_text(chunks)):
         raise ValidationError(THIN_MESSAGE)
     digest = content_sha256(page.text.encode("utf-8"))
     row = (
@@ -1363,7 +1373,7 @@ async def resolve_human_queue(
     if page.status != 200:
         raise ValidationError(f"URL fetch failed with status {page.status}: {row[2]!r}")
     chunks, _spec = web_passages(page, None)
-    if is_thin_page("\n".join(str(chunk.get("text", "")) for chunk in chunks)):
+    if is_thin_page(thin_text(chunks)):
         raise ValidationError(THIN_MESSAGE)
     digest = content_sha256(page.text.encode("utf-8"))
     existing = (

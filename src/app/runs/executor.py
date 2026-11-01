@@ -20,6 +20,7 @@ from uuid import UUID
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.course.handles import address_sort_key, handle_map
 from app.errors import ValidationError
 from app.llm.registry import resolve_step
 from app.runs.stop_text import EMPTY_PLAN, MODEL_DOWN, plain_marker, plain_step_error, plain_stop
@@ -63,25 +64,7 @@ def step_digest(*, agent: str, prompt: str, upstream: dict[str, Any] | None = No
     )
 
 
-def address_sort_key(address_key: str) -> tuple[Any, ...]:
-    """Numeric sort for passage addresses: para2 before para10.
-
-    Text sorting would put para10 before para2; the architect must see
-    the source in reading order, so page/paragraph numbers compare
-    numerically with a stable fallback for unknown shapes.
-    """
-    import re
-
-    match = re.fullmatch(r"p(\d+)/para(\d+)", address_key)
-    if match:
-        return (0, int(match.group(1)), int(match.group(2)))
-    match = re.fullmatch(r"h:(.*)/para(\d+)", address_key)
-    if match:
-        return (1, match.group(1), int(match.group(2)))
-    match = re.fullmatch(r"t([0-9:.]+)-([0-9:.]+)", address_key)
-    if match:
-        return (2, match.group(1), match.group(2))
-    return (3, address_key)
+__all__ = ["address_sort_key"]
 
 
 async def new_run(
@@ -719,7 +702,8 @@ async def plan_architect_step(
         await session.execute(
             sa.text(
                 "SELECT passages.id, passages.address_key, passages.text,"
-                " passages.source_id, passages.ts_config, passages.is_content FROM passages"
+                " passages.source_id, passages.ts_config, passages.is_content, passages.ordinal"
+                " FROM passages"
                 " JOIN course_sources cs ON cs.source_id = passages.source_id"
                 " AND cs.course_id = :course AND cs.approval = 'approved'"
                 " JOIN sources s ON s.id = passages.source_id"
@@ -728,43 +712,48 @@ async def plan_architect_step(
             {"course": str(course_id)},
         )
     ).all()
-    ordered = sorted(rows, key=lambda row: (str(row[3]), address_sort_key(str(row[1]))))
-    picked: list[Any] = []
+    from app.course.handles import numbered_passages
+
+    numbered = numbered_passages(
+        [
+            {
+                "passage_id": str(row[0]),
+                "address": str(row[1]),
+                "text": str(row[2]),
+                "source_id": str(row[3]),
+                "ts_config": str(row[4] or ""),
+                "is_content": bool(row[5]) if len(row) > 5 else True,
+                "ordinal": row[6] if len(row) > 6 else None,
+            }
+            for row in rows
+        ]
+    )
+    picked: list[dict[str, Any]] = []
     budget = 0
-    for row in ordered:
-        size = len(str(row[2]))
+    for passage in numbered:
+        size = len(passage["text"])
         if picked and budget + size > ARCHITECT_SOURCE_CHAR_BUDGET:
             break
-        picked.append(row)
+        picked.append(passage)
         budget += size
     if not picked:
         raise ValidationError("Add and approve at least one source before building a plan.")
-    from app.services.library import rejoin_list_passages
-
-    merged = rejoin_list_passages(
-        [
-            {
-                "id": row[0],
-                "address_key": row[1],
-                "text": str(row[2]),
-                "source_id": str(row[3]),
-                "is_content": bool(row[5]) if len(row) > 5 else True,
-            }
-            for row in picked
-        ]
-    )
-    handle_to_passage = {f"P{index}": row["id"] for index, row in enumerate(merged, 1)}
+    handle_to_passage = {passage["handle"]: passage["passage_id"] for passage in picked}
     passages = [
         {
-            "handle": f"P{index}",
-            "address_key": row["address_key"],
-            "text": str(row["text"]),
-            "is_content": bool(row.get("is_content", True)),
+            "handle": passage["handle"],
+            "address_key": passage["address"],
+            "text": passage["text"],
+            "is_content": bool(passage.get("is_content", True)),
         }
-        for index, row in enumerate(merged, 1)
+        for passage in picked
     ]
     source_languages = sorted(
-        {TS_CONFIG_TO_LANGUAGE.get(str(row[4]), str(row[4])) for row in picked if row[4]}
+        {
+            TS_CONFIG_TO_LANGUAGE.get(passage["ts_config"], passage["ts_config"])
+            for passage in picked
+            if passage.get("ts_config")
+        }
     )
     prompt = architect.build_prompt(
         profile,
@@ -818,7 +807,7 @@ async def plan_architect_step(
             plan_digest=digest,
             run_step_id=claim["step_id"],
             held=held,
-            uncovered=[item.model_dump() for item in parsed.uncovered],
+            uncovered=_uncovered_with_addresses(parsed, passages),
         )
         await write_plan_citations(session, version_map=version_map, refs=refs)
         from app.services.courses import record_source_passages
@@ -830,6 +819,23 @@ async def plan_architect_step(
         )
         await finish_step(session, step_id=claim["step_id"], output=resolved)
     await session.commit()
+
+
+def _uncovered_with_addresses(parsed: Any, passages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The uncovered list with each passage's address and first words, never a bare handle."""
+    by_handle = {str(p.get("handle", "")): p for p in passages}
+    out: list[dict[str, Any]] = []
+    for item in parsed.uncovered:
+        passage = by_handle.get(item.handle, {})
+        out.append(
+            {
+                "handle": item.handle,
+                "reason": item.reason,
+                "address": str(passage.get("address_key", "")),
+                "excerpt": " ".join(str(passage.get("text", "")).split())[:80],
+            }
+        )
+    return out
 
 
 def _rejectable_architect_errors(
@@ -1215,6 +1221,7 @@ async def _plant_spot_block(
     variant: int = 0,
     force_new: bool = False,
     allow_fully_correct: bool = True,
+    topic_terms: list[str] | None = None,
 ) -> None:
     """Code-planted spot-the-error from the ONE picker's pick.
 
@@ -1225,6 +1232,7 @@ async def _plant_spot_block(
     a module test) is regenerated with a new seed inside the run,
     never left held as the module test's only task.
     """
+    from app.course.errorspot import pick_sentence
     from app.course.errorspot import plant_error as _plant
 
     stored_all = await _stored_passage_texts(session, passage_ids=list(handle_to_passage.values()))
@@ -1233,7 +1241,15 @@ async def _plant_spot_block(
     last_exc: ValueError | None = None
     for attempt in range(4):
         seed = _spot_seed(node_id, variant + attempt)
-        use_pick = pick if attempt == 0 else None
+        use_pick = pick
+        if attempt > 0:
+            # a retry is a new pick from the same topic-scoped pool, topic terms kept
+            try:
+                use_pick = pick_sentence(verified, seed=seed, topic_terms=topic_terms or None)
+                use_pick["fully_correct"] = False
+            except ValueError as exc:
+                last_exc = exc
+                continue
         try:
             candidate = _plant(
                 verified=verified,
@@ -1487,14 +1503,12 @@ async def generate_block_step(
     block_type = str(entry.get("block_type", "reading"))
     course_id = str(entry.get("course_id", ""))
     upstream = await _upstream_outputs(session, run_id=run_id, entry=entry)
-    sources = list(entry.get("sources", []))
-    handle_to_passage: dict[str, str] = {}
-    for index, item in enumerate(generate_block.ordered_sources(sources), 1):
-        pid = str(item.get("passage_id", ""))
-        if pid:
-            handle_to_passage[f"P{index}"] = pid
+    sources = generate_block.ordered_sources(list(entry.get("sources", [])))
+    handle_to_passage: dict[str, str] = handle_map(sources)
+    merged_texts = {str(item.get("passage_id", "")): str(item.get("text", "")) for item in sources}
     # R2: a check/practice/test generator receives only the passages its
-    # topic taught (module tests: any teach block of the module).
+    # topic taught (module tests: any teach block of the module). The
+    # subset keeps every passage's handle: the frozen plan names them.
     from app.course.grounding import taught_handles_for
 
     role = str(dict(entry.get("skeleton", {})).get("role", ""))
@@ -1512,11 +1526,7 @@ async def generate_block_step(
                 sources = [
                     item for item in sources if str(item.get("passage_id", "")) in set(taught_pids)
                 ]
-                handle_to_passage = {}
-                for index, item in enumerate(generate_block.ordered_sources(sources), 1):
-                    pid = str(item.get("passage_id", ""))
-                    if pid:
-                        handle_to_passage[f"P{index}"] = pid
+                handle_to_passage = handle_map(sources)
     prompt = generate_block.build_generation_prompt(
         agent=agent,
         block_type=block_type,
@@ -1551,6 +1561,7 @@ async def generate_block_step(
             variant=int(entry.get("variant_offset", 0)),
             force_new=bool(entry.get("rewrite")),
             allow_fully_correct=bool(entry.get("allow_fully_correct", True)),
+            topic_terms=_topic_terms(entry),
             mutated=str(sab["mutated"]) if sab.get("mutated") else None,
             kind=str(sab["kind"]) if sab.get("kind") else None,
             pick=(
@@ -1584,7 +1595,10 @@ async def generate_block_step(
         )
         # code verdicts before acceptance: verbatim citations + language
         text = str(output.get("text", ""))
-        stored = await _stored_passage_texts(session, passage_ids=list(handle_to_passage.values()))
+        stored = {
+            **await _stored_passage_texts(session, passage_ids=list(handle_to_passage.values())),
+            **{pid: merged for pid, merged in merged_texts.items() if merged},
+        }
         holds: list[str] = []
         resolved_citations: list[dict[str, Any]] = []
         citation_pids: list[str] = []
@@ -1621,7 +1635,7 @@ async def generate_block_step(
                 for handle, pid in zip(cited_handles, citation_pids, strict=True)
             }
             holds += coverage_holds(text, cited_texts)
-            holds += adjacency_holds(text, cited_handles)
+            holds += adjacency_holds(text, resolved_citations)
         if block_type == "figure":
             from app.course.grounding import passage_kind
 
@@ -1633,9 +1647,21 @@ async def generate_block_step(
 
             if taught_pids:
                 taught_texts = [stored.get(pid, "") for pid in taught_pids]
+                outside = sorted(
+                    {
+                        h
+                        for h, pid in zip(cited_handles, citation_pids, strict=True)
+                        if pid not in taught_pids
+                    }
+                )
+                if outside:
+                    holds.append(
+                        "not taught: cites passages outside what this topic taught"
+                        f" ({', '.join(outside)})"
+                    )
             else:
                 taught_texts = [stored.get(pid, "") for pid in citation_pids]
-            holds += taught_holds(output, taught_texts)
+            holds += taught_holds(output, taught_texts, block_type)
         holds += check_language(text, course_language=str(entry.get("course_language", "en")))
         content, key, type_errors = _typed_content(
             output, block_type=block_type, citations=resolved_citations
@@ -1940,12 +1966,8 @@ async def saboteur_step(
 
     step_key = str(entry["step_key"])
     _, _, node_id = step_key.partition(":")
-    sources = list(entry.get("sources", []))
-    handle_to_passage: dict[str, str] = {}
-    for index, item in enumerate(generate_block.ordered_sources(sources), 1):
-        pid = str(item.get("passage_id", ""))
-        if pid:
-            handle_to_passage[f"P{index}"] = pid
+    sources = generate_block.ordered_sources(list(entry.get("sources", [])))
+    handle_to_passage: dict[str, str] = handle_map(sources)
     cited_ids = {str(pid) for pid in entry.get("cited_passage_ids", [])}
     if cited_ids:
         handle_to_passage = {h: p for h, p in handle_to_passage.items() if p in cited_ids}
@@ -1957,11 +1979,7 @@ async def saboteur_step(
             "passage": str(entry.get("passage", "P1")),
         }
     else:
-        from app.course.grounding import content_terms
-
-        topic_terms = content_terms(
-            f"{entry.get('topic_title', '')} {entry.get('topic_purpose', '')}"
-        )
+        topic_terms = _topic_terms(entry)
         base_seed = _spot_seed(node_id, int(entry.get("variant_offset", 0)))
         pick = pick_sentence(verified, seed=base_seed, topic_terms=topic_terms or None)
         if pick.get("fully_correct") and not bool(entry.get("allow_fully_correct", True)):
@@ -2033,6 +2051,13 @@ async def saboteur_step(
         output = {**output, "true_sentence": sentence, "passage": str(pick["passage"])}
         await finish_step(session, step_id=claim["step_id"], output=output)
     await session.commit()
+
+
+def _topic_terms(entry: dict[str, Any]) -> list[str]:
+    """Content terms of the step's topic title and purpose (the picker's preference)."""
+    from app.course.grounding import content_terms
+
+    return content_terms(f"{entry.get('topic_title', '')} {entry.get('topic_purpose', '')}")
 
 
 async def _version_count(session: AsyncSession, *, course_id: str, node: str) -> int:

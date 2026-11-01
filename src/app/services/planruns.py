@@ -140,6 +140,7 @@ def frozen_plan(tree: dict[str, Any]) -> dict[str, Any]:
                     "plan_node_id": str(topic.get("plan_node_id", "")),
                     "kind": str(topic.get("kind", "")),
                     "title": str(topic.get("title", "")),
+                    "objectives": [str(o) for o in (topic.get("objectives") or [])],
                     "blocks": blocks,
                 }
             )
@@ -848,6 +849,101 @@ async def run_resume_operation(
     return {"run_id": str(run_id)}
 
 
+def _topic_index(raw_tree: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Per topic: cited passage ids, title, purpose, kind, spot count and the fully-correct rule."""
+    index: dict[str, dict[str, Any]] = {}
+    for module in raw_tree.get("modules", []):
+        for topic in module.get("topics", []):
+            ids: list[str] = []
+            for block in topic.get("blocks", []):
+                for ref in block.get("source_refs", []):
+                    pid = ref.get("passage_id") if isinstance(ref, dict) else None
+                    if pid and str(pid) not in ids:
+                        ids.append(str(pid))
+            spots = sum(
+                1
+                for b in topic.get("blocks", [])
+                if str(b.get("block_type", "")) == "spot_the_error"
+            )
+            kind = str(topic.get("kind", ""))
+            index[str(topic.get("plan_node_id", ""))] = {
+                "cited_passage_ids": ids,
+                "topic_title": str(topic.get("title", "")),
+                "topic_purpose": " ".join(str(o) for o in (topic.get("objectives") or [])),
+                "topic_kind": kind,
+                # a module test whose only task is the exercise must get a planted error
+                "allow_fully_correct": not (kind == "module_test" and spots < 2),
+                "blocks": [str(b.get("plan_node_id", "")) for b in topic.get("blocks", [])],
+            }
+    return index
+
+
+def _spot_fields(topic_index: dict[str, dict[str, Any]], node: str) -> dict[str, Any]:
+    """The fields every saboteur and spot generator entry carries, from its topic."""
+    for meta in topic_index.values():
+        if node in meta["blocks"]:
+            return {
+                "cited_passage_ids": list(meta["cited_passage_ids"]),
+                "topic_title": meta["topic_title"],
+                "topic_purpose": meta["topic_purpose"],
+                "topic_kind": meta["topic_kind"],
+                "allow_fully_correct": bool(meta["allow_fully_correct"]),
+            }
+    return {
+        "cited_passage_ids": [],
+        "topic_title": "",
+        "topic_purpose": "",
+        "topic_kind": "",
+        "allow_fully_correct": False,
+    }
+
+
+def _plan_handle_map(raw_tree: dict[str, Any]) -> dict[str, str]:
+    """handle -> passage id as the stored plan cites them."""
+    mapping: dict[str, str] = {}
+    for module in raw_tree.get("modules", []):
+        for topic in module.get("topics", []):
+            for block in topic.get("blocks", []):
+                for ref in block.get("source_refs", []):
+                    if isinstance(ref, dict) and ref.get("passage_id") and ref.get("handle"):
+                        mapping.setdefault(str(ref["handle"]), str(ref["passage_id"]))
+    return mapping
+
+
+async def _course_sources(
+    session: AsyncSession, *, course_id: UUID, raw_tree: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Approved passages numbered exactly as the plan cites them (one numbering)."""
+    from app.course.handles import numbered_passages, reconcile_handles
+
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT p.id, p.source_id, p.address_key, p.text, p.is_content, p.ordinal"
+                " FROM passages p"
+                " JOIN course_sources cs ON cs.source_id = p.source_id AND cs.course_id = :c"
+                " AND cs.approval = 'approved' JOIN sources s ON s.id = p.source_id"
+                " AND s.approval = 'approved'"
+            ),
+            {"c": str(course_id)},
+        )
+    ).all()
+    numbered = numbered_passages(
+        [
+            {
+                "passage_id": str(r[0]),
+                "source_id": str(r[1]),
+                "address": str(r[2]),
+                "text": str(r[3]),
+                "is_content": bool(r[4]),
+                "ordinal": r[5],
+            }
+            for r in rows
+        ]
+    )
+    return reconcile_handles(numbered, _plan_handle_map(raw_tree))
+
+
 async def run_rewrite_operation(
     session: AsyncSession,
     operation_id: UUID,
@@ -881,7 +977,9 @@ async def run_rewrite_operation(
     if not wanted:
         raise ValidationError("name at least one block to rewrite")
     course = await course_service.get_course(session, course_id=course_id)
-    tree = frozen_plan(await course_service.read_tree(session, course_id=course_id))
+    raw_tree = await course_service.read_tree(session, course_id=course_id)
+    tree = frozen_plan(raw_tree)
+    topic_index = _topic_index(raw_tree)
     rows = (
         await session.execute(
             sa.text(
@@ -900,21 +998,7 @@ async def run_rewrite_operation(
     ).all()
     if not rows:
         raise NotFoundError("no named blocks found for rewrite")
-    source_rows = (
-        await session.execute(
-            sa.text(
-                "SELECT p.id, p.source_id, p.address_key, p.text FROM passages p"
-                " JOIN course_sources cs ON cs.source_id = p.source_id AND cs.course_id = :c"
-                " AND cs.approval = 'approved' JOIN sources s ON s.id = p.source_id"
-                " AND s.approval = 'approved' ORDER BY p.source_id, p.address_key"
-            ),
-            {"c": str(course_id)},
-        )
-    ).all()
-    sources = [
-        {"passage_id": str(r[0]), "source_id": str(r[1]), "address": str(r[2]), "text": str(r[3])}
-        for r in source_rows
-    ]
+    sources = await _course_sources(session, course_id=course_id, raw_tree=raw_tree)
     dossier = {"thesis": "", "glossary": {}, "handoffs": []}
     dag: list[dict[str, Any]] = []
     gen_keys_by_topic: dict[str, list[str]] = {}
@@ -940,6 +1024,7 @@ async def run_rewrite_operation(
                     "variant_offset": int(versions or 0),
                     "rewrite": True,
                     "hold_reason": reason,
+                    **_spot_fields(topic_index, str(node)),
                 }
             )
         dag.append(
@@ -955,6 +1040,7 @@ async def run_rewrite_operation(
                 "sources": sources,
                 "variant_offset": int(versions or 0),
                 "rewrite": True,
+                **(_spot_fields(topic_index, str(node)) if str(btype) == "spot_the_error" else {}),
                 "skeleton": {
                     "plan_node_id": str(node),
                     "brief": f"{brief} Rewrite: {reason}" if reason else str(brief),
@@ -1025,52 +1111,9 @@ async def run_generate_operation(
     course = await course_service.get_course(session, course_id=course_id)
     raw_tree = await course_service.read_tree(session, course_id=course_id)
     tree = frozen_plan(raw_tree)
-    # Topic cited set (passage ids) for the spot picker: a sentence may
-    # only come from a passage the topic itself cites. Read-time rejoin
-    # repairs split list passages before they reach any generator.
-    from app.services.library import rejoin_list_passages
-
-    cited_by_topic: dict[str, list[str]] = {}
-    topic_meta: dict[str, dict[str, str]] = {}
-    for module in raw_tree.get("modules", []):
-        for topic in module.get("topics", []):
-            ids: list[str] = []
-            for block in topic.get("blocks", []):
-                for ref in block.get("source_refs", []):
-                    pid = ref.get("passage_id") if isinstance(ref, dict) else None
-                    if pid and str(pid) not in ids:
-                        ids.append(str(pid))
-            cited_by_topic[str(topic.get("plan_node_id", ""))] = ids
-            topic_meta[str(topic.get("plan_node_id", ""))] = {
-                "title": str(topic.get("title", "")),
-                "purpose": " ".join(str(o) for o in topic.get("objectives", [])),
-                "kind": str(topic.get("kind", "")),
-            }
+    topic_index = _topic_index(raw_tree)
     profile = course.get("profile") or {}
-    rows = (
-        await session.execute(
-            sa.text(
-                "SELECT p.id, p.source_id, p.address_key, p.text FROM passages p"
-                " JOIN course_sources cs ON cs.source_id = p.source_id AND cs.course_id = :c"
-                " AND cs.approval = 'approved' JOIN sources s ON s.id = p.source_id"
-                " AND s.approval = 'approved' ORDER BY p.source_id, p.address_key"
-            ),
-            {"c": str(course_id)},
-        )
-    ).all()
-    sources = rejoin_list_passages(
-        [
-            {
-                "passage_id": str(r[0]),
-                "source_id": str(r[1]),
-                "address": str(r[2]),
-                "text": str(r[3]),
-            }
-            for r in rows
-        ]
-    )
-    for item in sources:
-        item["passage_id"] = str(item.get("passage_id", item.get("id", "")))
+    sources = await _course_sources(session, course_id=course_id, raw_tree=raw_tree)
     raw = compile_generation_dag(
         profile={
             "methodology_codes": list(profile.get("methodology_codes", [])),
@@ -1129,32 +1172,10 @@ async def run_generate_operation(
                 "block_type": e["block_type"],
             }
             if e["block_type"] == "spot_the_error":
-                owner = next(
-                    (
-                        str(tp.get("plan_node_id", ""))
-                        for m in raw_tree.get("modules", [])
-                        for tp in m.get("topics", [])
-                        if any(str(b.get("plan_node_id", "")) == node for b in tp.get("blocks", []))
-                    ),
-                    "",
-                )
-                e["cited_passage_ids"] = cited_by_topic.get(owner, [])
+                e.update(_spot_fields(topic_index, node))
         elif handler == "saboteur":
             e["sources"] = sources
-            node = str(entry["step_key"]).partition(":")[2]
-            owner_topic = next(
-                (
-                    str(tp.get("plan_node_id", ""))
-                    for m in raw_tree.get("modules", [])
-                    for tp in m.get("topics", [])
-                    if any(str(b.get("plan_node_id", "")) == node for b in tp.get("blocks", []))
-                ),
-                "",
-            )
-            e["cited_passage_ids"] = cited_by_topic.get(owner_topic, [])
-            meta = topic_meta.get(owner_topic, {})
-            e.setdefault("topic_title", meta.get("title", ""))
-            e.setdefault("topic_purpose", meta.get("purpose", ""))
+            e.update(_spot_fields(topic_index, str(entry["step_key"]).partition(":")[2]))
         elif handler == "read_topic":
             topic = str(entry["step_key"]).partition(":")[2]
             e["sources"] = sources
