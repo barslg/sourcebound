@@ -58,8 +58,11 @@ step "job mechanical gates"
 uv run pytest -m "not live" tests/gates/
 uv run python scripts/run_gates.py
 
-step "job mutation (changed lines against origin/dev, 9-minute budget)"
-uv run python scripts/mutate_changed.py --base origin/dev --budget 540
+step "job mutation (the lines this push adds against the branch's GitHub tip, 9-minute budget)"
+branch="$(git -C "$REPO" rev-parse --abbrev-ref HEAD)"
+base="$(git -C "$REPO" rev-parse -q --verify "origin/${branch}" || git -C "$REPO" rev-parse -q --verify origin/dev || echo "")"
+if [ -z "$base" ] || ! git cat-file -e "$base" 2>/dev/null; then base="origin/dev"; fi
+uv run python scripts/mutate_changed.py --base "$base" --budget 540
 
 step "job gitleaks (history of the clone, then the tree)"
 if command -v gitleaks >/dev/null 2>&1; then

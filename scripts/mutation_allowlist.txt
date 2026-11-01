@@ -7,3 +7,4 @@ src/app/controllers/auth.py:76:bool:And feat/frontend's repeated-callback redire
 src/app/controllers/auth.py:76:cmp:IsNot same as above
 src/app/controllers/auth.py:77:cmp:IsNot same as above
 src/app/controllers/auth.py:78:not same as above
+src/app/errors.py:20:const:False: class default of plain_message; every error class that needs plain text overrides it, and the override is what the access and error tests exercise
