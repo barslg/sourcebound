@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 const props = defineProps<{ content: Record<string, unknown> }>()
-const numbers = Array.isArray(props.content.numbers) ? (props.content.numbers as unknown[]).map(Number) : []
-const top = Math.max(1, ...numbers.map((n) => Math.abs(n)))
+const numbers = computed(() => (Array.isArray(props.content.numbers) ? (props.content.numbers as unknown[]).map(Number) : []))
+const top = computed(() => Math.max(1, ...numbers.value.map((n) => Math.abs(n))))
 </script>
 
 <template>

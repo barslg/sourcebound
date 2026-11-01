@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 const props = defineProps<{ content: Record<string, unknown> }>()
-const body = String(props.content.body ?? '')
-const citations = Array.isArray(props.content.citations) ? (props.content.citations as Array<Record<string, unknown>>) : []
+const body = computed(() => String(props.content.body ?? ''))
+const citations = computed(() => (Array.isArray(props.content.citations) ? (props.content.citations as Array<Record<string, unknown>>) : []))
 </script>
 
 <template>

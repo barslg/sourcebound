@@ -287,7 +287,7 @@ async def add_translation(
             sa.text(
                 "INSERT INTO translation_blocks"
                 " (id, translation_id, plan_node_id, block_type, status, content, source_digest)"
-                " VALUES (gen_random_uuid(), :t, :n, 'text', :s, CAST(:c AS jsonb), :d)"
+                " VALUES (gen_random_uuid(), :t, :n, 'reading', :s, CAST(:c AS jsonb), :d)"
             ),
             {
                 "d": await source_digest(session, version, node),
