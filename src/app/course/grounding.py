@@ -215,6 +215,85 @@ def adjacency_holds(block_text: str, cited_handles: list[str]) -> list[str]:
     return holds
 
 
+def taught_handles_for(plan: dict, node_id: str) -> tuple[list[str], str] | None:
+    """Handles taught by a node's topic, from the frozen plan.
+
+    Lessons: teach/example blocks of the same topic. Module tests: any
+    teach/example block of the module. Returns (handles, topic_kind),
+    or None when the plan carries no teach handles for the node (the
+    caller falls back to the block's own citations).
+    """
+    for module in plan.get("modules", []) if isinstance(plan, dict) else []:
+        topics = module.get("topics", []) if isinstance(module, dict) else []
+        for topic in topics:
+            blocks = topic.get("blocks", []) if isinstance(topic, dict) else []
+            if not any(str(b.get("plan_node_id", "")) == node_id for b in blocks):
+                continue
+            kind = str(topic.get("kind", "lesson"))
+            pool = topics if kind == "module_test" else [topic]
+            handles: list[str] = []
+            for item in pool:
+                for block in item.get("blocks", []):
+                    if str(block.get("role", "")) not in ("teach", "example"):
+                        continue
+                    raw = block.get("source_handles") or [
+                        str(ref.get("handle", ""))
+                        for ref in block.get("source_refs", [])
+                        if isinstance(ref, dict)
+                    ]
+                    for handle in raw:
+                        if handle and handle not in handles:
+                            handles.append(str(handle))
+            return (handles, kind) if handles else None
+    return None
+
+
+def answer_key_terms(output: dict) -> list[str]:
+    """Content terms an exercise asks with: options, blanks, pairs, key.
+
+    Every option (not only the correct one), every blank, every pair
+    side, every scenario item and tier, and the free `answer` key.
+    """
+    texts: list[str] = [str(output.get("answer", ""))]
+    for option in output.get("options", []) if isinstance(output.get("options"), list) else []:
+        texts.append(str(option.get("text", "")) if isinstance(option, dict) else str(option))
+    for blank in output.get("blanks", []) if isinstance(output.get("blanks"), list) else []:
+        texts.append(str(blank))
+    for pair in output.get("pairs", []) if isinstance(output.get("pairs"), list) else []:
+        if isinstance(pair, dict):
+            texts.append(str(pair.get("left", "")))
+            texts.append(str(pair.get("right", "")))
+    for item in output.get("items", []) if isinstance(output.get("items"), list) else []:
+        if isinstance(item, dict):
+            texts.append(str(item.get("text", "")))
+            texts.append(str(item.get("tier", "")))
+    terms: list[str] = []
+    for text in texts:
+        for term in content_terms(text):
+            if term not in terms:
+                terms.append(term)
+    return terms
+
+
+def taught_holds(output: dict, taught_texts: list[str]) -> list[str]:
+    """Hold a check/practice/test block that asks untaught material.
+
+    No claim may sit in an answer key that is not in a passage cited
+    by a teach/example block of the same topic (module tests: of the
+    module). A term with a trailing plural or hyphen variant in the
+    taught text counts as taught.
+    """
+    taught = normalize(" \n ".join(taught_texts))
+    holds: list[str] = []
+    for term in answer_key_terms(output):
+        variants = {term, term.rstrip("s"), f"{term}s"}
+        if not any(variant and variant in taught for variant in variants):
+            holds.append(
+                f"not taught: answer-key term {term!r} is not in a passage taught by this topic"
+            )
+    return holds
+
+
 def marker(handle: str) -> str:
     """The handle marker shown as a chip at a passage boundary."""
     return f"⟦{handle}⟧"

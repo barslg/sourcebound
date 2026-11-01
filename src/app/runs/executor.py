@@ -1455,6 +1455,30 @@ async def generate_block_step(
         pid = str(item.get("passage_id", ""))
         if pid:
             handle_to_passage[f"P{index}"] = pid
+    # R2: a check/practice/test generator receives only the passages its
+    # topic taught (module tests: any teach block of the module).
+    from app.course.grounding import taught_handles_for
+
+    role = str(dict(entry.get("skeleton", {})).get("role", ""))
+    is_question = agent in ("block_check", "block_practice", "block_test") or role in (
+        "check",
+        "practice",
+        "test",
+    )
+    taught_pids: list[str] = []
+    if is_question:
+        found = taught_handles_for(dict(entry.get("plan", {})), node_id)
+        if found is not None:
+            taught_pids = [handle_to_passage[h] for h in found[0] if h in handle_to_passage]
+            if taught_pids:
+                sources = [
+                    item for item in sources if str(item.get("passage_id", "")) in set(taught_pids)
+                ]
+                handle_to_passage = {}
+                for index, item in enumerate(generate_block.ordered_sources(sources), 1):
+                    pid = str(item.get("passage_id", ""))
+                    if pid:
+                        handle_to_passage[f"P{index}"] = pid
     prompt = generate_block.build_generation_prompt(
         agent=agent,
         block_type=block_type,
@@ -1554,6 +1578,14 @@ async def generate_block_step(
             }
             holds += coverage_holds(text, cited_texts)
             holds += adjacency_holds(text, [cit["handle"] for cit in resolved_citations])
+        if is_question and block_type != "spot_the_error":
+            from app.course.grounding import taught_holds
+
+            if taught_pids:
+                taught_texts = [stored.get(pid, "") for pid in taught_pids]
+            else:
+                taught_texts = [stored.get(pid, "") for pid in citation_pids]
+            holds += taught_holds(output, taught_texts)
         holds += check_language(text, course_language=str(entry.get("course_language", "en")))
         content, key, type_errors = _typed_content(
             output, block_type=block_type, citations=resolved_citations
