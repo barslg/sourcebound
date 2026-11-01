@@ -41,11 +41,11 @@ def backoff_ms(attempt: int, retry_after_ms: int | None) -> float:
 
 def retry_after_ms(error: Any) -> int | None:
     """Retry-After hint in ms: delta-seconds or an HTTP-date, else None."""
-    from openai import APIStatusError
-
-    if not isinstance(error, APIStatusError) or error.response is None:
+    response = getattr(error, "response", None)
+    headers = getattr(response, "headers", None)
+    if headers is None:
         return None
-    hint = error.response.headers.get("retry-after")
+    hint = headers.get("retry-after")
     if hint is None:
         return None
     try:

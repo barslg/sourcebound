@@ -14,6 +14,13 @@ Replay mode: with MODEL_REPLAY_LEDGER set the network client is swapped for
 clients/replay.py, so every other step (reply store, checks, ledger rows)
 is the live path and a request the ledger never recorded fails loudly.
 
+Providers: MODEL_PROVIDER=meta (default, the product and the submission)
+or anthropic (tests and local development only). The provider maps the
+registry tier to the model that really serves it, so the request digest,
+the call log row and the cost all carry the real model id, and a reply
+stored for one provider is never served as the other's. The anthropic
+provider has no background mode: such calls run synchronously.
+
 Background calls: start_background() POSTs once and stores a pending
 row holding the response id; resume_pending() polls that id, so a crash
 between create and retrieve never re-posts a possibly paid request.
@@ -28,7 +35,9 @@ from uuid import UUID
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.clients.meta import MetaClient, build_request_body
+from app.clients.anthropic import AnthropicClient
+from app.clients.body import build_body
+from app.clients.meta import MetaClient
 from app.clients.replay import ReplayClient
 from app.config import Settings, get_settings
 from app.db import create_session_factory
@@ -40,7 +49,7 @@ from app.errors import (
     ValidationError,
 )
 from app.llm import calls, prompts, replies
-from app.llm.registry import is_allowed, resolve_step
+from app.llm.registry import is_allowed, resolve_step, serving_model
 from app.llm.schema import validate_strict_subset
 from app.models.llm import llm_calls
 
@@ -77,13 +86,15 @@ class MetaProvider:
         self._settings = settings or get_settings()
         self._http_client = http_client
         self._ledger_factory = ledger_factory or create_session_factory(self._settings.database_url)
-        self._client: MetaClient | ReplayClient | None = None
+        self._client: MetaClient | AnthropicClient | ReplayClient | None = None
 
-    def _get_client(self) -> MetaClient | ReplayClient:
-        """The Meta client, or the free replay client when MODEL_REPLAY_LEDGER is set."""
+    def _get_client(self) -> MetaClient | AnthropicClient | ReplayClient:
+        """The MODEL_PROVIDER client, or the free replay client when MODEL_REPLAY_LEDGER is set."""
         if self._client is None:
             if self._settings.model_replay_ledger:
                 self._client = ReplayClient(self._settings.model_replay_ledger)
+            elif self._settings.model_provider == "anthropic":
+                self._client = AnthropicClient(self._settings, self._http_client)
             else:
                 self._client = MetaClient(self._settings, self._http_client)
         return self._client
@@ -130,6 +141,8 @@ class MetaProvider:
         again instead of re-serving the same bad reply at $0.
         """
         validate_strict_subset(schema, name=agent)
+        if background and self._settings.model_provider != "meta":
+            background = False
         if background:
             call_id = await self.start_background(
                 agent=agent,
@@ -148,10 +161,11 @@ class MetaProvider:
         resolved_model, resolved_effort, resolved_tokens = resolve_step(
             agent, model, effort, max_output_tokens
         )
+        resolved_model = serving_model(resolved_model, self._settings.model_provider)
         if not is_allowed(resolved_model, self._settings.llm_dev_mode):
             raise ForbiddenError(f"model {resolved_model} needs LLM_DEV_MODE=1")
         version = self.prompt_version(agent, prompt)
-        body = build_request_body(
+        body = build_body(
             model=resolved_model,
             prompt=prompt,
             schema=schema,
@@ -263,10 +277,11 @@ class MetaProvider:
         resolved_model, resolved_effort, resolved_tokens = resolve_step(
             agent, model, effort, max_output_tokens
         )
+        resolved_model = serving_model(resolved_model, self._settings.model_provider)
         if not is_allowed(resolved_model, self._settings.llm_dev_mode):
             raise ForbiddenError(f"model {resolved_model} needs LLM_DEV_MODE=1")
         version = self.prompt_version(agent, prompt)
-        body = build_request_body(
+        body = build_body(
             model=resolved_model,
             prompt=prompt,
             schema=schema,
