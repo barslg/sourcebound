@@ -1334,6 +1334,55 @@ async def test_generation_item_unknown_under_a_block_pass_is_held_not_accepted(
     assert (await _smoke_blocks(t03_session, demo["course_id"]))["b1"][0] == "held"
 
 
+async def test_generation_reader_reply_without_coverage_item_is_rejected(
+    t03_session: AsyncSession,
+) -> None:
+    """T11 R9: the rubric has seven items; a six-item reader reply is a schema violation.
+
+    Red on the six-item rubric (the run ends done), green when `coverage` is
+    required: the reply is rejected, the reader step fails with the missing
+    item named, and no block is accepted on that verdict.
+    """
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-coverage")
+    six = (
+        "task_fit",
+        "grounding",
+        "continuity",
+        "answer_key",
+        "audience_language",
+        "planted_error",
+    )
+
+    def six_items(prompt: str, reply: dict[str, Any]) -> dict[str, Any]:
+        for verdict in reply.get("verdicts", []):
+            verdict["items"] = {
+                item: {"verdict": "pass", "evidence": f"quoted {item}"} for item in six
+            }
+        return reply
+
+    final = await _smoke_run(
+        t03_session, demo, dag, _edited(demo_t05.mock_demo_handler(), six_items)
+    )
+    assert final["status"] == "stopped", final
+    raw_errors = [
+        str(row[0])
+        for row in (
+            await t03_session.execute(
+                sa.text(
+                    "SELECT error FROM run_steps WHERE run_id = :run AND status = 'failed'"
+                    " AND step_key LIKE 'reader:%'"
+                ),
+                {"run": str(final["id"])},
+            )
+        ).all()
+    ]
+    assert raw_errors and "missing rubric item coverage" in raw_errors[0], raw_errors
+    assert all(
+        status != "accepted"
+        for status, _ in (await _smoke_blocks(t03_session, demo["course_id"])).values()
+    )
+
+
 async def test_generation_run_never_ends_done_with_a_block_no_reader_covered(
     t03_session: AsyncSession,
 ) -> None:

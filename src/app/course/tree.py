@@ -453,6 +453,7 @@ READER_SCHEMA: dict[str, Any] = _strict_object(
                             "answer_key": _rubric_item(),
                             "audience_language": _rubric_item(),
                             "planted_error": _rubric_item(),
+                            "coverage": _rubric_item(),
                         }
                     ),
                 }

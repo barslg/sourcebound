@@ -897,6 +897,7 @@
     "answer_key": "Ключ відповідей",
     "audience_language": "Мова для аудиторії",
     "planted_error": "Підкинута помилка",
+    "coverage": "Несе повне твердження",
     "block_type": "Тип блоку"
   },
   "learnCourse": {

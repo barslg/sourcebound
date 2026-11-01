@@ -897,6 +897,7 @@
     "answer_key": "Answer key",
     "audience_language": "Language for the audience",
     "planted_error": "Planted error",
+    "coverage": "Carries the whole claim",
     "block_type": "Block type"
   },
   "learnCourse": {

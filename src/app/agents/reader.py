@@ -1,8 +1,9 @@
 """Reader: one Wonder-high call per topic with quoted evidence.
 
-Six rubric items per block: task fit, grounding, continuity, answer key,
-audience and language, planted-error integrity. Verdicts are
-pass/hold/unknown; a hold returns the block with its reason.
+Seven rubric items per block: task fit, grounding, continuity, answer
+key, audience and language, planted-error integrity, coverage (the
+block carries the complete claim of every passage it cites). Verdicts
+are pass/hold/unknown; a hold returns the block with its reason.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ RUBRIC_ITEMS: tuple[str, ...] = (
     "answer_key",
     "audience_language",
     "planted_error",
+    "coverage",
 )
 
 VERDICTS = ("pass", "hold", "unknown")
