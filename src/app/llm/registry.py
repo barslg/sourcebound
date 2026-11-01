@@ -50,7 +50,13 @@ class ModelSpec:
     unit_price_usd: Decimal | None = None
     unit_priced_on: str = ""
     price_note: str = ""
+    provider: str = "meta"
 
+
+TEST_PROVIDER_NOTE = (
+    "tests and local development only (MODEL_PROVIDER=anthropic); cache writes are billed"
+    " at 1.25x input by the provider and are counted here as plain input"
+)
 
 MODELS: dict[str, ModelSpec] = {
     "muse-spark-1.3": ModelSpec(
@@ -104,6 +110,26 @@ MODELS: dict[str, ModelSpec] = {
         unit_priced_on="2026-10-31",
         price_note="$0.18 per audio hour",
     ),
+    "claude-sonnet-5-5": ModelSpec(
+        model_id="claude-sonnet-5-5",
+        input_per_1m_usd=Decimal("2.00"),
+        cached_per_1m_usd=Decimal("0.20"),
+        output_per_1m_usd=Decimal("10.00"),
+        priced_on="2026-11-01",
+        context_window=1_000_000,
+        provider="anthropic",
+        price_note=TEST_PROVIDER_NOTE,
+    ),
+    "claude-opus-5-5": ModelSpec(
+        model_id="claude-opus-5-5",
+        input_per_1m_usd=Decimal("4.00"),
+        cached_per_1m_usd=Decimal("0.20"),
+        output_per_1m_usd=Decimal("20.00"),
+        priced_on="2026-11-01",
+        context_window=1_000_000,
+        provider="anthropic",
+        price_note=TEST_PROVIDER_NOTE,
+    ),
     "muse-spark-1.3-contributor": ModelSpec(
         model_id="muse-spark-1.3-contributor",
         input_per_1m_usd=Decimal("0.10"),
@@ -115,6 +141,36 @@ MODELS: dict[str, ModelSpec] = {
         price_note="cached rate unconfirmed",
     ),
 }
+
+
+# Tier model -> the model that serves it on a test provider. A tier absent
+# from the map (image, search, voice, contributor) has no equivalent there.
+PROVIDER_TIERS: dict[str, dict[str, str]] = {
+    "anthropic": {
+        "muse-spark-1.3": "claude-sonnet-5-5",
+        "muse-wonder-1.0": "claude-opus-5-5",
+    },
+}
+
+
+def serving_model(model_id: str, provider: str) -> str:
+    """The model id that really serves a registry model on this provider.
+
+    The product runs on Meta models, so provider "meta" returns the id
+    unchanged (and refuses another provider's id). A test provider maps
+    the two text tiers; every other tier fails closed with a plain message.
+    """
+    spec = get_model(model_id)
+    if provider == "meta":
+        if spec.provider != "meta":
+            raise ConfigurationError(f"model {model_id} is not served by provider meta")
+        return model_id
+    if spec.provider == provider:
+        return model_id
+    mapped = PROVIDER_TIERS.get(provider, {}).get(model_id)
+    if mapped is None:
+        raise ConfigurationError(f"model {model_id} has no equivalent on provider {provider}")
+    return mapped
 
 
 @dataclass(frozen=True)
