@@ -381,6 +381,9 @@ async def seed_course(session: AsyncSession, owner: str) -> dict[str, str]:
     from app.services.courses import create_course
 
     cid = await seed_planned_course(session, owner, "Hand hygiene")
+    await add_source(
+        session, cid, "Hygiene guide", "Wash hands.\n\nUse alcohol rub.", "approved", "CC BY 4.0"
+    )
     editing = await seed_planned_course(session, owner, "Plan editing")
     empty = await create_course(
         session, owner_id=owner, title="Empty course", language="en", scope_tags=[]

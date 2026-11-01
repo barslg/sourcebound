@@ -83,6 +83,7 @@ test('destructive actions live in the row overflow menu and ask a confirm dialog
   await signInAs(context, 'admin')
   await open(page, '/users')
   const s = sessions()
+  await page.getByTestId('users-search').fill(s.inviteme.email)
   const row = page.getByRole('row').filter({ hasText: s.inviteme.email })
   await expect(row.getByRole('button', { name: /^Delete user/ })).toHaveCount(0)
   await row.getByRole('button', { name: /^More actions for/ }).click()
@@ -93,6 +94,7 @@ test('destructive actions live in the row overflow menu and ask a confirm dialog
   await dialog.getByLabel(/Type/).fill('Ines Inviteme')
   await expect(dialog.getByTestId('dialog-submit')).toBeEnabled()
   await page.keyboard.press('Escape')
+  await page.getByTestId('users-search').fill(s.banme.email)
   const banned = page.getByRole('row').filter({ hasText: s.banme.email })
   await banned.getByRole('button', { name: /^More actions for/ }).click()
   await expect(page.getByRole('menuitem', { name: /Ban user|Unban user/ })).toHaveCount(1)
@@ -201,9 +203,9 @@ for (const width of [1280, 1024]) {
     expect(problems).toEqual([])
     if (width === 1024) {
       await open(page, `/courses/${ids().course}/plan`)
-      await expect(page.getByRole('tab', { name: /Open questions/ })).toBeVisible()
+      await expect(page.getByRole('tab', { name: /Questions and generate/ })).toBeVisible()
       await expect(page.getByTestId('before-card')).toBeHidden()
-      await page.getByRole('tab', { name: /Open questions/ }).click()
+      await page.getByRole('tab', { name: /Questions and generate/ }).click()
       await expect(page.getByTestId('before-card')).toBeVisible()
     }
   })

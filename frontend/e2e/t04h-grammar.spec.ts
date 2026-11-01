@@ -21,6 +21,8 @@ const INSTANCES: Record<string, Instance> = {
   },
   'course-preview': { who: 'admin', path: () => `/courses/${I().translated}/preview` },
   'course-publish': { who: 'admin', path: () => `/courses/${I().publish}/publish` },
+  learn: { who: 'student', path: () => '/learn' },
+  'course-runs': { who: 'admin', path: () => `/courses/${I().course}/runs` },
   run: { who: 'admin', path: () => `/runs/${I().run}` },
   users: { who: 'admin', path: () => '/users' },
   invites: { who: 'admin', path: () => '/invites' },

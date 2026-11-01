@@ -36,7 +36,7 @@ test('the scope picker offers existing courses and labels from the backend', asy
   await expect(picker).toBeVisible()
   await picker.locator('.p-multiselect').click()
   const options = await page.getByRole('option').allInnerTexts()
-  for (const t of tags) expect(options.join('\n')).toContain(t.tag)
+  for (const t of tags) for (const c of t.courses) expect(options.join('\n')).toContain(c.title)
 })
 
 test('plan: Build plan is disabled with the visible reason and a link when no source is approved', async ({ page, context }) => {

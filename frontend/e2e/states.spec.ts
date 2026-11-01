@@ -26,21 +26,11 @@ test('a student is redirected from every author URL and sees no author nav entry
   await signInAs(context, 'student')
   for (const path of ['/users', '/roles']) {
     await page.goto(path)
-    await expect(page).toHaveURL(/\/courses$/)
+    await expect(page).toHaveURL(/\/learn$/)
   }
   const nav = page.getByRole('navigation', { name: 'Main navigation' })
   await expect(nav.getByRole('link')).toHaveCount(1)
-  await expect(nav.getByRole('link', { name: 'My courses' })).toBeVisible()
-})
-
-test('the course list answers a learner with the denied state carrying the backend message', async ({ page, context }) => {
-  await signInAs(context, 'student')
-  const res = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/v1/courses')
-  await page.goto('/courses')
-  expect((await res).status()).toBe(403)
-  const box = page.locator('[data-view="denied"]')
-  await expect(box).toBeVisible()
-  await expect(box).toContainText('You do not have access to this.')
+  await expect(nav.getByRole('link', { name: 'My learning' })).toBeVisible()
 })
 
 test('the course list shows a retryable error when the request fails', async ({ page, context }) => {
@@ -70,7 +60,7 @@ test('users: loading state, then rows, and a search with no match shows a muted 
 
 test('a signed-in user without a bell item sees the muted empty line and no numbers', async ({ page, context }) => {
   await signInAs(context, 'other')
-  await page.goto('/courses')
+  await page.goto('/learn')
   await page.getByTestId('bell').click()
   await expect(page.getByTestId('bell-empty')).toBeVisible()
   await expect(page.getByTestId('bell-count')).toHaveCount(0)

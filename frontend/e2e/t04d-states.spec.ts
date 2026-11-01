@@ -17,6 +17,8 @@ const SCREENS: Screen[] = [
   { name: 'sources', row: 'course-sources', path: () => `/courses/${ids().course}/sources`, api: `**/api/v1/courses/${ids().course}/sources`, emptyBody: [], emptyLink: /Add your first source/ },
   { name: 'plan', row: 'course-plan', path: () => `/courses/${ids().course}/plan`, api: `**/api/v1/courses/${ids().course}/plan`, emptyBody: { modules: [] }, emptyLink: /Build the plan/ },
   { name: 'fix', row: 'course-fix', path: () => `/courses/${ids().course}/fix`, api: `**/api/v1/courses/${ids().course}/held`, emptyBody: { blocks: [], batch_quote_usd: null }, emptyLink: /Go to (Generate|Publish)/ },
+  { name: 'learn', row: 'learn', path: () => '/learn', api: '**/api/v1/learn/courses', emptyBody: [], emptyLink: /not enrolled/ },
+  { name: 'runs', row: 'course-runs', path: () => `/courses/${ids().course}/runs`, api: `**/api/v1/courses/${ids().course}/runs`, emptyBody: [], emptyLink: /No run yet/ },
   { name: 'run', row: 'run', path: () => `/runs/${ids().run}`, api: `**/api/v1/runs/${ids().run}`, emptyBody: null, emptyLink: /./, noEmpty: true },
   { name: 'publish', row: 'course-publish', path: () => `/courses/${ids().publish}/publish`, api: `**/api/v1/courses/${ids().publish}`, emptyBody: null, emptyLink: /./, noEmpty: true },
   { name: 'preview', row: 'course-preview', path: () => `/courses/${ids().translated}/preview`, api: `**/api/v1/courses/${ids().translated}/learner*`, emptyBody: null, emptyLink: /./, noEmpty: true },
@@ -63,7 +65,7 @@ for (const s of SCREENS.filter((x) => !x.noEmpty)) {
     await page.goto(s.path())
     const empty = page.locator('[data-view="empty"], .p-datatable-empty-message, .muted').filter({ hasText: s.emptyLink }).first()
     await expect(empty).toBeVisible()
-    if (!['users', 'roles'].includes(s.name)) {
+    if (!['users', 'roles', 'learn', 'runs'].includes(s.name)) {
       const scope = page.locator('[data-view="empty"]').first()
       await expect(scope.getByRole('button', { name: s.emptyLink }).or(scope.getByRole('link', { name: s.emptyLink }))).toBeVisible()
     }
@@ -74,7 +76,7 @@ test('states: a learner is sent to the first allowed page, not shown a dead end'
   await signInAs(context, 'student')
   for (const path of ['/users', '/roles', '/invites']) {
     await page.goto(path)
-    await expect(page).toHaveURL(/\/courses$/)
+    await expect(page).toHaveURL(/\/learn$/)
   }
 })
 

@@ -14,8 +14,8 @@ async function call(who: 'admin' | 'author', method: string, path: string, body?
 export default async function globalSetup(): Promise<void> {
   const s = sessions()
   const roles: [string, string[]][] = [
-    ['student', ['section.courses']],
-    ['operator', ['section.courses', 'operation.run']],
+    ['student', ['learn.read', 'learn.answer', 'learn.ask']],
+    ['operator', ['learn.read', 'operation.run']],
     ['author', ['section.courses', 'course.edit', 'course.create', 'source.upload']],
     ['editor-only', ['course.edit']],
   ]

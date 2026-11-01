@@ -3,7 +3,7 @@ import type { APIRequestContext, BrowserContext } from '@playwright/test'
 
 // The UI's live-shaped acceptance: the author path on the REAL API and worker, with the model
 // replaced by the mock model server (e2e/tools/mock_model.py). Screens AND the API state behind them.
-test.describe.configure({ mode: 'serial', timeout: 600_000 })
+test.describe.configure({ mode: 'serial', timeout: Number(process.env.FLOW_TIMEOUT_MS ?? 600_000) })
 
 let courseId = ''
 let inviteUrl = ''
@@ -54,12 +54,12 @@ test('author path: create, source, plan, generate, fix one block, translate, pre
   await page.getByTestId('source-file').setInputFiles({ name: 'hygiene.txt', mimeType: 'text/plain', buffer: Buffer.from('Wash hands for at least twenty seconds with soap and water.\n\nAlcohol rub is used when hands are not visibly soiled.\n\nHands are cleaned before touching a patient and after touching surroundings.') })
   await page.getByTestId('source-upload').click()
   await expect(page.getByText('Source uploaded.')).toBeVisible()
-  await page.getByRole('button', { name: /^Approve$/ }).first().click()
+  await page.getByRole('button', { name: /^Approve source$/ }).first().click()
   const afterApprove = await until(() => api<CourseApi>(admin, 'GET', `/courses/${courseId}`), (c) => c.source_count > 0, 'source row')
   expect(afterApprove.source_count).toBe(1)
 
   await page.goto(`/courses/${courseId}/plan`)
-  await page.locator('#b-meth input[type=checkbox]').first().check()
+  await page.locator('label[for^="m-"]').first().click()
   await page.locator('#b-aud').fill('ward nurses')
   await page.locator('#b-q').fill('hand hygiene')
   await page.getByTestId('plan-build').click()
@@ -69,23 +69,37 @@ test('author path: create, source, plan, generate, fix one block, translate, pre
 
   await page.reload()
   await page.getByTestId('generate').click()
-  const generated = await until(() => api<CourseApi>(admin, 'GET', `/courses/${courseId}`), (c) => c.status === 'generated', 'generated')
-  expect(generated.draft_count).toBe(0)
-  expect(generated.held_count).toBeGreaterThan(0)
+  const generated = await until(() => api<CourseApi>(admin, 'GET', `/courses/${courseId}`), (c) => c.held_count > 0 && c.draft_count === 0, 'generation finished with held blocks')
+  const run = await api<Array<{ id: string; status: string; kind: string | null }>>(admin, 'GET', `/courses/${courseId}/runs`)
+  expect(run[0]?.status).toBe('done')
+  console.log(`FLOW generation run ${run[0]?.id} status ${run[0]?.status} held ${generated.held_count}`)
 
+  const squash = (v: string): string => v.replace(/\s+/g, ' ').trim()
   await page.goto('/courses')
   const row = page.getByTestId('course-item').filter({ hasText: TITLE })
   await expect(row.getByTestId('held-count')).toBeVisible()
-  const listSays = await row.getByTestId('needs-now').innerText()
+  const listSays = squash(await row.getByTestId('needs-now').innerText())
   await page.goto(`/courses/${courseId}/fix`)
-  expect(await page.getByTestId('needs-now').innerText()).toBe(listSays)
-  const before = blocksOf(await api<PlanApi>(admin, 'GET', `/courses/${courseId}/plan`))
   await expect(page.getByTestId('held-row')).toHaveCount(generated.held_count)
+  expect(squash(await page.getByTestId('course-head').getByTestId('needs-now').innerText())).toBe(listSays)
+
+  const before = blocksOf(await api<PlanApi>(admin, 'GET', `/courses/${courseId}/plan`))
   await page.getByRole('button', { name: 'Rewrite block' }).first().click()
-  await until(() => api<CourseApi>(admin, 'GET', `/courses/${courseId}`), (c) => c.held_count === 0, 'held cleared')
+  await until(() => api<CourseApi>(admin, 'GET', `/courses/${courseId}`), (c) => c.held_count === generated.held_count - 1, 'one block fixed')
   const after = blocksOf(await api<PlanApi>(admin, 'GET', `/courses/${courseId}/plan`))
   const changed = after.filter((b) => before.find((x) => x.id === b.id)?.status !== b.status)
-  expect(changed.length).toBe(generated.held_count)
+  expect(changed.length).toBe(1)
+
+  for (;;) {
+    const now = await api<CourseApi>(admin, 'GET', `/courses/${courseId}`)
+    if (now.held_count === 0) break
+    await page.reload()
+    await page.getByRole('button', { name: 'Rewrite block' }).first().click()
+    await until(() => api<CourseApi>(admin, 'GET', `/courses/${courseId}`), (c) => c.held_count === now.held_count - 1, 'next block fixed')
+  }
+  const fixed = await until(() => api<CourseApi>(admin, 'GET', `/courses/${courseId}`), (c) => c.status === 'generated', 'course generated after the fixes')
+  expect(fixed.held_count).toBe(0)
+  console.log(`FLOW course ${courseId} status ${fixed.status} held ${fixed.held_count} draft ${fixed.draft_count}`)
 
   await page.goto(`/courses/${courseId}/publish`)
   await page.locator('#t-nb').check()

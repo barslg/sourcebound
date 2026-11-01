@@ -55,6 +55,7 @@ const CONTROLS: Array<[RegExp, Call]> = [
   [/^New role$/, 'POST /api/v1/roles'],
   [/^Edit role$/, 'PUT /api/v1/roles/{}'],
   [/^Delete role$/, 'DELETE /api/v1/roles/{}'],
+  [/^Delete role .+$/, 'DELETE /api/v1/users/{}/roles/{}'],
   [/^Create role$/, 'POST /api/v1/roles'],
   [/^Save role$/, 'PUT /api/v1/roles/{}'],
   [/^Create invite$/, 'POST /api/v1/invites'],
@@ -210,6 +211,7 @@ test('walk: dialogs follow the grammar too', async ({ page, context }) => {
   await check('new role dialog')
   await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click()
   await open(page, '/users')
+  await page.getByTestId('users-search').fill(sessions().student.email)
   const row = page.getByRole('row').filter({ hasText: sessions().student.email })
   for (const name of ['Assign role', 'Ban user', 'Delete user']) {
     if (name === 'Assign role') await row.getByRole('button', { name }).click()
@@ -275,7 +277,8 @@ test('walk: tab counts equal the API counts', async ({ page, context }) => {
       if (pending > 0) await expect(sourcesTab).toContainText(`${pending} pending`)
       else await expect(sourcesTab).not.toContainText('pending')
     }
-    await expect(fixTab).toContainText(String(held.blocks.length))
+    const draft = ((await (await page.request.get(`/api/v1/courses/${id}`)).json()) as { draft_count: number }).draft_count
+    await expect(fixTab).toContainText(String(held.blocks.length + draft))
   }
 })
 

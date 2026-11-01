@@ -9,7 +9,7 @@ from app.agents.reader import RUBRIC_ITEMS
 from app.course.tree import BLOCK_TYPES
 
 LOG = open(sys.argv[2] if len(sys.argv) > 2 else "tmp/mock-model.log", "a")
-HOLD_ONCE = {"done": False}
+HELD_BEFORE: dict[str, int] = {}
 NB = "Dette er en norsk tekst og det er ikke en test for de som har"
 
 
@@ -130,8 +130,9 @@ def reply_for(prompt, schema):
         blocks = section(prompt, "Block skeleton")["blocks"]
         out = []
         for b in blocks:
-            hold = not HOLD_ONCE["done"]
-            HOLD_ONCE["done"] = True
+            node = str(b["plan_node_id"])
+            hold = node.endswith("-b0") and HELD_BEFORE.get(node, 0) < 2
+            HELD_BEFORE[node] = HELD_BEFORE.get(node, 0) + 1
             v = "hold" if hold else "pass"
             out.append(
                 {
@@ -168,8 +169,12 @@ def reply_for(prompt, schema):
         h = str(first.get("handle", "P1"))
     except Exception:
         quote, h = "x", "P1"
+    try:
+        block_type = str(section(prompt, "Block skeleton").get("block_type") or "reading")
+    except Exception:
+        block_type = "reading"
     return {
-        "block_type": "reading",
+        "block_type": block_type,
         "text": "Staff apply the cited passage at work.",
         "citations": [{"passage_id": h, "quote": quote}],
         "answer": "key",

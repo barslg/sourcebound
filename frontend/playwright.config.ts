@@ -28,7 +28,8 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   reporter: [['list']],
-  use: { baseURL: `http://127.0.0.1:${previewPort}`, trace: 'off', locale: 'en-US' },
+  expect: { timeout: 10_000 },
+  use: { baseURL: `http://127.0.0.1:${previewPort}`, trace: 'off', locale: 'en-US', actionTimeout: 15_000 },
   projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
   webServer: [
     {

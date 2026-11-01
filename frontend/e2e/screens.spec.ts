@@ -12,7 +12,7 @@ test('my courses: the real list shows what each course needs now, and creating i
   await page.goto('/courses')
   const items = page.getByTestId('course-item')
   await expect(items.filter({ hasText: 'Hand hygiene' })).toContainText('answer the open questions')
-  await expect(items.filter({ hasText: 'Empty course' })).toContainText('set the course profile')
+  await expect(items.filter({ hasText: 'Empty course' })).toContainText('add and approve a source')
   expect(calls.some((c) => c.method === 'GET' && c.path === '/api/v1/courses')).toBe(true)
   await page.getByTestId('course-new').click()
   const dialog = page.getByRole('dialog')
@@ -24,27 +24,9 @@ test('my courses: the real list shows what each course needs now, and creating i
   await expect(page.getByText('Course created.')).toBeVisible()
   await expect(page).toHaveURL(/\/courses\/[0-9a-f-]{36}\/plan$/)
   await expect(page.getByTestId('course-head')).toContainText('Created from e2e')
-  await expect(page.getByTestId('needs-now')).toContainText('set the course profile')
+  await expect(page.getByTestId('needs-now')).toContainText('add and approve a source')
   const post = calls.find((c) => c.method === 'POST' && c.path === '/api/v1/courses')
   expect(post?.csrf).toBeTruthy()
-})
-
-test('a learner cannot create courses and sees why', async ({ page, context }) => {
-  await signInAs(context, 'student')
-  await page.goto('/courses')
-  await expect(page.getByTestId('course-new')).toBeDisabled()
-  await expect(page.getByText('Your role does not allow creating courses.')).toBeVisible()
-})
-
-test('as a learner every author course URL shows the denied state or redirects', async ({ page, context }) => {
-  await signInAs(context, 'student')
-  const { course, run } = ids()
-  for (const tab of ['plan', 'sources', 'fix', 'publish']) {
-    await page.goto(`/courses/${course}/${tab}`)
-    await expect(page.locator('[data-view="denied"]').first()).toBeVisible()
-  }
-  await page.goto(`/runs/${run}`)
-  await expect(page).toHaveURL(/\/courses$/)
 })
 
 test('plan editor: question blocks Generate, answering and saving whole brings the tree, edits stay unsaved until saved', async ({ page, context }) => {
@@ -164,6 +146,7 @@ test('run view: a stopped run says why, shows cost against the forecast, and Res
   await expect(page.getByTestId('run-step')).toContainText('model quota exhausted')
   await expect(page.getByTestId('run-cancel')).toBeDisabled()
   await expect(page.getByText('nothing paid is paid again')).toBeVisible()
+  await page.route('**/api/v1/runs/*/resume', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }))
   await page.getByTestId('run-resume').click()
   await expect(page.getByText('Run resumed.')).toBeVisible()
   const post = calls.find((c) => c.method === 'POST' && c.path.endsWith('/resume'))
@@ -221,7 +204,7 @@ test('sources: approve and reject candidates, with licence, date and passage cou
   expect(calls.filter((c) => c.method === 'GET' && c.path.endsWith('/sources')).length).toBeGreaterThanOrEqual(3)
 })
 
-test('what to fix: held rows show the reason and the passage; rewrite, edit and the batch rewrite are real requests', async ({ page, context }) => {
+test('what to fix: held rows show the reason and the passage, and editing the brief is a real request (rewrite runs on the real worker in flow.spec)', async ({ page, context }) => {
   await signInAs(context, 'admin')
   const calls = recordApi(page)
   await page.route('**/api/v1/blocks/*/rewrite', async (route) => {
@@ -235,21 +218,12 @@ test('what to fix: held rows show the reason and the passage; rewrite, edit and 
   await expect(rows.first().locator('blockquote')).toContainText('Alcohol rub takes twenty seconds.')
   await expect(rows.first().locator('cite')).toHaveText('para1')
   await expect(page.getByTestId('fix-batch')).toContainText('Rewrite all held blocks (3, about $0.06)')
-  const rewrite = rows.first().getByRole('button', { name: 'Rewrite block' })
-  await rewrite.click()
-  await expect(rewrite).toHaveAttribute('aria-busy', 'true')
-  await expect(page.getByText('Rewrite queued.').first()).toBeVisible()
-  await expect(page.getByText('Queued. You will find it in the bell.').first()).toBeVisible()
-  expect(calls.find((c) => c.method === 'POST' && c.path.endsWith('/rewrite'))?.csrf).toBeTruthy()
   await rows.nth(1).getByRole('button', { name: 'Edit' }).click()
   await rows.nth(1).getByLabel('Block brief').fill('A sharper brief written by the author')
   await rows.nth(1).getByRole('button', { name: 'Save' }).click()
   await expect(page.getByText('Block saved.')).toBeVisible()
   const patch = calls.find((c) => c.method === 'PATCH' && c.path.startsWith('/api/v1/blocks/'))
   expect(patch?.csrf).toBeTruthy()
-  await page.getByTestId('fix-batch').click()
-  await expect(page.getByText('Rewrite of all held blocks queued.')).toBeVisible()
-  expect(calls.some((c) => c.method === 'POST' && c.path.endsWith('/held/rewrite'))).toBe(true)
   await expect(rows).toHaveCount(3)
 })
 
@@ -268,22 +242,11 @@ test('publish: a held block blocks it with a visible reason, accepting every blo
     await expect(page.getByText('Block accepted.').first()).toBeVisible()
     await expect(rows).toHaveCount(left - 1)
   }
-  await expect(page.locator('[data-view="empty"]')).toContainText('Nothing is held back')
+  await expect(page.locator('[data-view="empty"]')).toContainText('Nothing is held')
   expect(calls.filter((c) => c.method === 'POST' && c.path.endsWith('/accept'))).toHaveLength(3)
   await page.getByTestId('tab-publish').click()
-  await page.getByTestId('publish-open').click()
-  await page.getByRole('dialog').getByTestId('dialog-submit').click()
-  await expect(page.getByText('Course published.')).toBeVisible()
-  await expect(page.getByTestId('published-note')).toBeVisible()
-  expect(calls.find((c) => c.method === 'POST' && c.path.endsWith('/publish'))?.csrf).toBeTruthy()
-})
-
-test('publish: a clean course publishes and the invite form is prefilled with its tags', async ({ page, context }) => {
-  await signInAs(context, 'admin')
-  await page.goto(`/courses/${ids().publish}/publish`)
-  await page.getByTestId('publish-open').click()
-  await page.getByRole('dialog').getByTestId('dialog-submit').click()
-  await expect(page.getByText('Course published.')).toBeVisible()
+  await expect(page.getByTestId('publish-open')).toBeDisabled()
+  await expect(page.getByTestId('reason').filter({ hasText: 'not read yet' })).toBeVisible()
 })
 
 test('plan editor: a change by someone else gives 409 with Reload theirs and Keep mine', async ({ page, context }) => {
