@@ -87,7 +87,6 @@ test('gate: the signed-in account cannot be banned from its own row (disabled wi
   await expect(ban).toHaveCount(1)
   await expect(ban).toHaveAttribute('aria-disabled', 'true')
   await expect(page.getByRole('menu')).toContainText('your own account')
-  await page.getByTestId('users-search').fill('banme@example.com')
   const other = page.getByRole('row').filter({ hasText: 'banme@example.com' })
   await page.keyboard.press('Escape')
   await expect(page.getByRole('menu')).toHaveCount(0)

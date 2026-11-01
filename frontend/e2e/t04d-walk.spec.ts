@@ -211,7 +211,6 @@ test('walk: dialogs follow the grammar too', async ({ page, context }) => {
   await check('new role dialog')
   await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click()
   await open(page, '/users')
-  await page.getByTestId('users-search').fill(sessions().student.email)
   const row = page.getByRole('row').filter({ hasText: sessions().student.email })
   for (const name of ['Assign role', 'Ban user', 'Delete user']) {
     if (name === 'Assign role') await row.getByRole('button', { name }).click()

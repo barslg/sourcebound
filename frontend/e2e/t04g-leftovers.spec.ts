@@ -39,6 +39,17 @@ test('file input: the label follows the app language', async ({ page }) => {
   await expect(page.getByRole('dialog')).not.toContainText(/No file chosen|Ingen fil/i)
 })
 
+test('row More menu: stays open for the last row of a scrolling table, even when opening it scrolls the row into view', async ({ page, context }) => {
+  await signInAs(context, 'admin')
+  await page.goto('/users')
+  await page.waitForLoadState('networkidle')
+  const more = page.getByRole('button', { name: /^More actions for/ })
+  await more.last().click()
+  await expect(page.getByRole('menu')).toBeVisible()
+  await page.waitForTimeout(1500)
+  await expect(page.getByRole('menu')).toBeVisible()
+})
+
 test('row More menu: Esc closes it and focus returns to its button', async ({ page, context }) => {
   await signInAs(context, 'admin')
   await page.goto('/users')

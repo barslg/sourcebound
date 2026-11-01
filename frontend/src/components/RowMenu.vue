@@ -8,11 +8,16 @@ import type { ActionId } from '@/ui/actionMeta'
 export interface RowMenuItem { action: ActionId; label: string; reason?: string | null; run: () => void }
 const props = defineProps<{ label: string; items: RowMenuItem[] }>()
 const menu = ref<InstanceType<typeof Menu> | null>(null)
+/** Open one frame later: a scroll that revealed the trigger is dispatched before animation frames, so it can no longer hide the menu PrimeVue closes on any scroll of the table. */
+function toggle(event: Event): void {
+  const target = event.currentTarget
+  requestAnimationFrame(() => menu.value?.toggle({ currentTarget: target } as unknown as Event))
+}
 const model = computed(() => props.items.map((i) => ({ label: i.label, action: i.action, reason: i.reason ?? null, disabled: Boolean(i.reason), command: () => i.run() })))
 </script>
 
 <template>
-  <ActionButton action="more" icon-only size="small" :label="label" aria-haspopup="menu" @click="menu?.toggle($event)" />
+  <ActionButton action="more" icon-only size="small" :label="label" aria-haspopup="menu" @click="toggle" />
   <Menu ref="menu" popup :model="model" class="row-menu">
     <template #item="{ item, props: p }">
       <a class="row-menu-item" v-bind="p.action" :class="{ 'row-menu-danger': item.action === 'delete' || item.action === 'ban' }">
