@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import Select from 'primevue/select'
 import { computed } from 'vue'
+import { Circle, CircleCheck, CircleDot } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { request } from '@/api/client'
-import { learnCourse } from '@/api/endpoints'
-import type { LearnOutline, LearnTopicRef } from '@/api/types'
+import { learnCourse, learnCourses } from '@/api/endpoints'
+import type { LearnCourse, LearnOutline, LearnTopicRef } from '@/api/types'
 import ActionButton from '@/components/ActionButton.vue'
 import FormField from '@/components/FormField.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ResourceState from '@/components/ResourceState.vue'
 import StatusChip from '@/components/StatusChip.vue'
+import { useResource } from '@/composables/useResource'
 import { useReloading } from '@/composables/useReloading'
 import { useUrlParam } from '@/composables/useUrlState'
 
@@ -20,6 +22,11 @@ const router = useRouter()
 const id = computed(() => String(route.params.id))
 const language = useUrlParam('language', '')
 const outline = useReloading<LearnOutline>(() => request<LearnOutline>(learnCourse(id.value), { query: { lang: language.value } }), () => [id.value, language.value])
+const catalogue = useResource<LearnCourse[]>('learn:courses', (signal) => request<LearnCourse[]>(learnCourses, { signal }))
+const audience = computed(() => (catalogue.data.value ?? []).find((c) => c.id === id.value)?.audience ?? '')
+const outcomes = computed(() => [...new Set((outline.data.value?.modules ?? []).flatMap((m) => m.topics.flatMap((x) => x.objectives)))].slice(0, 5))
+const ratio = computed(() => { const p = outline.data.value?.progress; return p && p.blocks_total > 0 ? Math.round((p.blocks_attempted / p.blocks_total) * 100) : 0 })
+const stateIcon = (status: string) => (status === 'mastered' || status === 'complete' ? CircleCheck : status === 'in_progress' ? CircleDot : Circle)
 const topics = computed<LearnTopicRef[]>(() => (outline.data.value?.modules ?? []).flatMap((m) => m.topics))
 const languages = computed(() => {
   const o = outline.data.value
@@ -36,14 +43,26 @@ function open(): void { if (resume.value) void router.push(topicLink(resume.valu
 </script>
 
 <template>
-  <PageHeader :course="outline.data.value">
-    <template #actions>
-      <ActionButton action="continue" :label="resumeLabel" :reason="resume ? null : t('learn.noTopics')" data-testid="continue" @click="open" />
-    </template>
-  </PageHeader>
+  <PageHeader class="hero" :course="outline.data.value" />
   <ResourceState :loading="outline.loading.value" :error="outline.error.value" :empty="outline.data.value !== null && topics.length === 0" :empty-text="t('learnCourse.empty')" @retry="outline.reload()">
     <template #empty-actions><router-link to="/learn" data-testid="back-to-learn">{{ t('learnCourse.backToList') }}</router-link></template>
     <div v-if="outline.data.value" class="stack">
+      <div class="stack" data-testid="hero">
+        <p v-if="audience" class="hero-for" data-testid="hero-for">{{ t('learnCourse.forWhom', { audience }) }}</p>
+        <div v-if="outcomes.length > 0">
+          <h2 class="tutor-head">{{ t('learnCourse.outcomes') }}</h2>
+          <ul class="hero-outcomes" data-testid="hero-outcomes"><li v-for="o in outcomes" :key="o">{{ o }}</li></ul>
+        </div>
+      </div>
+      <div class="here-card" data-testid="here">
+        <div class="stack here-card-text">
+          <span class="hint">{{ t('learnCourse.youAreHere') }}</span>
+          <h2>{{ resume?.title ?? '' }}</h2>
+          <p class="muted flush">{{ t('learnCourse.today') }}</p>
+          <div class="progress-line" role="img" :aria-label="t('learn.progress', { done: outline.data.value.progress.blocks_attempted, total: outline.data.value.progress.blocks_total })"><span :style="{ width: `${ratio}%` }"></span></div>
+        </div>
+        <ActionButton accent action="continue" :label="resumeLabel" :reason="resume ? null : t('learn.noTopics')" data-testid="continue" @click="open" />
+      </div>
       <p class="row muted" data-testid="course-progress">
         <StatusChip :tone="tone(outline.data.value.progress.status)" :label="t(`learn.status.${outline.data.value.progress.status}`)" />
         <span>{{ t('learn.progress', { done: outline.data.value.progress.blocks_attempted, total: outline.data.value.progress.blocks_total }) }}</span>
@@ -51,13 +70,20 @@ function open(): void { if (resume.value) void router.push(topicLink(resume.valu
       <FormField v-if="languages.length > 1" id="learn-lang" :label="t('learnCourse.language')" :help="t('learnCourse.languageHelp')">
         <Select :model-value="language || outline.data.value.source_language" input-id="learn-lang" :options="languages" option-label="label" option-value="code" data-testid="learn-language" @update:model-value="setLanguage" />
       </FormField>
-      <section v-for="m in outline.data.value.modules" :key="m.id" class="stack" data-testid="module">
-        <h2>{{ m.title }}</h2>
-        <p v-if="m.purpose" class="hint">{{ m.purpose }}</p>
-        <ul class="plain-list">
-          <li v-for="x in m.topics" :key="x.id" class="bell-item row" data-testid="topic-row">
-            <router-link :to="topicLink(x)" data-testid="topic-open"><strong>{{ x.title }}</strong></router-link>
-            <span v-if="x.kind === 'module_test'" class="muted">{{ t('learnCourse.moduleTest') }}</span>
+      <section class="stack" data-testid="course-sources">
+        <h2>{{ t('learnCourse.sources') }}</h2>
+        <p class="muted">{{ t('learnCourse.sourcesNote') }}</p>
+      </section>
+      <section v-for="m in outline.data.value.modules" :key="m.id" class="syllabus-card" data-testid="module">
+        <h3>{{ m.title }}</h3>
+        <p v-if="m.purpose" class="hint module-purpose">{{ m.purpose }}</p>
+        <ul class="plain-list syllabus">
+          <li v-for="x in m.topics" :key="x.id" class="syllabus-row" data-testid="topic-row">
+            <component :is="stateIcon(x.progress.status)" :size="20" :stroke-width="2" aria-hidden="true" :class="{ muted: x.progress.status === 'not_started' }" />
+            <span>
+              <router-link :to="topicLink(x)" data-testid="topic-open"><strong>{{ x.title }}</strong></router-link>
+              <span v-if="x.kind === 'module_test'" class="muted"> · {{ t('learnCourse.moduleTest') }}</span>
+            </span>
             <StatusChip :tone="tone(x.progress.status)" :label="t(`learn.status.${x.progress.status}`)" data-testid="topic-status" />
             <span class="muted">{{ t('learn.progress', { done: x.progress.blocks_attempted, total: x.progress.blocks_total }) }}</span>
           </li>

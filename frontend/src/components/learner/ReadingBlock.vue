@@ -6,7 +6,7 @@ const citations = computed(() => (Array.isArray(props.content.citations) ? (prop
 </script>
 
 <template>
-  <div class="stack" data-block="reading">
+  <div class="stack reading" data-block="reading">
     <p>{{ body }}</p>
     <ul v-if="citations.length > 0" class="plain-list">
       <li v-for="(c, i) in citations" :key="i" class="muted"><q>{{ String(c.quote ?? '') }}</q></li>

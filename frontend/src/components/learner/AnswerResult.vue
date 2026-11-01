@@ -23,7 +23,7 @@ const kindName = (k: string): string => t(`learn.kind.${k}`)
 </script>
 
 <template>
-  <div class="stack answer-result" role="status" data-testid="answer-result" :data-correct="result.correct">
+  <div class="stack answer-result" :class="result.correct ? 'answer-ok' : 'answer-no'" role="status" data-testid="answer-result" :data-correct="result.correct">
     <p class="row">
       <StatusChip :tone="tone" :label="label" data-testid="result-chip" />
       <span class="muted">{{ t('learn.result.attempt', { n: result.attempt_no }) }}</span>
@@ -38,6 +38,10 @@ const kindName = (k: string): string => t(`learn.kind.${k}`)
     <p v-if="result.hint_from_source" class="row" data-testid="source-hint">
       <span>{{ t('learn.result.hint') }}</span>
       <CitationChip :chip="result.hint_from_source" :open="openId === result.hint_from_source.passage_id" @open="emit('open', $event)" />
+    </p>
+    <p v-if="result.correct && !spot && result.source_links.length > 0" class="row" data-testid="read-passage">
+      <span>{{ t('learn.readPassage') }}</span>
+      <CitationChip v-for="c in result.source_links" :key="c.passage_id" :chip="c" :open="openId === c.passage_id" @open="emit('open', $event)" />
     </p>
     <table v-if="spot && rows.length > 0" class="app-table-grid" data-testid="spot-counters">
       <caption class="hint">{{ t('learn.counters.caption') }}</caption>
