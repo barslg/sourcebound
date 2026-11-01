@@ -167,8 +167,7 @@ def reply_for(prompt, schema):
         return {
             **base,
             "segments": [
-                {"id": s["id"], "text": " ".join([NB, *carried(s["text"])])}
-                for s in segs
+                {"id": s["id"], "text": " ".join([NB, *carried(s["text"])])} for s in segs
             ],
         }
     try:
