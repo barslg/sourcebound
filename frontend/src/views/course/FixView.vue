@@ -27,6 +27,11 @@ const held = useResource<HeldDoc>(`held:${courseId.value}`, (signal) => request<
 const plan = useResource<PlanTree>(`plan:${courseId.value}`, (signal) => request<PlanTree>(coursePlan(courseId.value), { signal }))
 const generated = computed(() => (plan.data.value?.modules ?? []).some((m) => m.topics.some((x) => x.blocks.some((b) => b.status !== 'draft'))))
 const unread = computed(() => (plan.data.value?.modules ?? []).flatMap((m) => m.topics.flatMap((x) => x.blocks)).filter((b) => b.status === 'draft').length)
+const squares = computed(() => (plan.data.value?.modules ?? []).flatMap((m) => m.topics.map((x) => {
+  const heldBlock = x.blocks.find((b) => b.status === 'held')
+  const state = heldBlock ? 'held' : x.blocks.some((b) => b.status === 'draft') ? 'draft' : 'ok'
+  return { id: x.id, title: x.title, state, to: heldBlock ? `#held-${heldBlock.id}` : `/courses/${courseId.value}/plan` }
+})))
 const working = ref<string | null>(null)
 const editing = ref<string | null>(null)
 const draft = ref('')
@@ -73,6 +78,13 @@ function startEdit(block: HeldBlock): void {
         <template #empty-actions>
           <router-link :to="generated && unread === 0 ? `/courses/${courseId}/publish` : `/courses/${courseId}/plan#generate`" data-testid="fix-exit">{{ generated && unread === 0 ? t('fix.goPublish') : t('fix.goGenerate') }}</router-link>
         </template>
+        <div v-if="squares.length > 0" class="stack" data-testid="lecture-squares">
+          <h3>{{ t('fix.lectures') }}</h3>
+          <ul class="plain-list fix-squares" :aria-label="t('fix.lectures')">
+            <li v-for="q in squares" :key="q.id"><router-link class="fix-square" :class="`fix-square-${q.state}`" :to="q.to" :title="`${q.title}: ${t(`fix.sq.${q.state}`)}`" :aria-label="`${q.title}: ${t(`fix.sq.${q.state}`)}`" data-testid="lecture-square" /></li>
+          </ul>
+          <p class="fix-legend hint"><span>{{ t('fix.sq.ok') }}</span><span>{{ t('fix.sq.held') }}</span><span>{{ t('fix.sq.draft') }}</span></p>
+        </div>
         <div v-if="held.data.value?.batch_quote_usd" class="row">
           <ActionButton action="rewrite" :label="t('fix.batch', { count: held.data.value.blocks.length, price: usd(held.data.value.batch_quote_usd) })" :loading="working === 'batch'" :reason="lacking('course.generate')" data-testid="fix-batch" @click="rewriteAll" />
         </div>

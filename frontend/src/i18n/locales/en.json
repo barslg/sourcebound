@@ -532,6 +532,8 @@
     }
   },
   "fix": {
+    "lectures": "Lectures",
+    "sq": { "ok": "passed the checks", "held": "held back", "draft": "waiting to be read" },
     "title": "What to fix",
     "empty": "Nothing is held back. Every generated block passed its checks.",
     "rewrite": "Rewrite block",
@@ -752,6 +754,24 @@
     "uk": "Українська"
   },
   "learn": {
+    "rail": "Lesson outline",
+    "sourcesFooter": "Sources of this lesson",
+    "checkedNote": "Checked against these sources before it reached you.",
+    "attemptsNever": "Attempts never lock the lesson.",
+    "readPassage": "Read the passage:",
+    "next": "Next",
+    "doneTitle": "Lesson done",
+    "takeaways": "Takeaways",
+    "nextLesson": "Next lesson",
+    "lastLesson": "That was the last lesson of the course.",
+    "tools": "Study tools",
+    "toolSimpler": "Explain simpler",
+    "toolField": "Example from my field",
+    "toolCheck": "Check me",
+    "toolTerms": "Terms",
+    "toolSoon": "Not available yet: the course has no prepared variants of this text.",
+    "outlineDone": "done",
+    "outlineOpen": "not tried yet",
     "title": "My learning",
     "help": "The courses you are enrolled in, with your progress.",
     "empty": "You are not enrolled in a published course yet. Ask your teacher for an invite link.",
@@ -867,6 +887,12 @@
     "block_type": "Block type"
   },
   "learnCourse": {
+    "forWhom": "For {audience}",
+    "outcomes": "What you will be able to do",
+    "youAreHere": "You are here",
+    "today": "25 minutes today is enough.",
+    "sources": "Sources of the course",
+    "sourcesNote": "Every lesson ends with the sources it was checked against. Open any citation to read the passage.",
     "title": "Course outline",
     "help": "Modules and topics with your progress. Pick a topic or continue where you left off.",
     "empty": "This course has no topics to read yet.",

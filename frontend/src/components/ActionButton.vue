@@ -14,6 +14,7 @@ const props = defineProps<{
   size?: 'small'
   iconOnly?: boolean
   solid?: boolean
+  accent?: boolean
   type?: 'button' | 'submit'
 }>()
 const { t } = useI18n()
@@ -49,6 +50,7 @@ const look = computed(() => {
       :type="type ?? 'button'"
       :aria-busy="loading"
       :disabled="Boolean(reason)"
+      :class="{ 'btn-accent': accent }"
       :data-kind="meta.kind"
       :data-action="action"
       :data-size="size ?? 'default'"

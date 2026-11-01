@@ -51,19 +51,23 @@ async function create(): Promise<void> {
 
 <template>
   <PageHeader>
-    <template #actions><ActionButton action="create" :label="t('courses.new')" :reason="lacking('course.create')" data-testid="course-new" @click="open = true" /></template>
+    <template #actions><ActionButton accent action="create" :label="t('courses.new')" :reason="lacking('course.create')" data-testid="course-new" @click="open = true" /></template>
   </PageHeader>
   <ResourceState :loading="courses.loading.value" :error="courses.error.value" :empty="total === 0" :empty-text="t('courses.empty')" @retry="courses.reload()">
     <template #empty-actions><ActionButton action="create" :label="t('courses.first')" data-testid="course-first" @click="open = true" /></template>
     <p class="muted" data-testid="course-count">{{ t('courses.count', { count: t('count.course', total) }) }}</p>
     <ul class="plain-list" data-testid="course-list">
-      <li v-for="c in courses.data.value" :key="c.id" class="bell-item row" data-testid="course-item">
-        <router-link :to="`/courses/${c.id}/plan`">{{ c.title }}</router-link>
-        <StatusChip :tone="c.status === 'published' ? 'ok' : c.status === 'generated' ? 'info' : 'neutral'" :label="t(`course.status.${c.status}`)" />
-        <span v-if="c.held_count > 0" class="muted" data-testid="held-count">{{ t('courses.held', { count: t('count.block', c.held_count) }) }}</span>
-        <span class="muted" data-testid="needs-now">
+      <li v-for="c in courses.data.value" :key="c.id" class="bell-item course-row" data-testid="course-item">
+        <div>
+          <router-link class="course-row-title" :to="`/courses/${c.id}/plan`">{{ c.title }}</router-link>
+          <div class="course-row-meta">
+            <StatusChip :tone="c.status === 'published' ? 'ok' : c.status === 'generated' ? 'info' : 'neutral'" :label="t(`course.status.${c.status}`)" />
+            <span v-if="c.held_count > 0" class="muted" data-testid="held-count">{{ t('courses.held', { count: t('count.block', c.held_count) }) }}</span>
+          </div>
+        </div>
+        <span class="muted course-row-next" data-testid="needs-now">
           {{ t('course.needsNowLabel') }}
-          <router-link v-if="action(c).to" :to="action(c).to as string" data-testid="needs-link">{{ t(action(c).key) }}</router-link>
+          <router-link v-if="action(c).to" class="link-button" :to="action(c).to as string" data-testid="needs-link">{{ t(action(c).key) }}</router-link>
           <template v-else>{{ t(action(c).key) }}</template>
         </span>
       </li>

@@ -46,7 +46,6 @@ async function signOut(): Promise<void> {
   <div class="shell">
     <a class="skip-link" href="#main">{{ t('nav.skip') }}</a>
     <header class="shell-top">
-      <router-link class="brand" to="/">{{ t('app.name') }}</router-link>
       <router-link v-if="session.can('user.list')" class="muted row-end" data-testid="whoami" :to="`/users?q=${encodeURIComponent(session.me?.email ?? '')}`">{{ t('shell.signedInAs', { name: session.me?.display_name || session.me?.email || '' }) }}</router-link>
       <span v-else class="muted row-end" data-testid="whoami">{{ t('shell.signedInAs', { name: session.me?.display_name || session.me?.email || '' }) }}</span>
       <Select v-model="current" :options="localeOptions" option-label="label" option-value="code" :aria-label="t('shell.language')" data-testid="locale" />
@@ -55,6 +54,7 @@ async function signOut(): Promise<void> {
       <ActionButton action="signout" :label="t('shell.signOut')" data-testid="signout" @click="signOut" />
     </header>
     <nav class="shell-nav" :aria-label="t('nav.label')">
+      <router-link class="brand" to="/">{{ t('app.name') }}</router-link>
       <ul>
         <li v-for="item in nav" :key="item.path">
           <router-link class="nav-link" :to="item.path"><component :is="item.icon" :size="20" :stroke-width="2" aria-hidden="true" />{{ item.label }}</router-link>

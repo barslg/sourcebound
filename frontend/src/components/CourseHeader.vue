@@ -82,7 +82,7 @@ defineExpose({ reload })
         <router-link :to="`/courses/${id}/report`" data-testid="report-link">{{ t('report.link') }}</router-link>
       </div>
       <ol class="stage-strip" :aria-label="t('course.stages')">
-        <li v-for="s in strip" :key="s.id">
+        <li v-for="s in strip" :key="s.id" :class="{ 'is-done': s.state === 'done' }">
           <router-link class="stage" :class="[`stage-${s.state}`, { 'stage-current': s.id === page }]" :to="s.to" :data-testid="`tab-${s.id}`">
             <strong>{{ t(`course.stage.${s.id}`) }}</strong>
             <span v-if="s.count" class="count">{{ s.count }}</span>

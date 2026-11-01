@@ -532,6 +532,8 @@
     }
   },
   "fix": {
+    "lectures": "Forelesninger",
+    "sq": { "ok": "bestått kontrollen", "held": "holdt tilbake", "draft": "venter på å bli lest" },
     "title": "Hva som må rettes",
     "empty": "Ingenting er holdt tilbake. Alle blokker som ble laget, besto kontrollene.",
     "rewrite": "Skriv blokken om",
@@ -752,6 +754,24 @@
     "uk": "Українська"
   },
   "learn": {
+    "rail": "Leksjonens innhold",
+    "sourcesFooter": "Kilder for denne leksjonen",
+    "checkedNote": "Kontrollert mot disse kildene før den nådde deg.",
+    "attemptsNever": "Forsøk låser aldri leksjonen.",
+    "readPassage": "Les avsnittet:",
+    "next": "Neste",
+    "doneTitle": "Leksjonen er ferdig",
+    "takeaways": "Hovedpunkter",
+    "nextLesson": "Neste leksjon",
+    "lastLesson": "Dette var den siste leksjonen i kurset.",
+    "tools": "Studiehjelp",
+    "toolSimpler": "Forklar enklere",
+    "toolField": "Eksempel fra mitt fagfelt",
+    "toolCheck": "Test meg",
+    "toolTerms": "Begreper",
+    "toolSoon": "Ikke tilgjengelig ennå: kurset har ingen ferdige varianter av denne teksten.",
+    "outlineDone": "ferdig",
+    "outlineOpen": "ikke prøvd ennå",
     "title": "Min læring",
     "help": "Kursene du er påmeldt, med fremgangen din.",
     "empty": "Du er ikke påmeldt noe publisert kurs ennå. Be læreren din om en invitasjonslenke.",
@@ -867,6 +887,12 @@
     "block_type": "Blokktype"
   },
   "learnCourse": {
+    "forWhom": "For {audience}",
+    "outcomes": "Dette kan du etterpå",
+    "youAreHere": "Du er her",
+    "today": "25 minutter i dag er nok.",
+    "sources": "Kildene til kurset",
+    "sourcesNote": "Hver leksjon avsluttes med kildene den er kontrollert mot. Åpne en henvisning for å lese avsnittet.",
     "title": "Kursoversikt",
     "help": "Moduler og emner med din fremdrift. Velg et emne eller fortsett der du slapp.",
     "empty": "Dette kurset har ingen emner å lese ennå.",
