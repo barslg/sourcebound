@@ -233,6 +233,24 @@ async def give_content(session: AsyncSession, course: Any) -> list[str]:
     return [str(node) for _, node in rows]
 
 
+async def source_digest(session: AsyncSession, version: Any, node: str) -> str:
+    """The digest the learner view compares a translation row against (content and key of the block's current version)."""
+    from app.translation.variants import block_digest
+
+    row = (
+        await session.execute(
+            sa.text(
+                "SELECT bv.content, bv.answer_key FROM blocks b JOIN block_versions bv ON bv.id = b.current_version_id"
+                " JOIN topics t ON t.id = b.topic_id JOIN modules m ON m.id = t.module_id"
+                " JOIN course_versions cv ON cv.course_id = m.course_id"
+                " WHERE cv.id = :v AND b.plan_node_id = :n"
+            ),
+            {"v": str(version), "n": node},
+        )
+    ).one()
+    return block_digest(dict(row[0] or {}), dict(row[1] or {}))
+
+
 async def add_translation(
     session: AsyncSession,
     version: Any,
@@ -255,10 +273,11 @@ async def add_translation(
         await session.execute(
             sa.text(
                 "INSERT INTO translation_blocks"
-                " (id, translation_id, plan_node_id, block_type, status, content)"
-                " VALUES (gen_random_uuid(), :t, :n, 'text', :s, CAST(:c AS jsonb))"
+                " (id, translation_id, plan_node_id, block_type, status, content, source_digest)"
+                " VALUES (gen_random_uuid(), :t, :n, 'text', :s, CAST(:c AS jsonb), :d)"
             ),
             {
+                "d": await source_digest(session, version, node),
                 "t": str(translation),
                 "n": node,
                 "s": state,
@@ -357,7 +376,16 @@ async def seed_labs(session: AsyncSession, owner: str) -> dict[str, str]:
     labs["live_run"] = str(spent)
     labs["conflict"] = str(await seed_planned_course(session, owner, "Conflict lab"))
     labs["dnd"] = str(await seed_planned_course(session, owner, "Drag lab"))
-    labs["publish"] = str(await seed_planned_course(session, owner, "Publish lab"))
+    publish = await seed_planned_course(session, owner, "Publish lab")
+    await give_content(session, publish)
+    await session.execute(
+        sa.text(
+            "UPDATE blocks SET status = 'accepted', accepted_version_id = current_version_id WHERE topic_id IN (SELECT t.id FROM topics t"
+            " JOIN modules m ON m.id = t.module_id WHERE m.course_id = :c)"
+        ),
+        {"c": str(publish)},
+    )
+    labs["publish"] = str(publish)
     labs.update(await seed_translations(session, owner))
     return labs
 
