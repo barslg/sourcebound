@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -56,13 +57,9 @@ NO_FRONTEND_CALLER: dict[str, str] = {
 }
 
 # "METHOD /api/v1/path" the frontend calls and this tree's backend does not serve
-# yet: the route ships on the feat/frontend branch (T04). Remove the entry when
-# that branch merges; the gate fails if the route appears and the entry stays.
-PENDING_BACKEND: dict[str, str] = {
-    "GET /api/v1/tags": "scope picker; route lives on feat/frontend",
-    "POST /api/v1/users/{}/unban": "users view; route lives on feat/frontend",
-    "GET /api/v1/courses/{}/runs": "course runs view; route lives on feat/frontend",
-}
+# yet (a route that lives on another branch). Empty since T08: feat/frontend's
+# backend commits are merged here. The gate fails if a listed route appears.
+PENDING_BACKEND: dict[str, str] = {}
 
 HTTP_METHODS = ("get", "post", "put", "patch", "delete")
 SKIP_FILES = {"endpoints.ts", "client.ts"}
@@ -406,16 +403,38 @@ def compare(front: Frontend, ops: dict[tuple[str, str], dict[str, Any]]) -> list
     return problems
 
 
+def _has_uncommitted_changes(frontend: Path) -> bool:
+    """True when git reports uncommitted edits under the frontend tree."""
+    proc = subprocess.run(
+        ["git", "-C", str(frontend), "status", "--porcelain", "--", "."],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return proc.returncode != 0 or bool(proc.stdout.strip())
+
+
 def find_frontend(explicit: Path | None) -> Path | None:
-    """The frontend tree to check, or None when this tree has none."""
+    """The frontend tree to check, or None when this tree has none.
+
+    The sibling worktree counts only when its frontend is committed: a
+    lane's uncommitted calls are work in progress, not a contract.
+    """
     candidates = (
         [explicit]
         if explicit
         else [REPO / "frontend", REPO.parent / "Muse-wt-frontend" / "frontend"]
     )
     for candidate in candidates:
-        if candidate and (candidate / "src" / "api" / "endpoints.ts").exists():
-            return candidate
+        if not (candidate and (candidate / "src" / "api" / "endpoints.ts").exists()):
+            continue
+        if (
+            explicit is None
+            and candidate != REPO / "frontend"
+            and _has_uncommitted_changes(candidate)
+        ):
+            continue
+        return candidate
     return None
 
 
