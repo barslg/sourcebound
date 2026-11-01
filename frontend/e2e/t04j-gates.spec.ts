@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test'
 import { expect, ids, signInAs, test } from './fixtures'
 
 // Permanent gates for the four spec mutants that survived T04i. Each one reads a rule of docs/ui/GRAMMAR.md on real screens;
-// break the code the way the mutant did and the matching test goes red.
+// break the code the way the mutant did and the matching test goes red. (PrimeVue fills aria-label of a Select with its shown value, so that value is not a name.)
 function screens(): string[] {
   const i = ids()
   return [
@@ -68,7 +68,8 @@ test('gate: every select and multi-select on a screen has an accessible name', a
         const byId = labelled ? (document.getElementById(labelled)?.textContent ?? '') : ''
         const own = el.getAttribute('aria-label') ?? ''
         const forLabel = el.id ? (document.querySelector(`label[for="${el.id}"]`)?.textContent ?? '') : ''
-        return (own || byId || forLabel).trim()
+        const shown = (el.textContent ?? '').trim()
+        return (byId || forLabel || (own !== shown ? own : '')).trim()
       })
       if (name === '') nameless.push(`${path}: combobox #${n}`)
     }
