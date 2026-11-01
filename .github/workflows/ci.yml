@@ -98,7 +98,10 @@ jobs:
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
-      - run: uv run python scripts/mutate_changed.py --base origin/dev --budget 540
+      - run: |
+          base="${{ github.event.before }}"
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$base" 2>/dev/null; then base=origin/dev; fi
+          uv run python scripts/mutate_changed.py --base "$base" --budget 540
 
   secrets:
     name: gitleaks
