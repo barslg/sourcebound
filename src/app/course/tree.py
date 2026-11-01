@@ -312,6 +312,29 @@ ARCHITECT_SCHEMA: dict[str, Any] = _strict_object(
     }
 )
 
+OUTLINE_SCHEMA: dict[str, Any] = _strict_object(
+    {
+        "case": _string("The one course-level case every topic hands on."),
+        "modules": {
+            "type": "array",
+            "items": _strict_object(
+                {
+                    "plan_node_id": _string(),
+                    "title": _string(),
+                    "purpose": _string(),
+                    "entry_knowledge": _string(),
+                    "exit_knowledge": _string(),
+                    "sections": {"type": "array", "items": _string()},
+                }
+            ),
+        },
+        "uncovered": {
+            "type": "array",
+            "items": _strict_object({"section": _string(), "reason": _string()}),
+        },
+    }
+)
+
 LIBRARIAN_SCHEMA: dict[str, Any] = _strict_object(
     {
         "container": _string(),

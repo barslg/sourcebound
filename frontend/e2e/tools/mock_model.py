@@ -79,6 +79,22 @@ def reply_for(prompt, schema):
             if isinstance(base[k], list) and k not in ("ranked", "web_candidates"):
                 base[k] = []
         return base
+    if head.startswith("# Outline"):
+        ids = re.findall(r'"id": ?"(S[0-9]+)"', prompt)
+        return {
+            "case": "A ward nurse",
+            "modules": [
+                {
+                    "plan_node_id": "m1",
+                    "title": "Hand hygiene basics",
+                    "purpose": "Learn the basics.",
+                    "entry_knowledge": "None.",
+                    "exit_knowledge": "The basics.",
+                    "sections": ids,
+                }
+            ],
+            "uncovered": [],
+        }
     if head.startswith("# Architect"):
         d = last_json(prompt)
         # every block cites every passage: the plan covers 100 % of the content

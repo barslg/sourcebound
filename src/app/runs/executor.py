@@ -781,21 +781,18 @@ async def plan_architect_step(
     if claim["reused_output"] is not None:
         output = dict(claim["reused_output"])
     else:
-        handles = set(handle_to_passage)
-        output = await provider.generate_json(
-            agent="architect",
-            prompt=prompt,
-            schema=architect.schema(),
+        output = await _plan_output(
+            provider,
             run_id=run_id,
             step_id=claim["step_id"],
             variant=int(claim["attempt"]) - 1,
-            check=lambda reply: _rejectable_architect_errors(
-                reply,
-                prescription,
-                handles,
-                methodology_codes=list(profile.get("methodology_codes", [])),
-                passages=passages,
-            ),
+            profile=profile,
+            constraints=constraints,
+            prescription=prescription,
+            passages=passages,
+            language=language,
+            source_languages=source_languages,
+            single_prompt=prompt,
         )
         parsed = ArchitectOutput.model_validate(output)
         resolved, held = _resolve_handles_tolerant(parsed, handle_to_passage)
@@ -821,6 +818,137 @@ async def plan_architect_step(
     await session.commit()
 
 
+OUTLINE_MIN_PASSAGES = 40
+
+
+async def _plan_output(
+    provider: Any,
+    *,
+    run_id: UUID,
+    step_id: UUID,
+    variant: int,
+    profile: dict[str, Any],
+    constraints: list[dict[str, Any]],
+    prescription: dict[str, list[str]],
+    passages: list[dict[str, Any]],
+    language: str,
+    source_languages: list[str],
+    single_prompt: str,
+) -> dict[str, Any]:
+    """The plan tree: one architect call for a small source set, two levels for a big one.
+
+    Big: the outline call sees sections (titles, sizes, previews) and
+    assigns them to modules; each module is then planned by the
+    architect over its own passages, with the handles the one numbering
+    gave them, and the module trees are merged. Every model call is a
+    ledger row of its own; a repeat of this step replays done calls at
+    no cost through the reply store.
+    """
+    from app.agents import architect, outline
+    from app.course.sections import module_handles, public_sections, sections_of
+
+    codes = list(profile.get("methodology_codes", []))
+    handles = {str(p["handle"]) for p in passages}
+    if len(passages) < OUTLINE_MIN_PASSAGES:
+        return dict(
+            await provider.generate_json(
+                agent="architect",
+                prompt=single_prompt,
+                schema=architect.schema(),
+                run_id=run_id,
+                step_id=step_id,
+                variant=variant,
+                check=lambda reply: _rejectable_architect_errors(
+                    reply, prescription, handles, methodology_codes=codes, passages=passages
+                ),
+            )
+        )
+    sections = sections_of(passages)
+    section_ids = [s["id"] for s in sections]
+    plan = await provider.generate_json(
+        agent="outline",
+        prompt=outline.build_prompt(
+            profile, constraints, public_sections(sections), course_language=language
+        ),
+        schema=outline.schema(),
+        run_id=run_id,
+        step_id=step_id,
+        variant=variant,
+        check=lambda reply: outline.check_output(reply, section_ids),
+    )
+    modules = [m for m in plan.get("modules", []) if isinstance(m, dict)]
+    by_handle = {str(p["handle"]): p for p in passages}
+    merged_modules: list[dict[str, Any]] = []
+    handoffs: list[dict[str, Any]] = []
+    uncovered: list[dict[str, Any]] = []
+    estimate = {"blocks": 0, "calls": 0, "tokens": 0}
+    for index, module in enumerate(modules):
+        own = [by_handle[h] for h in module_handles(sections, list(module.get("sections", [])))]
+        if not own:
+            continue
+        scope = {
+            "plan_node_id": str(module.get("plan_node_id", f"m{index + 1}")),
+            "title": str(module.get("title", "")),
+            "purpose": str(module.get("purpose", "")),
+            "entry_knowledge": str(module.get("entry_knowledge", "")),
+            "exit_knowledge": str(module.get("exit_knowledge", "")),
+            "position": f"{index + 1} of {len(modules)}",
+            "case": str(plan.get("case", "")),
+            "next_module": str(modules[index + 1].get("title", ""))
+            if index + 1 < len(modules)
+            else "",
+        }
+        own_handles = {str(p["handle"]) for p in own}
+        reply = await provider.generate_json(
+            agent="architect",
+            prompt=architect.build_prompt(
+                profile,
+                constraints,
+                prescription,
+                own,
+                course_language=language,
+                source_languages=source_languages,
+                module_scope=scope,
+            ),
+            schema=architect.schema(),
+            run_id=run_id,
+            step_id=step_id,
+            variant=variant,
+            check=lambda reply, scope=scope, own=own, own_handles=own_handles: (
+                _rejectable_architect_errors(
+                    reply,
+                    prescription,
+                    own_handles,
+                    methodology_codes=codes,
+                    passages=own,
+                    module_scope=scope,
+                )
+            ),
+        )
+        merged_modules += [m for m in reply.get("modules", []) if isinstance(m, dict)]
+        handoffs += list((reply.get("through_line") or {}).get("handoffs", []))
+        uncovered += list(reply.get("uncovered", []))
+        for key in estimate:
+            estimate[key] += int((reply.get("estimate_inputs") or {}).get(key, 0) or 0)
+    for item in plan.get("uncovered", []):
+        if not isinstance(item, dict):
+            continue
+        for handle in module_handles(sections, [str(item.get("section", ""))]):
+            uncovered.append({"handle": handle, "reason": str(item.get("reason", ""))})
+    merged = {
+        "modules": merged_modules,
+        "estimate_inputs": {k: max(v, 1) for k, v in estimate.items()},
+        "through_line": {"case": str(plan.get("case", "")), "handoffs": handoffs},
+        "uncovered": uncovered,
+    }
+    errors = _rejectable_architect_errors(
+        merged, prescription, handles, methodology_codes=codes, passages=passages
+    )
+    if errors:
+        raise ValidationError("architect output rejected: " + "; ".join(errors)[:800])
+    return merged
+
+
 def _uncovered_with_addresses(parsed: Any, passages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The uncovered list with each passage's address and first words, never a bare handle."""
     by_handle = {str(p.get("handle", "")): p for p in passages}
@@ -844,6 +972,7 @@ def _rejectable_architect_errors(
     handles: set[str],
     methodology_codes: list[str] | None = None,
     passages: list[dict[str, Any]] | None = None,
+    module_scope: dict[str, Any] | None = None,
 ) -> list[str]:
     """Architect errors that stop the run; unknown handles hold instead.
 
@@ -857,7 +986,9 @@ def _rejectable_architect_errors(
     from app.agents import architect
     from app.course.tree import ArchitectOutput
 
-    errors = architect.check_output(reply, prescription, handles, passages=passages)
+    errors = architect.check_output(
+        reply, prescription, handles, passages=passages, module_scope=module_scope
+    )
     if errors and all("unknown handle" in error for error in errors):
         return []
     if errors:

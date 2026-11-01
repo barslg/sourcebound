@@ -23,8 +23,9 @@ def build_dynamic(
     passages: list[dict[str, Any]],
     course_language: str = "en",
     source_languages: list[str] | None = None,
+    module_scope: dict[str, Any] | None = None,
 ) -> str:
-    """Typed dynamic part: language, sources, profile, prescription.
+    """Typed dynamic part: language, sources, profile, prescription, module scope.
 
     Sources come first so the stable approved-source prefix stays
     cache-friendly; the plan contract follows.
@@ -75,6 +76,9 @@ def build_dynamic(
             for kind, allowed in _ALLOWED_BY_KIND.items()
         },
     }
+    if module_scope is not None:
+        # two-level planning: this call plans ONE module of the outline over its own passages
+        ordered["module_scope"] = module_scope
     return json.dumps(ordered, ensure_ascii=False)
 
 
@@ -85,12 +89,19 @@ def build_prompt(
     passages: list[dict[str, Any]],
     course_language: str = "en",
     source_languages: list[str] | None = None,
+    module_scope: dict[str, Any] | None = None,
 ) -> str:
     """Full architect prompt: stable system prefix plus typed input."""
     return assemble(
         system_prompt("architect"),
         build_dynamic(
-            profile, constraints, prescription, passages, course_language, source_languages
+            profile,
+            constraints,
+            prescription,
+            passages,
+            course_language,
+            source_languages,
+            module_scope=module_scope,
         ),
     )
 
@@ -100,8 +111,13 @@ def check_output(
     prescription: dict[str, list[str]],
     handles: set[str] | None = None,
     passages: list[dict[str, Any]] | None = None,
+    module_scope: dict[str, Any] | None = None,
 ) -> list[str]:
     """Validate an architect reply in code; return error strings.
+
+    With `module_scope` (two-level planning) the reply must be exactly
+    the scoped module, under its outline id, with a handoff for every
+    topic — the last one hands over to the next module.
 
     When `handles` (the step's own P-handles) is given, a source ref
     outside it is rejected: handles are step-local, so P99 from
@@ -116,7 +132,11 @@ def check_output(
     except PydanticValidationError as exc:
         return [f"schema: {error['loc']}: {error['msg']}" for error in exc.errors()]
     errors = validate_tree(CourseTree(modules=output.modules), prescription)
-    errors += _handoff_errors(output)
+    if module_scope is not None:
+        wanted = str(module_scope.get("plan_node_id", ""))
+        if len(output.modules) != 1 or output.modules[0].plan_node_id != wanted:
+            errors.append(f"module scope: exactly one module with plan_node_id {wanted!r}")
+    errors += _handoff_errors(output, require_last=module_scope is not None)
     if passages:
         errors += _coverage_errors(output, passages)
     if handles is not None:
@@ -135,22 +155,24 @@ def check_output(
     return errors
 
 
-def _handoff_errors(output: Any) -> list[str]:
+def _handoff_errors(output: Any, require_last: bool = False) -> list[str]:
     """One through-line handoff per topic boundary, or the plan is rejected.
 
     Topics in plan order: every topic except the last must hand the
-    case over (through_line.handoffs naming that topic). A run that
+    case over (through_line.handoffs naming that topic); a scoped
+    module hands its last topic to the next module too. A run that
     produced no handoff for a boundary holds at the plan step.
     """
     topics = [topic for module in output.modules for topic in module.topics]
-    if len(topics) < 2:
+    if len(topics) < 2 and not require_last:
         return []
     handed = set()
     if output.through_line is not None:
         handed = {h.topic_plan_node_id for h in output.through_line.handoffs if h.note.strip()}
+    boundary = topics if require_last else topics[:-1]
     return [
         f"through-line: no handoff for topic boundary after {topic.title!r}"
-        for topic in topics[:-1]
+        for topic in boundary
         if topic.plan_node_id not in handed
     ]
 

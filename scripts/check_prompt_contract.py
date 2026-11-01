@@ -32,6 +32,7 @@ sys.path.insert(0, str(REPO / "src"))
 # agents/<module>.py -> response schema name in AGENT_SCHEMAS
 CHECK_MODULES = {
     "architect": "architect",
+    "outline": "outline",
     "researcher": "researcher",
     "reader": "reader",
     "saboteur": "saboteur",
