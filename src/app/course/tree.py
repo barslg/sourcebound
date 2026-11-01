@@ -8,7 +8,6 @@ text. Every generator and reader input is validated here before use.
 
 from __future__ import annotations
 
-from collections import Counter
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -142,11 +141,14 @@ def validate_tree(tree: CourseTree, prescription: dict[str, list[str]]) -> list[
             expected = prescription.get(topic.kind)
             if expected is None:
                 errors.append(f"topic {topic.plan_node_id}: no prescription for kind {topic.kind}")
-            elif Counter(block.role for block in topic.blocks) != Counter(expected):
+            elif set(block.role for block in topic.blocks) != set(expected):
+                # Every prescribed role once or more, no role outside the prescription:
+                # a module test with three questions or a lesson with two practice
+                # blocks is a valid plan, not a rejection.
                 errors.append(
                     f"topic {topic.plan_node_id}: roles "
-                    f"{sorted(block.role for block in topic.blocks)} do not match "
-                    f"prescription {sorted(expected)} for kind {topic.kind}"
+                    f"{sorted(set(block.role for block in topic.blocks))} do not cover "
+                    f"prescription {sorted(set(expected))} for kind {topic.kind}"
                 )
             allowed = BLOCK_TYPES.get(topic.kind)
             if allowed is None:
