@@ -25,6 +25,7 @@ dependencies = [
   "python-multipart>=0.0.18",
   "pyjwt[crypto]>=2.8",
   "pypdf>=6.21.4",
+  "anthropic>=1.0,<2",
 ]
 
 [dependency-groups]
