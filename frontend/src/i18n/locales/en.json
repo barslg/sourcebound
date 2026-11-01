@@ -387,14 +387,13 @@
     },
     "thinReason": "This address gave no readable text. Paste or upload its content instead.",
     "fileChoose": "Choose file",
-    "fileRemove": "Remove file"
+    "fileRemove": "Remove file",
+    "citedAs": "Cited in the plan as:"
   },
   "plan": {
-    "saved": "Plan saved.",
-    "conflict": "Someone changed this plan while you were editing.",
     "reloadTheirs": "Reload theirs",
     "keepMine": "Keep mine",
-    "rename": "Apply new title",
+    "rename": "Rename",
     "moveUp": "Move up",
     "moveDown": "Move down",
     "deleteTitle": "Delete {name}",
@@ -420,8 +419,6 @@
     "build": "Build the plan",
     "methodology": "How the course teaches",
     "methodologyHint": "Pick one or more. You can combine methods that fit together.",
-    "audience": "Audience",
-    "audienceHint": "Optional. Example: new nurses",
     "queries": "What to look for in the sources",
     "queriesHint": "One search per line. Example: hand hygiene steps",
     "buildButton": "Build plan",
@@ -429,14 +426,11 @@
     "stoppedTitle": "The plan build stopped",
     "stoppedHelp": "The last plan build stopped before writing a plan. Build again, or answer the open questions below first.",
     "buildStopped": "The last plan build stopped before writing a plan.",
-    "treeToggle": "Show or hide the topics of {name}",
     "alreadyFirst": "Already first.",
     "alreadyLast": "Already last.",
     "alreadyQueued": "Already queued; wait for it to finish.",
     "beforeHelp": "Questions the course needs answered before it can be written. Each card saves on its own.",
     "blocksHelp": "The pieces this topic will be written as, each tied to its source passages.",
-    "bloom": "Level of thinking",
-    "bloomHint": "What learners should be able to do at the end. Example: apply",
     "buildHelp": "Choose how the course teaches and what to look for in the sources; the outline is written for you.",
     "deleteButton": "Delete from plan",
     "estimate": "Estimate",
@@ -484,7 +478,6 @@
     "nextOpen": "Open the Generate page",
     "titleOf": "Title of {name}",
     "topicToggle": "Show or hide the blocks of {name}",
-    "noBlocks": "No blocks yet. They are written when the course is generated.",
     "emptyTopic": "This topic has no blocks yet. Write a brief or delete it.",
     "treeInvalid": "The plan has errors. Fix or delete the marked topics first.",
     "conflictTitle": "The plan changed",
@@ -544,7 +537,8 @@
       "block_practice": "Practice block",
       "block_test": "Test block",
       "block_check": "Check block"
-    }
+    },
+    "stoppedAtBlock": "Stopped at block {topic} / {ordinal}"
   },
   "fix": {
     "lectures": "Lectures",
@@ -639,13 +633,6 @@
       "name": "Kolb experiential learning",
       "line": "Experience, reflect, form concepts, try it out."
     }
-  },
-  "bloom": {
-    "remember": "Remember",
-    "understand": "Understand",
-    "apply": "Apply",
-    "analyze": "Analyse",
-    "evaluate": "Evaluate"
   },
   "reason": {
     "course_create": "Your role does not allow creating courses.",

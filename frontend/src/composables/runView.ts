@@ -51,6 +51,32 @@ export function moneyOf(value: string | null | undefined): string | null {
   return Number.isFinite(n) ? n.toFixed(2) : null
 }
 
+export interface StopBlockRef { topic: string; ordinal: number }
+
+export type StopPlan = {
+  modules: Array<{
+    topics: Array<{
+      title: string
+      plan_node_id: string
+      blocks: Array<{ plan_node_id: string; brief: string }>
+    }>
+  }>
+} | null
+
+export function stopBlockRef(marker: string | null | undefined, plan: StopPlan): StopBlockRef | null {
+  if (!marker || !plan) return null
+  const found = /\bblock(?:_\w+)?:([\w-]+)/.exec(marker)
+  if (!found) return null
+  const node = found[1] as string
+  for (const mod of plan.modules) {
+    for (const t of mod.topics) {
+      const at = t.blocks.findIndex((b) => b.plan_node_id === node)
+      if (at >= 0) return { topic: t.title, ordinal: at + 1 }
+    }
+  }
+  return null
+}
+
 export interface StepName { role: string; subject: string }
 
 export function stepName(

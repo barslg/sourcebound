@@ -5,7 +5,8 @@ import { useRoute } from 'vue-router'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import { ApiError, request } from '@/api/client'
-import { courseSources, ENDPOINTS, humanQueue, humanQueueResolve, sourceApprove, sourceReject } from '@/api/endpoints'
+import { coursePlan, courseSources, ENDPOINTS, humanQueue, humanQueueResolve, sourceApprove, sourceReject } from '@/api/endpoints'
+import type { PlanTree } from '@/composables/planTree'
 import type { QueueItem, SourceRow } from '@/api/types'
 import CourseHeader from '@/components/CourseHeader.vue'
 import ActionButton from '@/components/ActionButton.vue'
@@ -26,6 +27,20 @@ const route = useRoute()
 const courseId = computed(() => String(route.params.id))
 const header = ref<InstanceType<typeof CourseHeader> | null>(null)
 const sources = useResource<SourceRow[]>(`sources:${courseId.value}`, (signal) => request<SourceRow[]>(courseSources(courseId.value), { signal }))
+const plan = useResource<PlanTree>(`plan:${courseId.value}`, (signal) => request<PlanTree>(coursePlan(courseId.value), { signal }))
+function citedHandles(sourceId: string): string[] {
+  const out: string[] = []
+  for (const m of plan.data.value?.modules ?? []) {
+    for (const x of m.topics) {
+      for (const b of x.blocks) {
+        for (const r of b.source_refs ?? []) {
+          if (r.source_id === sourceId && !out.includes(r.handle)) out.push(r.handle)
+        }
+      }
+    }
+  }
+  return out
+}
 const queue = useResource<QueueItem[]>(`queue:${courseId.value}`, (signal) => request<QueueItem[]>(humanQueue, { signal }))
 const waiting = computed(() => (queue.data.value ?? []).filter((q) => q.payload?.course_id === courseId.value))
 
@@ -165,6 +180,8 @@ async function resolve(item: QueueItem, action: 'approve' | 'dismiss'): Promise<
             <li v-for="s in library" :id="`source-${s.id}`" :key="s.id" class="bell-item stack">
               <div class="row"><strong>{{ s.title }}</strong><span class="chip">{{ mediaLabel(s.media) }}</span><span class="chip">{{ s.licence || t('sources.noLicence') }}</span><span v-if="s.as_of" class="muted">{{ t('sources.asOfOn', { date: s.as_of }) }}</span><StatusChip :tone="s.approval === 'held' ? 'warn' : s.approval === 'approved' ? 'ok' : 'neutral'" :label="t(`sources.state.${s.approval}`, s.approval)" data-testid="source-state" /><StatusChip v-if="ingestLabel(s)" :tone="s.ingest_status === 'failed' ? 'danger' : s.ingest_status === 'thin' ? 'warn' : 'info'" :label="ingestLabel(s)" /></div>
               <span class="muted" data-testid="source-passages">{{ t(sourceCount(s.progress).key, s.progress) }}</span>
+              <span v-if="citedHandles(s.id).length > 0" class="muted">{{ t('sources.citedAs') }}</span>
+              <span v-for="h in citedHandles(s.id)" :id="`passage-${h}`" :key="h" class="chip mono">{{ h }}</span>
               <span v-if="s.ingest_message" class="mono danger-text">{{ s.ingest_message }}</span>
             </li>
           </ul>

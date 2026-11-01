@@ -178,7 +178,7 @@ async function buildPlan(): Promise<void> {
   building.value = true
   buildError.value = null
   try {
-    await request(courseProfile(courseId.value), { method: 'POST', body: { methodology_codes: methodologies.value, bloom_level: 'understand', audience: '' } })
+    await request(courseProfile(courseId.value), { method: 'POST', body: { methodology_codes: methodologies.value, bloom_level: 'understand', audience: courseRes.data.value?.profile?.audience ?? '' } })
     const made = await request<{ operation_id: string }>(coursePlanSubmit(courseId.value), { method: 'POST', body: { queries: queriesText.value.split('\n').map((q) => q.trim()).filter(Boolean), idempotency_key: crypto.randomUUID() } })
     planQueue.track(made.operation_id)
     await header.value?.reload()
@@ -191,6 +191,18 @@ async function buildPlan(): Promise<void> {
 
 const blockTypeLabel = (type: string): string => (te(`plan.blockType.${type}`) ? t(`plan.blockType.${type}`) : humanize(type))
 const kindLabel = (kind: string): string => (te(`plan.kind.${kind}`) ? t(`plan.kind.${kind}`) : humanize(kind))
+function sourceChipLabel(handle: string): string {
+  for (const m of plan.data.value?.modules ?? []) {
+    for (const x of m.topics) {
+      for (const b of x.blocks) {
+        const ref = (b.source_refs ?? []).find((r) => r.handle === handle)
+        const title = ref?.source_id ? sourceRows.data.value?.find((s) => s.id === ref.source_id)?.title : undefined
+        if (title) return `${title} ${handle}`
+      }
+    }
+  }
+  return handle
+}
 
 watch(() => route.hash, (hash) => {
   if (!hash) return
@@ -263,7 +275,7 @@ watch(() => route.hash, (hash) => {
                       <li v-for="b in x.blocks" :key="b.id" class="bell-item stack" data-testid="plan-block">
                         <div class="row">
                           <strong>{{ t(`plan.role.${b.role}`) }}</strong><span class="chip">{{ blockTypeLabel(b.block_type) }}</span>
-                          <router-link v-for="h in sourceHandles(b)" :key="h" class="chip mono" :to="`/courses/${courseId}/sources#sources-list`" :title="t('plan.handleTitle', { handle: h })">{{ h }}</router-link>
+                          <router-link v-for="h in sourceHandles(b)" :key="h" class="chip mono" :to="`/courses/${courseId}/sources#passage-${h}`" :title="t('plan.handleTitle', { handle: h })">{{ sourceChipLabel(h) }}</router-link>
                         </div>
                         <span>{{ b.brief }}</span>
                       </li>

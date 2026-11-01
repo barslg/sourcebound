@@ -73,7 +73,7 @@ defineExpose({ reload })
       <PageHeader :course="course.data.value" />
       <p v-if="course.data.value" class="course-facts muted" data-testid="course-facts">
         <span>{{ t('course.factLanguage', { name: languageName(course.data.value.language) }) }}</span>
-        <span v-if="course.data.value.profile">{{ t('course.factAudience', { audience: course.data.value.profile.audience }) }}</span>
+        <span v-if="course.data.value.profile?.audience">{{ t('course.factAudience', { audience: course.data.value.profile.audience }) }}</span>
         <span>{{ t('course.factCounts', { topics: t('count.topic', course.data.value.topic_count), blocks: t('count.block', course.data.value.block_count) }) }}</span>
       </p>
       <div v-if="course.data.value" class="course-translations" data-testid="translations">

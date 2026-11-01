@@ -37,7 +37,7 @@ test('plan page: an open question blocks Generate, answering it on the Plan page
   await expect(page.getByTestId('generate')).toBeDisabled()
   await expect(page.getByText('Answer the open questions first.')).toBeVisible()
   await expect(page.getByTestId('forecast')).toContainText('6 blocks')
-  await expect(page.getByTestId('forecast')).toContainText('A forecast, not a limit.')
+  await expect(page.getByText('A forecast, not a limit.', { exact: true })).toHaveCount(1)
   expect(calls.some((c) => c.method === 'GET' && c.path.endsWith('/estimate'))).toBe(true)
 
   await page.goto(`/courses/${ids().course}/plan`)

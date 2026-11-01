@@ -387,14 +387,13 @@
     },
     "thinReason": "Denne adressen ga ingen lesbar tekst. Lim inn eller last opp innholdet i stedet.",
     "fileChoose": "Velg fil",
-    "fileRemove": "Fjern filen"
+    "fileRemove": "Fjern filen",
+    "citedAs": "Sitert i planen som:"
   },
   "plan": {
-    "saved": "Planen er lagret.",
-    "conflict": "Noen endret denne planen mens du redigerte.",
     "reloadTheirs": "Last inn deres",
     "keepMine": "Behold min",
-    "rename": "Bruk ny tittel",
+    "rename": "Gi nytt navn",
     "moveUp": "Flytt opp",
     "moveDown": "Flytt ned",
     "deleteTitle": "Slett {name}",
@@ -420,8 +419,6 @@
     "build": "Bygg planen",
     "methodology": "Hvordan kurset underviser",
     "methodologyHint": "Velg én eller flere. Du kan kombinere metoder som passer sammen.",
-    "audience": "Målgruppe",
-    "audienceHint": "Valgfritt. Eksempel: nye sykepleiere",
     "queries": "Hva du skal lete etter i kildene",
     "queriesHint": "Ett søk per linje. Eksempel: trinn i håndhygiene",
     "buildButton": "Bygg plan",
@@ -429,14 +426,11 @@
     "stoppedTitle": "Planbyggingen stoppet",
     "stoppedHelp": "Den siste planbyggingen stoppet før planen ble skrevet. Bygg på nytt, eller svar på de åpne spørsmålene nedenfor først.",
     "buildStopped": "Den siste planbyggingen stoppet før planen ble skrevet.",
-    "treeToggle": "Vis eller skjul emnene i {name}",
     "alreadyFirst": "Allerede først.",
     "alreadyLast": "Allerede sist.",
     "alreadyQueued": "Allerede i kø; vent til den er ferdig.",
     "beforeHelp": "Spørsmål kurset trenger svar på før det kan skrives. Hvert kort lagres for seg.",
     "blocksHelp": "Delene dette temaet skrives som, hver knyttet til sine kildeavsnitt.",
-    "bloom": "Tenkenivå",
-    "bloomHint": "Hva deltakerne skal kunne til slutt. Eksempel: bruke",
     "buildHelp": "Velg hvordan kurset underviser og hva som skal letes etter i kildene; oppsettet skrives for deg.",
     "deleteButton": "Slett fra planen",
     "estimate": "Anslag",
@@ -484,7 +478,6 @@
     "nextOpen": "Åpne Generer-siden",
     "titleOf": "Tittel på {name}",
     "topicToggle": "Vis eller skjul blokkene til {name}",
-    "noBlocks": "Ingen blokker ennå. De skrives når kurset genereres.",
     "emptyTopic": "Dette emnet har ingen blokker ennå. Skriv et sammendrag eller slett det.",
     "treeInvalid": "Planen har feil. Fiks eller slett de markerte emnene først.",
     "conflictTitle": "Planen ble endret",
@@ -544,7 +537,8 @@
       "block_practice": "Øvingsblokk",
       "block_test": "Testblokk",
       "block_check": "Kontrollblokk"
-    }
+    },
+    "stoppedAtBlock": "Stoppet ved blokk {topic} / {ordinal}"
   },
   "fix": {
     "lectures": "Forelesninger",
@@ -639,13 +633,6 @@
       "name": "Kolbs erfaringslæring",
       "line": "Opplev, reflekter, form begreper, prøv ut."
     }
-  },
-  "bloom": {
-    "remember": "Huske",
-    "understand": "Forstå",
-    "apply": "Bruke",
-    "analyze": "Analysere",
-    "evaluate": "Vurdere"
   },
   "reason": {
     "course_create": "Rollen din gir ikke tillatelse til å lage kurs.",

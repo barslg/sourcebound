@@ -1,4 +1,4 @@
-export interface PlanBlock { id: string; plan_node_id: string; role: string; block_type: string; brief: string; status: string; hold_reason: string | null; source_refs?: Array<{ handle: string }> }
+export interface PlanBlock { id: string; plan_node_id: string; role: string; block_type: string; brief: string; status: string; hold_reason: string | null; source_refs?: Array<{ handle: string; passage_id?: string | null; source_id?: string | null; address_label?: string | null }> }
 export function sourceHandles(block: PlanBlock): string[] {
   return (block.source_refs ?? []).map((r) => r.handle)
 }

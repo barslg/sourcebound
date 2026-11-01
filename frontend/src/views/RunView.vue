@@ -16,7 +16,7 @@ import { holdText } from '@/composables/holdReason'
 import { firstReason, lacking } from '@/composables/reasons'
 import { notify, notifyError } from '@/composables/notify'
 import type { PlanTree } from '@/composables/planTree'
-import { stepName, stepWord, stoppedLine, topicWord, type RunDoc } from '@/composables/runView'
+import { stepName, stepWord, stopBlockRef, stoppedLine, topicWord, type RunDoc } from '@/composables/runView'
 import { useResource } from '@/composables/useResource'
 
 const { t, te } = useI18n()
@@ -38,7 +38,8 @@ const active = computed(() => doc.value?.steps.findIndex((s) => s.status === 'ru
 const line = computed(() => {
   const d = doc.value
   if (!d) return ''
-  const why = stoppedLine(d)
+  const ref = stopBlockRef(d.stop_marker, plan.value)
+  const why = ref ? t('run.stoppedAtBlock', { topic: ref.topic, ordinal: ref.ordinal }) : stoppedLine(d)
   if (why) return t('run.lineStopped', { why })
   if (d.status === 'done') return t('run.lineDone')
   return active.value >= 0 ? t('run.lineStep', { step: active.value + 1, total: d.steps.length }) : t('run.lineWaiting')

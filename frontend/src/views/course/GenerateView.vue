@@ -16,7 +16,7 @@ import { usd } from '@/composables/labels'
 import { firstReason, lacking } from '@/composables/reasons'
 import { notify, notifyError } from '@/composables/notify'
 import type { PlanTree } from '@/composables/planTree'
-import { stepName, stepWord, stoppedLine, type RunDoc } from '@/composables/runView'
+import { stepName, stepWord, stopBlockRef, stoppedLine, type RunDoc } from '@/composables/runView'
 import { useQueued } from '@/composables/useQueued'
 import { useResource } from '@/composables/useResource'
 import { useOperationsStore } from '@/stores/operations'
@@ -44,7 +44,12 @@ async function loadRun(): Promise<void> {
 }
 const runStatus = computed(() => runDoc.value?.status ?? latest.value?.status ?? null)
 const active = computed(() => runStatus.value === 'running' || runStatus.value === 'queued')
-const stoppedWhy = computed(() => (runDoc.value ? stoppedLine(runDoc.value) : null))
+const stoppedWhy = computed(() => {
+  if (!runDoc.value) return null
+  const ref = stopBlockRef(runDoc.value.stop_marker, plan.data.value)
+  if (ref) return t('run.stoppedAtBlock', { topic: ref.topic, ordinal: ref.ordinal })
+  return stoppedLine(runDoc.value)
+})
 
 const generating = ref(false)
 const confirmRegenerate = ref(false)
@@ -94,9 +99,16 @@ function roleName(key: string): string {
   return te(`run.role.${role}`) ? t(`run.role.${role}`) : role
 }
 
+const lastStatus = ref<string | null>(null)
+async function pollOnce(): Promise<void> {
+  await Promise.all([runs.reload(true), plan.reload(true)])
+  await loadRun()
+  if (lastStatus.value !== null && lastStatus.value !== runStatus.value) await header.value?.reload()
+  lastStatus.value = runStatus.value
+}
 onMounted(() => {
-  void runs.reload().then(loadRun)
-  timer = setInterval(() => { if (active.value || genQueue.queued.value) void Promise.all([runs.reload(true), plan.reload(true)]).then(loadRun) }, 3000)
+  void runs.reload().then(async () => { await loadRun(); lastStatus.value = runStatus.value })
+  timer = setInterval(() => { if (active.value || genQueue.queued.value) void pollOnce() }, 3000)
 })
 onBeforeUnmount(() => { if (timer) clearInterval(timer) })
 </script>
@@ -114,7 +126,7 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
         <template v-else>
           <Section :title="t('plan.estimate')" :help="t('plan.forecastNote')" />
           <ResourceState :loading="estimate.loading.value" :error="estimate.error.value" :empty="false" @retry="estimate.reload()">
-            <p data-testid="forecast">{{ t('plan.forecastLine', { blocks: t('count.block', estimate.data.value?.blocks ?? 0), cost: usd(estimate.data.value?.cost_usd ?? '0') }) }} — {{ t('plan.forecastNote') }}</p>
+            <p data-testid="forecast">{{ t('plan.forecastLine', { blocks: t('count.block', estimate.data.value?.blocks ?? 0), cost: usd(estimate.data.value?.cost_usd ?? '0') }) }}</p>
           </ResourceState>
 
           <div id="generate" class="stack generate-box">
@@ -124,7 +136,7 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
               <router-link v-if="validation && (validation.blocking_questions ?? []).length > 0" :to="`/courses/${courseId}/plan#questions`" data-testid="go-questions">{{ t('generate.goQuestions') }}</router-link>
             </div>
             <Queued v-if="genQueue.queued.value" />
-            <router-link v-if="runId && runId !== latest?.id" :to="`/runs/${runId}`" data-testid="open-run">{{ t('plan.openRun') }}</router-link>
+            <router-link v-if="runId && runId !== latest?.id" :to="`/runs/${runId}`" data-testid="open-new-run">{{ t('plan.openRun') }}</router-link>
           </div>
 
           <Section :title="t('generate.runTitle')" :help="t('generate.runHelp')" />
