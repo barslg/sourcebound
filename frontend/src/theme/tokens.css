@@ -317,7 +317,7 @@ kbd { border: 1px solid var(--sb-border); border-radius: var(--sb-radius-sm); pa
 .cite-chip[aria-expanded='true'] { border-color: var(--sb-link); }
 .cloze-line { line-height: 2.4; font-family: var(--sb-font-serif); font-size: var(--sb-read-size); }
 .cloze-input { width: 10ch; margin: 0 var(--sb-space-1); }
-.disclosure { display: inline-flex; align-items: center; gap: var(--sb-space-2); background: none; border: 0; font: inherit; font-weight: 600; color: var(--sb-fg); cursor: pointer; min-height: 32px; padding: 0; }
+.disclosure { display: inline-flex; align-items: center; justify-content: center; gap: var(--sb-space-2); background: none; border: 0; font: inherit; font-weight: 600; color: var(--sb-fg); cursor: pointer; min-width: var(--sb-space-6); min-height: 32px; padding: 0; }
 .tutor-head { margin: 0; font-size: var(--sb-fs-lg); }
 .grow { flex: 1 1 12ch; }
 .spot-facts { display: grid; grid-template-columns: max-content 1fr; gap: var(--sb-space-1) var(--sb-space-3); margin: 0; }
