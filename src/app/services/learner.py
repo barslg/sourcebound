@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.errors import NotFoundError
 from app.rbac.principal import Principal
 from app.rbac.require import require
-from app.services.invites import group_keys_of
+from app.rbac.tags import group_keys_of
 
 STUDENT_ROLE = "student"
 ASSESSED_TYPES = frozenset({"choice", "matching", "cloze", "scenario_practice", "spot_the_error"})

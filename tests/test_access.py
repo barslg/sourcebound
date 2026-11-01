@@ -208,6 +208,7 @@ async def _enrol_new_student(world: World, token: str) -> dict[str, str]:
     async with http(cookies) as client:
         reply = await client.post(f"/api/v1/invites/{token}/accept", headers={"X-CSRF-Token": csrf})
     assert reply.status_code == 200, reply.text
+    assert all(":" not in tag for tag in reply.json()["scopes"]), ("owner key leaked", reply.text)
     return cookies
 
 

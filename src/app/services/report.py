@@ -17,9 +17,9 @@ from uuid import UUID
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.rbac.tags import group_keys_of
 from app.services import learner
 from app.services.grading import add_counts
-from app.services.invites import group_keys_of
 
 CSV_COLUMNS = (
     "section",

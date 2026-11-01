@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from app.rbac.principal import Principal, load_principal
 from app.rbac.require import PERMISSION_DENIED_MESSAGE, require, require_scope
+from app.rbac.tags import display_tag, display_tags
 from app.services.audit import write_audit
 from app.services.auth import identity_digest, is_banned, normalize_email
 
@@ -43,14 +44,18 @@ def _refuse_superadmin_target(actor: Principal, *, is_superadmin: bool) -> None:
 
 
 async def _target_tags(session: AsyncSession, user_id: UUID) -> list[str]:
-    """Every scope tag granted to the target account."""
+    """Every scope tag granted to the target account, as display tags.
+
+    A student's group grants are owner-qualified; scope checks compare
+    them with the plain names a staff grant carries.
+    """
     rows = (
         await session.execute(
             sa.text("SELECT ur.scope_tags FROM user_roles ur WHERE ur.user_id = :user"),
             {"user": str(user_id)},
         )
     ).all()
-    return sorted({tag for (tags,) in rows for tag in (tags or [])})
+    return display_tags({tag for (tags,) in rows for tag in (tags or [])})
 
 
 async def list_users(session: AsyncSession, *, actor: Principal) -> list[dict[str, Any]]:
@@ -89,7 +94,9 @@ async def list_users(session: AsyncSession, *, actor: Principal) -> list[dict[st
             continue
         if not actor.is_superadmin and visible_scope is not None:
             user_tags = {
-                tag for grant in grants.get(str(user_id), ()) for tag in grant["scope_tags"]
+                display_tag(tag)
+                for grant in grants.get(str(user_id), ())
+                for tag in grant["scope_tags"]
             }
             if not user_tags or user_tags.isdisjoint(visible_scope):
                 continue
@@ -270,7 +277,7 @@ async def delete_user(
         for _, tags in owned_invites:
             if tags:
                 try:
-                    require_scope(heir, list(tags), code="course.edit")
+                    require_scope(heir, display_tags(tags), code="course.edit")
                 except NotFoundError as exc:
                     raise ValidationError(
                         "the heir must hold edit rights in the scope of every object"

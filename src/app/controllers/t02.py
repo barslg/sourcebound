@@ -117,8 +117,9 @@ async def revoke_role(ctx: RequestContext, *, name: str, body: dto.RevokeRequest
 
 
 async def create_invite(ctx: RequestContext, *, body: dto.InviteRequest) -> dto.InviteResponse:
+    from app.rbac.tags import display_tag
     from app.services.invites import create_invite as create_use_case
-    from app.services.invites import display_tag, hash_invite_token
+    from app.services.invites import hash_invite_token
 
     actor = require_auth(ctx)
     raw_token = await create_use_case(

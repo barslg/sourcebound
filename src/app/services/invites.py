@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from collections.abc import Callable, Collection
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.errors import ConflictError, NotFoundError
 from app.rbac.principal import Principal
 from app.rbac.require import require, require_scope
+from app.rbac.tags import GROUP_SEP, display_tag, display_tags, group_key, is_course_id
 from app.services.audit import write_audit
 
 STUDENT_ROLE_NAME = "student"
@@ -33,33 +34,6 @@ STUDENT_PERMISSION_CODES: tuple[str, ...] = (
     "learn.answer",
     "learn.ask",
 )
-
-
-GROUP_SEP = ":"
-
-
-def _is_course_id(tag: str) -> bool:
-    try:
-        UUID(tag)
-    except ValueError:
-        return False
-    return True
-
-
-def group_key(owner_id: UUID | str, tag: str) -> str:
-    """The stored key of a group tag: owner-scoped, so two owners' "oslo" never meet."""
-    return f"{owner_id}{GROUP_SEP}{tag}"
-
-
-def display_tag(stored: str) -> str:
-    """What the author typed: a course id as is, a group key without its owner prefix."""
-    owner, sep, tag = stored.partition(GROUP_SEP)
-    return tag if sep and _is_course_id(owner) else stored
-
-
-def group_keys_of(owner_id: UUID | str, tags: Collection[str]) -> list[str]:
-    """Group keys one owner's course tags open (what a student grant is compared against)."""
-    return [group_key(owner_id, tag) for tag in tags]
 
 
 async def _owned(session: AsyncSession, owner_id: UUID) -> tuple[set[str], set[str]]:
@@ -80,7 +54,9 @@ async def _qualified_tags(
 
     A course id must be a course the actor owns (a superadmin: any existing
     course); a group tag must be carried by a course the actor owns, and is
-    stored under the actor's id.
+    stored under the actor's id. A superadmin owns no school's groups: the
+    tag is stored under every owner whose courses carry it (404 when none
+    does), so the invite opens exactly the groups that exist.
     """
     from app.errors import ValidationError
 
@@ -88,9 +64,9 @@ async def _qualified_tags(
     stored: list[str] = []
     for raw in course_tags:
         tag = raw.strip()
-        if not tag or (GROUP_SEP in tag and not _is_course_id(tag)):
+        if not tag or (GROUP_SEP in tag and not is_course_id(tag)):
             raise ValidationError("a tag is a course id or a group name without ':'")
-        if _is_course_id(tag):
+        if is_course_id(tag):
             exists = (
                 tag in owned_ids
                 or actor.is_superadmin
@@ -105,9 +81,22 @@ async def _qualified_tags(
                 raise NotFoundError("object not found")
             stored.append(tag)
         else:
-            if tag not in owned_tags:
+            if actor.is_superadmin:
+                owners = (
+                    await session.execute(
+                        sa.text(
+                            "SELECT DISTINCT owner_id FROM courses WHERE :tag = ANY(scope_tags)"
+                        ),
+                        {"tag": tag},
+                    )
+                ).all()
+                if not owners:
+                    raise NotFoundError("object not found")
+                stored.extend(group_key(row[0], tag) for row in owners)
+            elif tag in owned_tags:
+                stored.append(group_key(actor.user_id, tag))
+            else:
                 raise NotFoundError("object not found")
-            stored.append(group_key(actor.user_id, tag))
     return sorted(set(stored))
 
 
@@ -372,7 +361,7 @@ async def _consume_seat(
         )
     ).first()
     if already is not None:
-        return sorted(course_tags or [])
+        return display_tags(course_tags or [])
     await session.execute(
         sa.text("UPDATE invites SET used_count = used_count + 1 WHERE id = :invite"),
         {"invite": str(invite_id)},
@@ -398,11 +387,14 @@ async def _consume_seat(
         entity_id=str(invite_id),
         meta={"course_tags": list(course_tags or [])},
     )
-    return sorted(course_tags or [])
+    return display_tags(course_tags or [])
 
 
 async def accept_invite(session: AsyncSession, *, user_id: UUID, token_hash: str) -> list[str]:
     """Accept an invite: consume one seat and grant the scoped student role.
+
+    Returns the display tags (course ids, group names as typed): the
+    owner-qualified keys stay in the grant and never reach a reply.
 
     Runs in the caller's transaction with the invite row locked, so two
     simultaneous accepts on a one-seat invite leave exactly one winner.

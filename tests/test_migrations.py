@@ -641,3 +641,90 @@ def test_0019_pins_cascade_and_downgrade_drops_only_the_two_additions() -> None:
         assert left == 0, "deleting the learner deletes the served-language rows"
         conn.execute("DELETE FROM courses WHERE title = 'm19'")
         conn.execute("DELETE FROM users WHERE email = 'm19@example.com'")
+
+
+def test_0020_qualifies_plain_group_tags_pins_accepts_and_downgrade_keeps_the_data() -> None:
+    url = _db_url()
+    require_postgres(url)
+    command.upgrade(_cfg(url), "head")
+    command.downgrade(_cfg(url), "0019")
+    sync = _sync_url(url)
+    course_id = "11111111-2222-3333-4444-555555555555"
+    with psycopg.connect(sync, autocommit=True) as conn:
+        conn.execute("DELETE FROM courses WHERE title = 'm20'")
+        conn.execute("DELETE FROM invites WHERE token_hash = 'm20-hash'")
+        owner = conn.execute(
+            "INSERT INTO users (email, display_name) VALUES ('m20-owner@example.com', 'O')"
+            " ON CONFLICT (email) DO UPDATE SET display_name = 'O' RETURNING id"
+        ).fetchone()[0]  # type: ignore[index]
+        learner = conn.execute(
+            "INSERT INTO users (email, display_name) VALUES ('m20-learner@example.com', 'L')"
+            " ON CONFLICT (email) DO UPDATE SET display_name = 'L' RETURNING id"
+        ).fetchone()[0]  # type: ignore[index]
+        conn.execute("INSERT INTO roles (name) VALUES ('student') ON CONFLICT (name) DO NOTHING")
+        role = conn.execute("SELECT id FROM roles WHERE name = 'student'").fetchone()[0]  # type: ignore[index]
+        invite = conn.execute(
+            "INSERT INTO invites (scope, course_tags, created_by, granted_role, token_hash)"
+            " VALUES ('oslo', %s, %s, 'student', 'm20-hash') RETURNING id",
+            (["oslo", course_id], owner),
+        ).fetchone()[0]  # type: ignore[index]
+        conn.execute(
+            "INSERT INTO invite_uses (invite_id, user_id) VALUES (%s, %s)", (invite, learner)
+        )
+        conn.execute(
+            "INSERT INTO user_roles (user_id, role_id, scope_tags) VALUES (%s, %s, %s)"
+            " ON CONFLICT (user_id, role_id) DO UPDATE SET scope_tags = EXCLUDED.scope_tags",
+            (learner, role, ["oslo", "unexplained"]),
+        )
+        course = conn.execute(
+            "INSERT INTO courses (owner_id, title) VALUES (%s, 'm20') RETURNING id", (owner,)
+        ).fetchone()[0]  # type: ignore[index]
+        module = conn.execute(
+            "INSERT INTO modules (course_id, ordinal, title) VALUES (%s, 0, 'm') RETURNING id",
+            (course,),
+        ).fetchone()[0]  # type: ignore[index]
+        topic = conn.execute(
+            "INSERT INTO topics (module_id, ordinal, kind, title, plan_node_id)"
+            " VALUES (%s, 0, 'lesson', 't', gen_random_uuid()::text) RETURNING id",
+            (module,),
+        ).fetchone()[0]  # type: ignore[index]
+        block = conn.execute(
+            "INSERT INTO blocks (topic_id, plan_node_id, ordinal, role, block_type, brief, status)"
+            " VALUES (%s, gen_random_uuid()::text, 0, 'check', 'choice', 'b', 'accepted')"
+            " RETURNING id",
+            (topic,),
+        ).fetchone()[0]  # type: ignore[index]
+        version = conn.execute(
+            "INSERT INTO block_versions (block_id, version_no, content) VALUES (%s, 1, '{}')"
+            " RETURNING id",
+            (block,),
+        ).fetchone()[0]  # type: ignore[index]
+        conn.execute("UPDATE blocks SET current_version_id = %s WHERE id = %s", (version, block))
+
+    def state(conn: psycopg.Connection) -> tuple[object, object, object]:
+        return (
+            conn.execute("SELECT course_tags FROM invites WHERE id = %s", (invite,)).fetchone()[0],  # type: ignore[index]
+            conn.execute(
+                "SELECT scope_tags FROM user_roles WHERE user_id = %s AND role_id = %s",
+                (learner, role),
+            ).fetchone()[0],  # type: ignore[index]
+            conn.execute(
+                "SELECT accepted_version_id FROM blocks WHERE id = %s", (block,)
+            ).fetchone()[0],  # type: ignore[index]
+        )
+
+    command.upgrade(_cfg(url), "head")
+    with psycopg.connect(sync, autocommit=True) as conn:
+        tags, grant, pin = state(conn)
+        assert tags == sorted([course_id, f"{owner}:oslo"]), tags
+        assert grant == sorted([f"{owner}:oslo", "unexplained"]), grant
+        assert pin == version
+    command.downgrade(_cfg(url), "0019")
+    command.upgrade(_cfg(url), "head")
+    with psycopg.connect(sync, autocommit=True) as conn:
+        assert state(conn) == (tags, grant, version), "a second run changes nothing"
+        conn.execute("DELETE FROM courses WHERE title = 'm20'")
+        conn.execute("DELETE FROM invites WHERE token_hash = 'm20-hash'")
+        conn.execute(
+            "DELETE FROM users WHERE email IN ('m20-owner@example.com', 'm20-learner@example.com')"
+        )

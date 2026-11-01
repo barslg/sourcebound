@@ -22,6 +22,7 @@ from app.config import get_settings
 from app.errors import NotFoundError, ValidationError
 from app.rbac.principal import Principal, load_principal
 from app.rbac.require import require, require_scope
+from app.rbac.tags import display_tags
 from app.services.audit import write_audit
 
 OPERATION_KIND_ECHO = "echo"
@@ -110,7 +111,7 @@ async def _owner_tags(session: AsyncSession, owner: UUID | None) -> list[str]:
             {"user": str(owner)},
         )
     ).all()
-    return sorted({tag for (tags,) in rows for tag in (tags or [])})
+    return display_tags({tag for (tags,) in rows for tag in (tags or [])})
 
 
 async def get_operation(

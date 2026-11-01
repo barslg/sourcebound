@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.errors import ConflictError, NotFoundError, ValidationError
 from app.rbac.principal import Principal
 from app.rbac.require import require
+from app.rbac.tags import display_tags
 from app.services.audit import write_audit
 
 
@@ -83,14 +84,14 @@ def _check_assignment(
 
 
 async def _target_tags(session: AsyncSession, user_id: UUID) -> list[str]:
-    """Every scope tag granted to the target account."""
+    """Every scope tag granted to the target account, as display tags."""
     rows = (
         await session.execute(
             sa.text("SELECT ur.scope_tags FROM user_roles ur WHERE ur.user_id = :user"),
             {"user": str(user_id)},
         )
     ).all()
-    return sorted({tag for (tags,) in rows for tag in (tags or [])})
+    return display_tags({tag for (tags,) in rows for tag in (tags or [])})
 
 
 def _validate_crud(crud: Mapping[str, Collection[str]] | None) -> dict[str, list[str]]:
