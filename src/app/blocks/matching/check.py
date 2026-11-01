@@ -50,15 +50,10 @@ def grade(
     expected = _by_index(dict(raw_expected), lefts, rights)
     given = _by_index(dict(raw_given), lefts, rights)
     if not expected:
-        return {"score": 0.0, "feedback": {"wrong": "", "true": "", "passage": "P1", "habit": ""}}
+        return {"score": 0.0, "feedback": {"habit": ""}}
     hits = sum(1 for left, right in expected.items() if given.get(left) == right)
     score = hits / len(expected)
     return {
         "score": float(score),
-        "feedback": {
-            "wrong": str(submission.get("mapping", given)),
-            "true": str(answer_key.get("mapping", expected)),
-            "passage": str(answer_key.get("passage", "P1")),
-            "habit": "Match each item to its passage, not by word shape.",
-        },
+        "feedback": {"habit": "Match each item to its passage, not by word shape."},
     }

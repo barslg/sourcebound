@@ -21,10 +21,5 @@ def grade(
         score = 1.0 if picked == correct else 0.0
     return {
         "score": score,
-        "feedback": {
-            "wrong": "" if score == 1.0 else str(picked),
-            "true": str(correct),
-            "passage": str(answer_key.get("passage", "P1")),
-            "habit": "Answer from the passage, not from memory.",
-        },
+        "feedback": {"habit": "Answer from the passage, not from memory."},
     }

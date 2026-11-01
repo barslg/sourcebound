@@ -1,15 +1,33 @@
-"""Sentinel guard (permanent): no answer key or planted position leaves a learner route.
+"""Sentinel guard (permanent): no answer key value or planted position leaves a learner route.
 
-The seeded course carries a SENTINEL string in every block type's answer key.
-A student reads every topic, submits a wrong answer to every block and the
-joined responses must contain neither a sentinel nor a key field name.
+The seeded course carries sentinel VALUES in every key field of every block
+type (correct option text, matching rights, blanks, tiers, true sentences).
+A student reads every topic and answers every block wrong, partly and right;
+no GET and no POST may carry a key value (the find-the-error true statement
+of the answered exercise is the one reveal the brief allows).
 """
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
-from t06_helpers import SENTINELS, World, http
+import demo_t05
+import httpx2
+import sqlalchemy as sa
+from conftest import test_database_url
+from sqlalchemy.ext.asyncio import AsyncSession
+from t06_helpers import (
+    CLOZE_BLANKS,
+    KEY_ONLY_VALUES,
+    MATCH_RIGHTS,
+    SENTINELS,
+    SERVED_VALUES,
+    TIERS,
+    World,
+    http,
+)
+from transport_guard import guarded_client
 
 LEAKS = (
     "answer_key",
@@ -23,37 +41,196 @@ LEAKS = (
 )
 
 
-async def test_no_learner_response_carries_a_key_or_a_planted_position(world: World) -> None:
+def _payloads(block: dict[str, Any], by_text: dict[str, str], chips: dict[str, str]) -> Any:
+    """(label, answer) per outcome for one served block; values come from the seeded key."""
+    kind = block["block_type"]
+    left = [item["id"] for item in block["content"].get("left", [])]
+    if kind == "choice":
+        return [("wrong", {"picked": 1}), ("right", {"picked": 0})]
+    if kind == "cloze":
+        return [
+            ("wrong", {"blanks": ["x", "y"]}),
+            ("partial", {"blanks": [CLOZE_BLANKS[0], "y"]}),
+            ("right", {"blanks": list(CLOZE_BLANKS)}),
+        ]
+    if kind == "matching":
+        good = {left[0]: by_text[MATCH_RIGHTS[0]], left[1]: by_text[MATCH_RIGHTS[1]]}
+        return [
+            (
+                "wrong",
+                {"mapping": {left[0]: by_text[MATCH_RIGHTS[1]], left[1]: by_text[MATCH_RIGHTS[0]]}},
+            ),
+            ("partial", {"mapping": {left[0]: good[left[0]], left[1]: good[left[0]]}}),
+            ("right", {"mapping": good}),
+        ]
+    if kind == "scenario_practice":
+        cites = {"0": chips["P1"], "1": chips["P2"]}
+        return [
+            ("wrong", {"labels": {}, "passages": {}}),
+            ("partial", {"labels": {"0": TIERS[0], "1": "x"}, "passages": cites}),
+            ("right", {"labels": {"0": TIERS[0], "1": TIERS[1]}, "passages": cites}),
+        ]
+    if kind == "spot_the_error":
+        return [
+            ("wrong", {"sentence_id": 0, "kind": "scope"}),
+            ("partial", {"sentence_id": 1, "kind": "negation"}),
+            ("right", {"sentence_id": 1, "kind": "scope", "corrected_value": "x"}),
+            ("none", {"sentence_id": "none"}),
+        ]
+    return [("right", {"acknowledged": True})]
+
+
+async def test_no_key_value_leaves_any_learner_route_on_a_wrong_partial_or_right_answer(
+    world: World,
+) -> None:
+    """Sentinel VALUES sit in every key field of every type; none may come back.
+
+    Key-only values (blanks, tiers, true sentences) appear in no GET and no
+    POST; served values (the correct option text, the matching rights) appear
+    in GET only. The one reveal is the find-the-error true statement of the
+    exercise that was just answered. A correct answer by displayed ids scores 1.0.
+    """
     auth = world.cookies["student"]
     assert auth is not None
-    texts: list[str] = []
+    spot_keys = {
+        b["block_id"]: b["key"] for b in world.w["blocks"].values() if b["type"] == "spot_the_error"
+    }
+    own_true = {
+        block_id: key["true_sentence"]
+        for block_id, key in spot_keys.items()
+        if not key.get("fully_correct")
+    }
+    all_true = [key["true_sentence"] for key in spot_keys.values()]
+    gets: list[str] = []
+    posts: list[tuple[str, str, str]] = []
     async with http(auth[0]) as client:
         topics = []
         for topic in (world.w["lesson_topic"], world.w["test_topic"]):
             response = await client.get(f"/api/v1/learn/topics/{topic}")
-            texts.append(response.text)
+            gets.append(response.text)
             topics += response.json()["blocks"]
-        texts.append((await client.get(f"/api/v1/learn/courses/{world.course}")).text)
-        wrong: dict[str, dict[str, Any]] = {
-            "choice": {"picked": 1},
-            "matching": {"mapping": {"Provider": "oversee use"}},
-            "cloze": {"blanks": ["x", "y"]},
-            "scenario_practice": {"labels": {}, "passages": {}},
-            "spot_the_error": {"sentence_id": 0, "kind": "scope"},
-            "reading": {"acknowledged": False},
-            "figure": {"acknowledged": False},
-        }
+        gets.append((await client.get(f"/api/v1/learn/courses/{world.course}")).text)
+        assert {b["block_type"] for b in topics} == {
+            "reading",
+            "figure",
+            "choice",
+            "matching",
+            "cloze",
+            "scenario_practice",
+            "spot_the_error",
+        }, "all seven types were served"
         for block in topics:
-            reply = await client.post(
-                f"/api/v1/learn/blocks/{block['id']}/answer",
-                json=wrong[block["block_type"]],
-                headers={"X-CSRF-Token": auth[1]},
-            )
-            assert reply.status_code == 200, reply.text
-            texts.append(reply.text)
-    joined = "\n".join(texts)
-    assert {b["block_type"] for b in topics} == set(wrong), "all seven types were served"
+            by_text = {r["text"]: r["id"] for r in block["content"].get("right", [])}
+            chips = {c["handle"]: c["passage_id"] for c in block["citations"]}
+            for label, body in _payloads(block, by_text, chips):
+                reply = await client.post(
+                    f"/api/v1/learn/blocks/{block['id']}/answer",
+                    json=body,
+                    headers={"X-CSRF-Token": auth[1]},
+                )
+                assert reply.status_code == 200, (block["block_type"], label, reply.text)
+                posts.append((block["id"], label, reply.text))
+                if block["block_type"] == "matching" and label == "right":
+                    assert reply.json()["score"] == 1.0, "displayed ids grade by displayed ids"
+    joined_gets = "\n".join(gets)
+    for value in KEY_ONLY_VALUES:
+        assert value not in joined_gets, value
     for sentinel in SENTINELS:
-        assert sentinel not in joined, sentinel
+        assert sentinel not in joined_gets and all(sentinel not in t for _, _, t in posts), sentinel
+    for value in (*SERVED_VALUES, *KEY_ONLY_VALUES, *all_true):
+        for block_id, label, text in posts:
+            reveal = own_true.get(block_id)
+            if value == reveal:
+                continue
+            assert value not in text, (value, block_id, label)
+    for value in all_true:
+        assert value not in joined_gets, value
     for leak in LEAKS:
-        assert leak not in joined, leak
+        assert leak not in joined_gets, leak
+
+
+async def test_matching_answered_by_authored_index_is_refused(world: World) -> None:
+    """A learner never sees authored order: mapping_by_index answers 422."""
+    auth = world.cookies["student"]
+    assert auth is not None
+    async with http(auth[0]) as client:
+        reply = await client.post(
+            f"/api/v1/learn/blocks/{world.w['by_type']['matching']['block_id']}/answer",
+            json={"mapping_by_index": {"0": 0, "1": 1}},
+            headers={"X-CSRF-Token": auth[1]},
+        )
+    assert reply.status_code == 422, reply.text
+
+
+async def test_reader_request_of_one_course_carries_none_of_another_courses_text(
+    t03_session: AsyncSession,
+) -> None:
+    """Data isolation: two courses share topic and block ids, B's reader sees only B."""
+    from app.config import Settings
+    from app.db import create_session_factory
+    from app.providers.llm import MetaProvider
+    from app.runs import executor
+
+    settings = Settings(
+        _env_file=None,
+        model_api_key="synthetic-test-key",
+        model_api_base_url="https://api.meta.ai/v1",
+        llm_spend_ceiling_usd=50.0,
+        source_store_path="/tmp/muse-sentinel-sources",
+    )
+    session = t03_session
+    courses: dict[str, Any] = {}
+    for tag in ("a", "b"):
+        courses[tag] = await demo_t05.setup_demo(
+            session, settings=settings, email=demo_t05.fresh_email(f"scope-{tag}")
+        )
+        await demo_t05.write_demo_tree(session, course_id=courses[tag]["course_id"])
+        await session.execute(
+            sa.text(
+                "UPDATE block_versions SET content = CAST(:c AS jsonb) WHERE id IN ("
+                " SELECT b.current_version_id FROM blocks b JOIN topics t ON t.id = b.topic_id"
+                " JOIN modules m ON m.id = t.module_id"
+                " WHERE m.course_id = :course AND b.plan_node_id IN ('b1', 'b2'))"
+            ),
+            {
+                "c": json.dumps({"body": f"ONLY-COURSE-{tag.upper()}"}),
+                "course": str(courses[tag]["course_id"]),
+            },
+        )
+    await session.commit()
+    inner = demo_t05.mock_demo_handler()
+    prompts: list[str] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        prompts.append(str(json.loads(request.content.decode("utf-8")).get("input", "")))
+        return inner(request)
+
+    ledger = create_session_factory(test_database_url())
+    http_client = guarded_client(settings, inner=httpx2.MockTransport(handler))
+
+    def make(db: AsyncSession) -> MetaProvider:
+        return MetaProvider(db, settings, http_client, ledger)
+
+    run = await executor.new_run(
+        session, course_id=courses["b"]["course_id"], kind="generation", dag=[]
+    )
+    await session.commit()
+    await executor.read_topic_step(
+        session,
+        run_id=run,
+        entry={
+            "step_key": "reader:t1",
+            "course_id": str(courses["b"]["course_id"]),
+            "course_language": "en",
+            "depends_on": [],
+            "sources": [],
+            "plan": {},
+            "dossier": {},
+            "blocks": [],
+        },
+        provider_factory=make,
+    )
+    reader = [p for p in prompts if p.startswith("# Reader")]
+    assert len(reader) == 1
+    assert "ONLY-COURSE-B" in reader[0], "the reader saw its own course's blocks"
+    assert "ONLY-COURSE-A" not in reader[0], "the reader saw another course's block text"

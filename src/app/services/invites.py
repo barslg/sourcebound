@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+from collections.abc import Callable, Collection
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -31,6 +32,95 @@ STUDENT_PERMISSION_CODES: tuple[str, ...] = (
     "learn.answer",
     "learn.ask",
 )
+
+
+GROUP_SEP = ":"
+
+
+def _is_course_id(tag: str) -> bool:
+    try:
+        UUID(tag)
+    except ValueError:
+        return False
+    return True
+
+
+def group_key(owner_id: UUID | str, tag: str) -> str:
+    """The stored key of a group tag: owner-scoped, so two owners' "oslo" never meet."""
+    return f"{owner_id}{GROUP_SEP}{tag}"
+
+
+def display_tag(stored: str) -> str:
+    """What the author typed: a course id as is, a group key without its owner prefix."""
+    owner, sep, tag = stored.partition(GROUP_SEP)
+    return tag if sep and _is_course_id(owner) else stored
+
+
+def group_keys_of(owner_id: UUID | str, tags: Collection[str]) -> list[str]:
+    """Group keys one owner's course tags open (what a student grant is compared against)."""
+    return [group_key(owner_id, tag) for tag in tags]
+
+
+async def _owned(session: AsyncSession, owner_id: UUID) -> tuple[set[str], set[str]]:
+    """(ids, group tags) of the courses one user owns."""
+    rows = (
+        await session.execute(
+            sa.text("SELECT id, scope_tags FROM courses WHERE owner_id = :owner"),
+            {"owner": str(owner_id)},
+        )
+    ).all()
+    return {str(r[0]) for r in rows}, {t for r in rows for t in (r[1] or [])}
+
+
+async def _qualified_tags(
+    session: AsyncSession, actor: Principal, course_tags: list[str]
+) -> list[str]:
+    """Stored keys for the named tags, 404 unless the actor may edit EVERY named course.
+
+    A course id must be a course the actor owns (a superadmin: any existing
+    course); a group tag must be carried by a course the actor owns, and is
+    stored under the actor's id.
+    """
+    from app.errors import ValidationError
+
+    owned_ids, owned_tags = await _owned(session, actor.user_id)
+    stored: list[str] = []
+    for raw in course_tags:
+        tag = raw.strip()
+        if not tag or (GROUP_SEP in tag and not _is_course_id(tag)):
+            raise ValidationError("a tag is a course id or a group name without ':'")
+        if _is_course_id(tag):
+            exists = (
+                tag in owned_ids
+                or actor.is_superadmin
+                and (
+                    await session.execute(
+                        sa.text("SELECT 1 FROM courses WHERE id = :c"), {"c": tag}
+                    )
+                ).first()
+                is not None
+            )
+            if not exists:
+                raise NotFoundError("object not found")
+            stored.append(tag)
+        else:
+            if tag not in owned_tags:
+                raise NotFoundError("object not found")
+            stored.append(group_key(actor.user_id, tag))
+    return sorted(set(stored))
+
+
+async def _manageable(session: AsyncSession, actor: Principal) -> Callable[[list[str]], bool]:
+    """Predicate: an invite's stored tags are all inside this actor's own courses."""
+    if actor.is_superadmin:
+        return lambda tags: True
+    owned_ids, _ = await _owned(session, actor.user_id)
+    prefix = f"{actor.user_id}{GROUP_SEP}"
+
+    def inside(tags: list[str]) -> bool:
+        return bool(tags) and all(t in owned_ids or t.startswith(prefix) for t in tags)
+
+    return inside
 
 
 def hash_invite_token(token: str) -> str:
@@ -62,6 +152,7 @@ async def create_invite(
 
         raise ValidationError("max_uses must be positive")
     require_scope(actor, course_tags, code="invite.create")
+    stored_tags = await _qualified_tags(session, actor, course_tags)
     raw_token = mint_invite_token()
     row = (
         await session.execute(
@@ -72,8 +163,8 @@ async def create_invite(
                 " RETURNING id"
             ),
             {
-                "scope": ",".join(sorted(course_tags)),
-                "tags": sorted(course_tags),
+                "scope": ",".join(stored_tags),
+                "tags": stored_tags,
                 "max_uses": max_uses,
                 "expires": expires_at,
                 "by": str(actor.user_id),
@@ -89,7 +180,7 @@ async def create_invite(
         action="invite.create",
         entity="invite",
         entity_id=invite_id,
-        meta={"course_tags": sorted(course_tags), "max_uses": max_uses},
+        meta={"course_tags": stored_tags, "max_uses": max_uses},
     )
     return raw_token
 
@@ -122,15 +213,18 @@ async def list_invites(session: AsyncSession, *, actor: Principal) -> list[dict[
             {"id": str(user_id), "display_name": str(display_name or "")}
         )
     visible_scope = actor.scope_for_any(("invite.create", "invite.revoke"))
+    inside = await _manageable(session, actor)
     visible: list[dict[str, Any]] = []
     for invite_id, tags, max_uses, used_count, expires_at, revoked_at, by, by_name in rows:
+        if not inside(list(tags or [])):
+            continue
         if not actor.is_superadmin and visible_scope is not None:
-            if set(tags or []).isdisjoint(visible_scope):
+            if {display_tag(t) for t in tags or []}.isdisjoint(visible_scope):
                 continue
         visible.append(
             {
                 "id": str(invite_id),
-                "course_tags": list(tags or []),
+                "course_tags": [display_tag(t) for t in tags or []],
                 "course_titles": await course_titles(session, list(tags or [])),
                 "max_uses": max_uses,
                 "used_count": int(used_count),
@@ -148,8 +242,9 @@ async def course_titles(session: AsyncSession, tags: list[str]) -> list[str]:
     rows = (
         await session.execute(
             sa.text(
-                "SELECT title FROM courses WHERE id::text = ANY(:tags)"
-                " OR scope_tags && CAST(:tags AS text[]) ORDER BY title"
+                "SELECT title FROM courses WHERE id::text = ANY(:tags) OR EXISTS ("
+                "SELECT 1 FROM unnest(scope_tags) t"
+                " WHERE (owner_id::text || ':' || t) = ANY(:tags)) ORDER BY title"
             ),
             {"tags": list(tags)},
         )
@@ -202,7 +297,10 @@ async def revoke_invite(session: AsyncSession, *, actor: Principal, invite_id: U
     ).first()
     if row is None:
         raise NotFoundError("invite not found")
-    require_scope(actor, list(row[1] or []), code="invite.revoke")
+    stored = list(row[1] or [])
+    require_scope(actor, [display_tag(t) for t in stored], code="invite.revoke")
+    if not (await _manageable(session, actor))(stored):
+        raise NotFoundError("invite not found")
     await session.execute(
         sa.text("UPDATE invites SET revoked_at = now() WHERE id = :invite"),
         {"invite": str(row[0])},

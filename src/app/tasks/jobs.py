@@ -11,7 +11,14 @@ from uuid import UUID
 
 from procrastinate import App, PsycopgConnector
 
+from app.agents.base import validate_agents
 from app.tasks.worker import app, psycopg_dsn
+
+# The worker process imports this module at start (procrastinate import_paths):
+# prompts, strict schemas and the closed vocabularies are checked here, as the
+# API lifespan checks them, so a drifted enum stops the worker instead of
+# failing a paid run.
+validate_agents()
 
 
 async def run_operation_job(operation_id: str) -> None:

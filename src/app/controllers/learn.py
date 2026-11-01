@@ -54,13 +54,15 @@ async def get_topic(ctx: RequestContext, *, topic_id: str, language: str | None)
 
     actor = require_auth(ctx)
     require(actor, "learn.read")
-    return await topic_view(
+    view = await topic_view(
         ctx.db,
         actor,
         UUID(topic_id),
         language=language,
         threshold=ctx.settings.mastery_threshold,
     )
+    await ctx.db.commit()
+    return view
 
 
 async def get_passage(

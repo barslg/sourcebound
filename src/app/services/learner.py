@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.errors import NotFoundError
 from app.rbac.principal import Principal
 from app.rbac.require import require
+from app.services.invites import group_keys_of
 
 STUDENT_ROLE = "student"
 ASSESSED_TYPES = frozenset({"choice", "matching", "cloze", "scenario_practice", "spot_the_error"})
@@ -46,8 +47,8 @@ async def enrolled_course(
     row = (
         await session.execute(
             sa.text(
-                "SELECT c.id, c.title, c.language, c.scope_tags, cv.snapshot FROM courses c"
-                " JOIN course_versions cv ON cv.id = c.published_version_id"
+                "SELECT c.id, c.title, c.language, c.scope_tags, cv.snapshot, c.owner_id"
+                " FROM courses c JOIN course_versions cv ON cv.id = c.published_version_id"
                 " WHERE c.id = :course AND c.status = 'published'"
             ),
             {"course": str(course_id)},
@@ -56,7 +57,7 @@ async def enrolled_course(
     if row is None:
         raise _not_found()
     tags = enrolment_tags(principal)
-    if str(row[0]) not in tags and not (set(row[3] or []) & tags):
+    if str(row[0]) not in tags and not (set(group_keys_of(row[5], row[3] or [])) & tags):
         raise _not_found()
     return {
         "id": str(row[0]),
@@ -79,7 +80,8 @@ async def list_enrolled(
             sa.text(
                 "SELECT c.id FROM courses c WHERE c.status = 'published'"
                 " AND c.published_version_id IS NOT NULL"
-                " AND (c.id::text = ANY(:tags) OR c.scope_tags && CAST(:tags AS text[]))"
+                " AND (c.id::text = ANY(:tags) OR EXISTS (SELECT 1 FROM unnest(c.scope_tags) t"
+                " WHERE (c.owner_id::text || ':' || t) = ANY(:tags)))"
                 " ORDER BY c.created_at, c.id"
             ),
             {"tags": tags},
@@ -380,12 +382,22 @@ def handle_maps(
 
 
 async def citation_rows(session: AsyncSession, version_id: str) -> list[dict[str, Any]]:
+    """Citation rows of one version whose source binding is still approved.
+
+    A chip of a withdrawn (pending) binding would open a passage the
+    companion panel refuses, so it is not rendered at all.
+    """
     rows = (
         await session.execute(
             sa.text(
                 "SELECT c.passage_id, c.quote, p.address, p.address_key, s.title"
                 " FROM citations c JOIN passages p ON p.id = c.passage_id"
-                " JOIN sources s ON s.id = p.source_id WHERE c.block_version_id = :v"
+                " JOIN sources s ON s.id = p.source_id AND s.approval = 'approved'"
+                " JOIN block_versions bv ON bv.id = c.block_version_id"
+                " JOIN blocks b ON b.id = bv.block_id JOIN topics t ON t.id = b.topic_id"
+                " JOIN modules m ON m.id = t.module_id"
+                " JOIN course_sources cs ON cs.source_id = s.id AND cs.course_id = m.course_id"
+                " AND cs.approval = 'approved' WHERE c.block_version_id = :v"
                 " ORDER BY c.quote_start, c.quote, c.passage_id"
             ),
             {"v": version_id},
@@ -513,6 +525,34 @@ async def block_view(
     return entry
 
 
+async def record_served_language(
+    session: AsyncSession, user_id: UUID, block_ids: list[str], language: str
+) -> None:
+    """Remember which language each block was served in (the grader's default)."""
+    for block_id in block_ids:
+        await session.execute(
+            sa.text(
+                "INSERT INTO learner_block_views (user_id, block_id, language)"
+                " VALUES (:u, :b, :l) ON CONFLICT (user_id, block_id)"
+                " DO UPDATE SET language = EXCLUDED.language, updated_at = now()"
+            ),
+            {"u": str(user_id), "b": block_id, "l": language},
+        )
+
+
+async def served_language(session: AsyncSession, user_id: UUID, block_id: str) -> str | None:
+    """The language this learner was last served this block in, if any."""
+    row = (
+        await session.execute(
+            sa.text(
+                "SELECT language FROM learner_block_views WHERE user_id = :u AND block_id = :b"
+            ),
+            {"u": str(user_id), "b": block_id},
+        )
+    ).first()
+    return str(row[0]) if row else None
+
+
 async def topic_view(
     session: AsyncSession,
     principal: Principal,
@@ -529,6 +569,7 @@ async def topic_view(
         await block_view(session, course, b, language=language, attempts=attempts)
         for b in topic["blocks"]
     ]
+    await record_served_language(session, principal.user_id, [b["id"] for b in blocks], language)
     return {
         "id": topic["id"],
         "course_id": course["id"],

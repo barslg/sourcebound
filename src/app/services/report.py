@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import learner
 from app.services.grading import add_counts
+from app.services.invites import group_keys_of
 
 CSV_COLUMNS = (
     "section",
@@ -40,8 +41,8 @@ async def _snapshot_course(session: AsyncSession, course_id: UUID) -> dict[str, 
     row = (
         await session.execute(
             sa.text(
-                "SELECT c.id, c.title, c.language, c.scope_tags, cv.snapshot FROM courses c"
-                " LEFT JOIN course_versions cv ON cv.id = c.published_version_id"
+                "SELECT c.id, c.title, c.language, c.scope_tags, cv.snapshot, c.owner_id"
+                " FROM courses c LEFT JOIN course_versions cv ON cv.id = c.published_version_id"
                 " WHERE c.id = :c"
             ),
             {"c": str(course_id)},
@@ -53,11 +54,12 @@ async def _snapshot_course(session: AsyncSession, course_id: UUID) -> dict[str, 
         "language": str(row[2]),
         "scope_tags": list(row[3] or []),
         "snapshot": dict(row[4] or {}),
+        "owner_id": str(row[5]),
     }
 
 
 async def _learners(session: AsyncSession, course: dict[str, Any]) -> list[dict[str, Any]]:
-    tags = [course["id"], *course["scope_tags"]]
+    tags = [course["id"], *group_keys_of(course["owner_id"], course["scope_tags"])]
     rows = (
         await session.execute(
             sa.text(

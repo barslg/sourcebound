@@ -20,10 +20,12 @@ import json
 import os
 import pathlib
 import re
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
+import acceptance_t05 as acceptance
 import demo_t05
 import pytest
 import sqlalchemy as sa
@@ -197,6 +199,20 @@ async def _drive_generate(
     return run_id
 
 
+async def _logged_inputs(session: AsyncSession, run_id: UUID, agent: str) -> list[str]:
+    """The prompts of one agent's logged requests in a run, oldest first (replays included)."""
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT request FROM llm_calls WHERE run_id = :r AND agent = :a"
+                " ORDER BY created_at, id"
+            ),
+            {"r": str(run_id), "a": agent},
+        )
+    ).all()
+    return [str((row[0] or {}).get("input", "")) for row in rows]
+
+
 async def _why_stopped(session: AsyncSession, run_id: UUID) -> str:
     """Step errors of a run (kept in run_steps only; stop markers are plain sentences)."""
     rows = (
@@ -212,8 +228,9 @@ async def _why_stopped(session: AsyncSession, run_id: UUID) -> str:
 
 
 def _write_ledger(rows: list[Any]) -> str:
-    """Copy the live ledger to the tracked fixture; keep the previous one beside it."""
-    previous = LEDGER_PATH.with_suffix(".prev.json")
+    """Copy the live ledger to the tracked fixture; keep the previous one beside it, timestamped."""
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    previous = LEDGER_PATH.with_name(f"{LEDGER_PATH.stem}.{stamp}.prev.json")
     payload = json.dumps(
         [
             {
@@ -246,7 +263,7 @@ async def _export_ledger(session: AsyncSession, run_ids: list[UUID]) -> Decimal:
             {"ids": [str(r) for r in run_ids]},
         )
     ).all()
-    if rows:
+    if any(Decimal(str(r[2])) > 0 for r in rows):  # a run that paid nothing never replaces evidence
         _write_ledger(list(rows))
     return sum((Decimal(str(r[2])) for r in rows), Decimal(0))
 
@@ -270,11 +287,11 @@ async def test_live_acceptance_product_path(
     settings = _live_settings(key)
     session = t03_session
 
-    # Older course C (hand-built, ids b1..b4) exists before B is planned.
+    # Older course C exists before B is planned; its plan is cloned from B's LIVE plan below,
+    # so it shares every id the architect really chose (a hand-written b1..b4 shares none).
     demo_c = await demo_t05.setup_demo(
         session, settings=settings, email=demo_t05.fresh_email("live-c")
     )
-    await demo_t05.write_demo_tree(session, course_id=demo_c["course_id"])
 
     # Course B: sources only; its plan comes from submit_plan (researcher + architect).
     demo_b = await demo_t05.setup_demo(
@@ -296,11 +313,12 @@ async def test_live_acceptance_product_path(
             f"plan run {plan_status}: {await _why_stopped(session, plan_run)}"
         )
 
-        # Course A shares B's plan ids exactly (the cross-course write trap).
+        # Courses A and C share B's plan ids exactly (the cross-course write trap).
         demo_a = await demo_t05.setup_demo(
             session, settings=settings, email=demo_t05.fresh_email("live-a")
         )
         await demo_t05.clone_plan(session, source=course_b, target=demo_a["course_id"])
+        await demo_t05.clone_plan(session, source=course_b, target=demo_c["course_id"])
         before_a = await _snapshot(session, demo_a["course_id"])
         before_c = await _snapshot(session, demo_c["course_id"])
 
@@ -321,8 +339,9 @@ async def test_live_acceptance_product_path(
         rows = (
             await session.execute(
                 sa.text(
-                    "SELECT b.plan_node_id, b.block_type, b.status, bv.content, bv.answer_key"
-                    " FROM blocks b JOIN block_versions bv ON bv.id = b.current_version_id"
+                    "SELECT b.plan_node_id, b.block_type, b.status, bv.content, bv.answer_key,"
+                    " t.plan_node_id FROM blocks b"
+                    " JOIN block_versions bv ON bv.id = b.current_version_id"
                     " JOIN topics t ON t.id = b.topic_id"
                     " JOIN modules m ON m.id = t.module_id WHERE m.course_id = :c"
                     " ORDER BY b.plan_node_id"
@@ -363,55 +382,26 @@ async def test_live_acceptance_product_path(
         )
         assert cited >= 4, f"verified citations {cited}"
 
-        # Reader requests (logged prompts) carry full content + keys.
-        reader_inputs = [
-            str((r[0] or {}).get("input", ""))
-            for r in (
-                await session.execute(
-                    sa.text("SELECT request FROM llm_calls WHERE run_id = :r AND agent = 'reader'"),
-                    {"r": str(gen_run)},
-                )
-            ).all()
-        ]
+        # The logged reader and saboteur requests, parsed (never substring-matched).
+        reader_inputs = await _logged_inputs(session, gen_run, "reader")
         assert reader_inputs, "reader calls logged"
-        joined_reader = "\n".join(reader_inputs)
-        assert '"answer_key"' in joined_reader
-        for node, btype, _status, content, _key in rows:
-            content = dict(content or {})
-            probe = (
-                str(content.get("stem") or content.get("body") or content.get("scenario") or "")
-                or str(content.get("caption") or content.get("text") or "")
-                or str((content.get("options") or content.get("sentences") or [""])[0])
+        readers = [acceptance.ReaderRequest(text) for text in reader_inputs]
+        current = [
+            acceptance.Block(
+                node=str(r[0]),
+                block_type=str(r[1]),
+                status=str(r[2]),
+                content=dict(r[3] or {}),
+                key=dict(r[4] or {}),
+                topic=str(r[5]),
             )
-            if probe:
-                assert probe[:40] in joined_reader, (node, btype, probe[:40])
-
-        # Find-the-error: key == planted source (or seeded fully correct), content only.
-        spots = [r for r in rows if r[1] == "spot_the_error"]
-        assert spots, [r[1] for r in rows]
-        passage_texts = [
-            str(r[0])
-            for r in (
-                await session.execute(
-                    sa.text(
-                        "SELECT p.text FROM passages p"
-                        " JOIN course_sources cs ON cs.source_id = p.source_id"
-                        " AND cs.course_id = :c AND cs.approval = 'approved'"
-                    ),
-                    {"c": str(course_b)},
-                )
-            ).all()
+            for r in rows
         ]
-        for _node, _t, _s, spot_content, spot_key in spots:
-            spot_content, spot_key = dict(spot_content or {}), dict(spot_key or {})
-            assert "planted_index" not in spot_content
-            if spot_key.get("fully_correct"):
-                assert spot_key["planted_index"] == -1
-                continue
-            planted_at = spot_content["sentences"][int(spot_key["planted_index"])]
-            assert planted_at == spot_key["planted_sentence"]
-            assert any(spot_key["true_sentence"].rstrip(".") in t for t in passage_texts), spot_key
-            assert "Reuse notice" not in spot_key["true_sentence"]
+        acceptance.check_reader_saw_every_block(current, readers)
+        acceptance.check_held_blocks_were_read_again(current, readers)
+        acceptance.check_spot_exercises(
+            current, readers, await _logged_inputs(session, gen_run, "saboteur")
+        )
 
         # No UUID in any prompt of the generation run, none in learner renders.
         all_inputs = [

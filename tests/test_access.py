@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import sqlalchemy as sa
 from pydantic import TypeAdapter
 from sqlalchemy.ext.asyncio import AsyncSession
 from t06_helpers import World, cookie_for, http, make_user
@@ -188,3 +189,68 @@ async def test_every_route_answers_by_enrolment_and_ownership(world: World) -> N
                 response.status_code,
                 response.text,
             )
+
+
+async def _tag_both_courses(world: World, tag: str) -> None:
+    for course in (world.course, str(world.other["course_id"])):
+        await world.s.execute(
+            sa.text("UPDATE courses SET scope_tags = ARRAY[:t] WHERE id = :c"),
+            {"t": tag, "c": course},
+        )
+    await world.s.commit()
+
+
+async def _invite(world: World, who: str, tags: list[str]) -> Any:
+    auth = world.cookies[who]
+    assert auth is not None
+    async with http(auth[0]) as client:
+        return await client.post(
+            "/api/v1/invites", json={"course_tags": tags}, headers={"X-CSRF-Token": auth[1]}
+        )
+
+
+async def _enrol_new_student(world: World, token: str) -> dict[str, str]:
+    user = await make_user(world.s, "xo-student")
+    cookies, csrf = await cookie_for(world.s, user)
+    async with http(cookies) as client:
+        reply = await client.post(f"/api/v1/invites/{token}/accept", headers={"X-CSRF-Token": csrf})
+    assert reply.status_code == 200, reply.text
+    return cookies
+
+
+async def test_two_owners_are_walled_off_on_invites_and_group_tags(world: World) -> None:
+    """Owner B cannot invite to, list, or revoke owner A's course; two owners' "oslo" never meet."""
+    mine, theirs = world.course, str(world.other["course_id"])
+    assert (await _invite(world, "other_owner", [mine])).status_code == 404
+    assert (await _invite(world, "owner", ["not-my-tag"])).status_code == 404
+    created = await _invite(world, "owner", [mine])
+    assert created.status_code == 201, created.text
+    for who, sees in (("owner", True), ("other_owner", False)):
+        auth = world.cookies[who]
+        assert auth is not None
+        async with http(auth[0]) as client:
+            rows = (await client.get("/api/v1/invites")).json()
+        assert any(mine in row["course_tags"] for row in rows) is sees, (who, rows)
+    async with http(world.cookies["owner"][0]) as client:  # type: ignore[index]
+        invite_id = next(r["id"] for r in (await client.get("/api/v1/invites")).json())
+    foreign = world.cookies["other_owner"]
+    assert foreign is not None
+    async with http(foreign[0]) as client:
+        revoked = await client.post(
+            f"/api/v1/invites/{invite_id}/revoke", headers={"X-CSRF-Token": foreign[1]}
+        )
+    assert revoked.status_code == 404, revoked.text
+
+    await _tag_both_courses(world, "oslo")
+    token = (await _invite(world, "owner", ["oslo"])).json()["token"]
+    async with http(None) as client:
+        preview = (await client.get(f"/api/v1/invites/{token}/preview")).json()
+    title = (
+        await world.s.execute(sa.text("SELECT title FROM courses WHERE id = :c"), {"c": mine})
+    ).scalar_one()
+    assert preview["course_titles"] == [title], "a group invite names only its owner's course"
+    cookies = await _enrol_new_student(world, token)
+    async with http(cookies) as client:
+        assert (await client.get(f"/api/v1/learn/courses/{mine}")).status_code == 200
+        assert (await client.get(f"/api/v1/learn/courses/{theirs}")).status_code == 404
+        assert [c["id"] for c in (await client.get("/api/v1/learn/courses")).json()] == [mine]

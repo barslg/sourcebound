@@ -1224,7 +1224,10 @@ async def accept_block(session: AsyncSession, *, block_id: UUID) -> None:
     if row[0] != "held":
         raise ValidationError(f"block {block_id} is {row[0]}; only held blocks are accepted")
     await session.execute(
-        sa.text("UPDATE blocks SET status = 'accepted', hold_reason = NULL WHERE id = :block"),
+        sa.text(
+            "UPDATE blocks SET status = 'accepted', hold_reason = NULL,"
+            " accepted_version_id = current_version_id WHERE id = :block"
+        ),
         {"block": str(block_id)},
     )
 

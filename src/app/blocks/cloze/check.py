@@ -19,14 +19,9 @@ def grade(
     expected = [str(item) for item in answer_key.get("blanks", [])]
     given = [str(item) for item in submission.get("blanks", [])]
     if not expected:
-        return {"score": 0.0, "feedback": {"wrong": "", "true": "", "passage": "P1", "habit": ""}}
+        return {"score": 0.0, "feedback": {"habit": ""}}
     hits = sum(1 for want, got in zip(expected, given, strict=False) if _fold(want) == _fold(got))
     return {
         "score": hits / len(expected),
-        "feedback": {
-            "wrong": str(given),
-            "true": str(expected),
-            "passage": str(answer_key.get("passage", "P1")),
-            "habit": "Fill each gap from the passage wording.",
-        },
+        "feedback": {"habit": "Fill each gap from the passage wording."},
     }

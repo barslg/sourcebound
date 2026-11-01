@@ -7,17 +7,9 @@ id-named path parameter in the OpenAPI spec routes through here.
 
 from __future__ import annotations
 
-from uuid import UUID
+from app.helpers.ids import parse_uuid_or_404
 
-from app.errors import NotFoundError
-
-
-def parse_uuid_or_404(value: str) -> UUID:
-    """Parse one path id; malformed values answer 404."""
-    try:
-        return UUID(str(value))
-    except (ValueError, AttributeError, TypeError):
-        raise NotFoundError("not found") from None
+__all__ = ["parse_uuid_or_404"]
 
 
 def _validated(value: str) -> str:

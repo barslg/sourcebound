@@ -45,7 +45,7 @@ def grade(
         dict(answer_key.get("passages_by_index") or answer_key.get("passages", {})), texts
     )
     if not expected:
-        return {"score": 0.0, "feedback": {"wrong": "", "true": "", "passage": "P1", "habit": ""}}
+        return {"score": 0.0, "feedback": {"habit": ""}}
     hits = sum(
         1
         for item, tier in expected.items()
@@ -53,10 +53,5 @@ def grade(
     )
     return {
         "score": hits / len(expected),
-        "feedback": {
-            "wrong": str(submission.get("labels", given)),
-            "true": str(answer_key.get("labels", expected)),
-            "passage": str(answer_key.get("passage", "P1")),
-            "habit": "Sort each use by its article citation.",
-        },
+        "feedback": {"habit": "Sort each use by its article citation."},
     }

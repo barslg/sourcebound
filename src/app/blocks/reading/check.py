@@ -16,10 +16,5 @@ def grade(
     score = 1.0 if acknowledged else 0.0
     return {
         "score": score,
-        "feedback": {
-            "wrong": "",
-            "true": "",
-            "passage": "",
-            "habit": "Read with the source beside you.",
-        },
+        "feedback": {"habit": "Read with the source beside you."},
     }

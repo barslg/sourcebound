@@ -6,6 +6,7 @@ from typing import Any
 from uuid import UUID
 
 from app.auth.ctx import RequestContext, require_auth
+from app.helpers.ids import parse_uuid_or_404
 from app.rbac.require import require
 
 
@@ -219,10 +220,11 @@ async def set_source_language(
 
     await _require_source_owner(ctx, actor, source_id)
     if passage_id:
+        passage_uuid = parse_uuid_or_404(passage_id)
         owned = (
             await ctx.db.execute(
-                sa.text("SELECT 1 FROM passages WHERE id::text = :pid AND source_id = :source"),
-                {"pid": passage_id, "source": source_id},
+                sa.text("SELECT 1 FROM passages WHERE id = :pid AND source_id = :source"),
+                {"pid": str(passage_uuid), "source": source_id},
             )
         ).first()
         if owned is None:
@@ -322,6 +324,10 @@ async def rewrite_held(ctx: RequestContext, *, course_id: str) -> dict[str, str]
     course = await get_use_case(ctx.db, course_id=UUID(course_id))
     _owner_or_404(course, actor.user_id, actor.is_superadmin)
     held = await held_blocks(ctx.db, course_id=UUID(course_id))
+    if not held["blocks"]:
+        from app.errors import UnprocessableError
+
+        raise UnprocessableError("No held blocks to rewrite.")
     operation_id = await submit_rewrite_operation(
         ctx.db,
         actor=actor,
@@ -500,7 +506,7 @@ async def upload_source(
 
     actor = require_auth(ctx)
     require(actor, "source.upload")
-    course_uuid = UUID(course_id) if course_id else None
+    course_uuid = parse_uuid_or_404(course_id) if course_id else None
     if course_uuid is not None:
         course = await get_use_case(ctx.db, course_id=course_uuid)
         _owner_or_404(course, actor.user_id, actor.is_superadmin)
@@ -540,7 +546,7 @@ async def fetch_source(ctx: RequestContext, *, url: str, course_id: str | None) 
 
     actor = require_auth(ctx)
     require(actor, "source.upload")
-    course_uuid = UUID(course_id) if course_id else None
+    course_uuid = parse_uuid_or_404(course_id) if course_id else None
     if course_uuid is not None:
         course = await get_use_case(ctx.db, course_id=course_uuid)
         _owner_or_404(course, actor.user_id, actor.is_superadmin)

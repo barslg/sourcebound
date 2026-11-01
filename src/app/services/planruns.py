@@ -739,6 +739,8 @@ async def run_rewrite_operation(
     if params.get("block_id"):
         wanted.append(str(params["block_id"]))
     wanted.extend(str(b) for b in params.get("block_ids", []))
+    if not wanted:
+        raise ValidationError("name at least one block to rewrite")
     course = await course_service.get_course(session, course_id=course_id)
     tree = frozen_plan(await course_service.read_tree(session, course_id=course_id))
     rows = (
@@ -779,11 +781,29 @@ async def run_rewrite_operation(
         key = f"{agent}:{node}"
         gen_keys_by_topic.setdefault(str(topic_node), []).append(key)
         reason = str(hold_reason or "")
+        depends: list[str] = []
+        if str(btype) == "spot_the_error":
+            # the planted exercise needs its picker + saboteur step, with a seed
+            # that advances with the version count: a rewrite is a NEW exercise
+            saboteur_key = f"saboteur:{node}"
+            depends.append(saboteur_key)
+            dag.append(
+                {
+                    "step_key": saboteur_key,
+                    "handler": "saboteur",
+                    "depends_on": [],
+                    "course_id": str(course_id),
+                    "course_language": str(course.get("language", "en")),
+                    "sources": sources,
+                    "variant_offset": int(versions or 0),
+                    "hold_reason": reason,
+                }
+            )
         dag.append(
             {
                 "step_key": key,
                 "handler": "generate_block",
-                "depends_on": [],
+                "depends_on": depends,
                 "course_id": str(course_id),
                 "course_language": str(course.get("language", "en")),
                 "plan": tree,
@@ -828,6 +848,9 @@ async def run_rewrite_operation(
             )
         finally:
             await _close_factory(provider_factory)
+        async with session_factory() as fresh:
+            await course_service.mark_generated_if_complete(fresh, course_id=course_id)
+            await fresh.commit()
     return {"run_id": str(run_id)}
 
 
@@ -848,7 +871,7 @@ async def run_generate_operation(
         )
     ).scalar_one()
     course_id = UUID(str(params["course_id"]))
-    if params.get("block_id") or params.get("block_ids"):
+    if "block_id" in params or "block_ids" in params:
         return await run_rewrite_operation(
             session,
             operation_id,
