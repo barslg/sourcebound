@@ -1143,6 +1143,26 @@ async def _smoke_blocks(session: AsyncSession, course_id: UUID) -> dict[str, tup
     return {str(r[0]): (str(r[1]), str(r[2])) for r in rows}
 
 
+async def test_mock_product_path_runs_the_live_acceptance_checks(
+    t03_session: AsyncSession,
+) -> None:
+    """The live acceptance's database checks (and the three acceptance_t05 checks) run on mock data.
+
+    Without this the live-only code would execute once per paid run; a crash
+    in it (a row unpacked with the wrong column count) showed up after the
+    money was spent.
+    """
+    from test_live_generate import check_generated_course
+
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-acceptance")
+    final = await _smoke_run(t03_session, demo, dag, demo_t05.mock_demo_handler())
+    assert final["status"] == "done", final["stop_marker"]
+    rows, cited, readers = await check_generated_course(
+        t03_session, demo["course_id"], UUID(str(final["id"]))
+    )
+    assert len(rows) == 4 and cited >= 4 and readers
+
+
 async def test_generation_reader_unknown_holds_the_block_and_the_author_has_a_way_out(
     t03_session: AsyncSession,
 ) -> None:

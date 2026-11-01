@@ -278,6 +278,102 @@ def _announce(capfd: pytest.CaptureFixture[str], line: str) -> None:
         handle.write(line + "\n")
 
 
+async def check_generated_course(
+    session: AsyncSession, course_id: UUID, run_id: UUID
+) -> tuple[list[Any], int, list[str]]:
+    """Every database-measured assertion on a generated course (live run and mock run alike).
+
+    Returns (block rows, verified citations, reader prompts). Callers:
+    the live acceptance below and the mock product-path run in
+    tests/test_jobs_smoke.py, so this code runs on every `make check`.
+    """
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT b.plan_node_id, b.block_type, b.status, bv.content, bv.answer_key,"
+                " t.plan_node_id FROM blocks b"
+                " JOIN block_versions bv ON bv.id = b.current_version_id"
+                " JOIN topics t ON t.id = b.topic_id"
+                " JOIN modules m ON m.id = t.module_id WHERE m.course_id = :c"
+                " ORDER BY b.plan_node_id"
+            ),
+            {"c": str(course_id)},
+        )
+    ).all()
+    planned = (
+        await session.execute(
+            sa.text(
+                "SELECT count(*) FROM blocks b JOIN topics t ON t.id = b.topic_id"
+                " JOIN modules m ON m.id = t.module_id WHERE m.course_id = :c"
+            ),
+            {"c": str(course_id)},
+        )
+    ).scalar_one()
+    assert len(rows) == planned >= 4, "every planned block has a current version"
+    assert all(r[2] != "draft" for r in rows), [(r[0], r[2]) for r in rows]
+    from importlib import import_module
+
+    for node, btype, _status, content, _key, _topic in rows:
+        errors = import_module(f"app.blocks.{btype}.schema").validate(dict(content or {}))
+        assert not errors, (node, btype, errors, content)
+
+    cited = int(
+        (
+            await session.execute(
+                sa.text(
+                    "SELECT count(*) FROM citations c"
+                    " JOIN block_versions bv ON bv.id = c.block_version_id"
+                    " JOIN blocks b ON b.id = bv.block_id JOIN topics t ON t.id = b.topic_id"
+                    " JOIN modules m ON m.id = t.module_id"
+                    " WHERE m.course_id = :c AND c.verified_by = 'code'"
+                ),
+                {"c": str(course_id)},
+            )
+        ).scalar_one()
+    )
+    assert cited >= 4, f"verified citations {cited}"
+
+    # The logged reader and saboteur requests, parsed (never substring-matched).
+    reader_inputs = await _logged_inputs(session, run_id, "reader")
+    assert reader_inputs, "reader calls logged"
+    readers = [acceptance.ReaderRequest(text) for text in reader_inputs]
+    current = [
+        acceptance.Block(
+            node=str(r[0]),
+            block_type=str(r[1]),
+            status=str(r[2]),
+            content=dict(r[3] or {}),
+            key=dict(r[4] or {}),
+            topic=str(r[5]),
+        )
+        for r in rows
+    ]
+    acceptance.check_reader_saw_every_block(current, readers)
+    acceptance.check_held_blocks_were_read_again(current, readers)
+    acceptance.check_spot_exercises(
+        current, readers, await _logged_inputs(session, run_id, "saboteur")
+    )
+
+    # No UUID in any prompt of the generation run, none in learner renders.
+    all_inputs = [
+        str((r[0] or {}).get("input", ""))
+        for r in (
+            await session.execute(
+                sa.text("SELECT request FROM llm_calls WHERE run_id = :r"),
+                {"r": str(run_id)},
+            )
+        ).all()
+    ]
+    assert all_inputs and not any(UUID_RE.search(text) for text in all_inputs)
+    from app.blocks.registry import learner_serializers
+
+    render = learner_serializers()["card"]
+    for node, btype, _status, content, akey, _topic in rows:
+        rendered = render(str(btype), dict(content or {}), dict(akey or {}))
+        assert not UUID_RE.search(str(rendered)), (node, btype, rendered)
+    return rows, cited, reader_inputs
+
+
 async def test_live_acceptance_product_path(
     t03_session: AsyncSession, capfd: pytest.CaptureFixture[str]
 ) -> None:
@@ -336,90 +432,7 @@ async def test_live_acceptance_product_path(
         assert await _snapshot(session, demo_a["course_id"]) == before_a, "A changed"
         assert await _snapshot(session, demo_c["course_id"]) == before_c, "C changed"
 
-        rows = (
-            await session.execute(
-                sa.text(
-                    "SELECT b.plan_node_id, b.block_type, b.status, bv.content, bv.answer_key,"
-                    " t.plan_node_id FROM blocks b"
-                    " JOIN block_versions bv ON bv.id = b.current_version_id"
-                    " JOIN topics t ON t.id = b.topic_id"
-                    " JOIN modules m ON m.id = t.module_id WHERE m.course_id = :c"
-                    " ORDER BY b.plan_node_id"
-                ),
-                {"c": str(course_b)},
-            )
-        ).all()
-        planned = (
-            await session.execute(
-                sa.text(
-                    "SELECT count(*) FROM blocks b JOIN topics t ON t.id = b.topic_id"
-                    " JOIN modules m ON m.id = t.module_id WHERE m.course_id = :c"
-                ),
-                {"c": str(course_b)},
-            )
-        ).scalar_one()
-        assert len(rows) == planned >= 4, "every planned block has a current version"
-        assert all(r[2] != "draft" for r in rows), [(r[0], r[2]) for r in rows]
-        from importlib import import_module
-
-        for node, btype, _status, content, _key in rows:
-            errors = import_module(f"app.blocks.{btype}.schema").validate(dict(content or {}))
-            assert not errors, (node, btype, errors, content)
-
-        cited = int(
-            (
-                await session.execute(
-                    sa.text(
-                        "SELECT count(*) FROM citations c"
-                        " JOIN block_versions bv ON bv.id = c.block_version_id"
-                        " JOIN blocks b ON b.id = bv.block_id JOIN topics t ON t.id = b.topic_id"
-                        " JOIN modules m ON m.id = t.module_id"
-                        " WHERE m.course_id = :c AND c.verified_by = 'code'"
-                    ),
-                    {"c": str(course_b)},
-                )
-            ).scalar_one()
-        )
-        assert cited >= 4, f"verified citations {cited}"
-
-        # The logged reader and saboteur requests, parsed (never substring-matched).
-        reader_inputs = await _logged_inputs(session, gen_run, "reader")
-        assert reader_inputs, "reader calls logged"
-        readers = [acceptance.ReaderRequest(text) for text in reader_inputs]
-        current = [
-            acceptance.Block(
-                node=str(r[0]),
-                block_type=str(r[1]),
-                status=str(r[2]),
-                content=dict(r[3] or {}),
-                key=dict(r[4] or {}),
-                topic=str(r[5]),
-            )
-            for r in rows
-        ]
-        acceptance.check_reader_saw_every_block(current, readers)
-        acceptance.check_held_blocks_were_read_again(current, readers)
-        acceptance.check_spot_exercises(
-            current, readers, await _logged_inputs(session, gen_run, "saboteur")
-        )
-
-        # No UUID in any prompt of the generation run, none in learner renders.
-        all_inputs = [
-            str((r[0] or {}).get("input", ""))
-            for r in (
-                await session.execute(
-                    sa.text("SELECT request FROM llm_calls WHERE run_id = :r"),
-                    {"r": str(gen_run)},
-                )
-            ).all()
-        ]
-        assert all_inputs and not any(UUID_RE.search(text) for text in all_inputs)
-        from app.blocks.registry import learner_serializers
-
-        render = learner_serializers()["card"]
-        for node, btype, _status, content, akey in rows:
-            rendered = render(str(btype), dict(content or {}), dict(akey or {}))
-            assert not UUID_RE.search(str(rendered)), (node, btype, rendered)
+        rows, cited, reader_inputs = await check_generated_course(session, course_b, gen_run)
 
         # Evidence survives: copy the live ledger BEFORE the second run and any wipe.
         cost = await _export_ledger(session, run_ids)
