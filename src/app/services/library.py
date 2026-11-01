@@ -648,7 +648,17 @@ async def approve_source(
     the source is not bound to the course); without one every binding
     is approved. The source row follows: runs only see passages whose
     binding AND source are both approved for their own course.
+    A thin source (a page that gave no readable text) can never be
+    approved: the author must paste or upload its content instead.
     """
+    ingest = (
+        await session.execute(
+            sa.text("SELECT ingest_status FROM sources WHERE id = :source"),
+            {"source": str(source_id)},
+        )
+    ).first()
+    if ingest is not None and ingest[0] == "thin":
+        raise ValidationError(THIN_MESSAGE)
     if course_id is not None:
         row = (
             await session.execute(
@@ -706,6 +716,92 @@ async def approve_source(
             raise NotFoundError(f"source {source_id} not found")
 
 
+THIN_MESSAGE = "The page gave no readable text; paste or upload its content"
+_MIN_PAGE_TOKENS = 40
+_MAX_GLUE_PER_100_TOKENS = 3.0
+# A lowercase letter run straight into a capital, or a sentence end with no
+# space before the next capital: words glued across element boundaries.
+_GLUE_RE = re.compile(r"[a-z][A-Z]|[a-z][.:!?][A-Z]")
+
+
+def is_thin_page(text: str) -> bool:
+    """True when a fetched page gave no readable text: too little, no sentence, or glued.
+
+    Measured on muse_stand 2026-11-01: the two tag-stripped docs pages
+    carried 6.3 and 8.4 glued joins per 100 tokens ("built for Muse
+    SparkMuse Code and the Model APIWorkflowsSession messaging");
+    every readable page and upload stayed under 1.2. Fewer than 40
+    tokens, or no sentence punctuation at all, is a shell or a menu.
+    """
+    tokens = re.findall(r"[^\W\d_]+", str(text))
+    if len(tokens) < _MIN_PAGE_TOKENS:
+        return True
+    if not re.search(r"[.!?]", str(text)):
+        return True
+    return 100 * len(_GLUE_RE.findall(str(text))) / len(tokens) >= _MAX_GLUE_PER_100_TOKENS
+
+
+def _is_html(content_type: str, text: str) -> bool:
+    head = text.lstrip()[:200].lower()
+    return "html" in content_type.lower() or head.startswith(("<!doctype", "<html"))
+
+
+def web_passages(
+    page: FetchedPage, parser_spec: dict[str, Any] | None
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    """Addressed passages of one fetched page and the parser spec that produced them.
+
+    HTML is read block by block through a declarative spec: the supplied
+    or stored spec first, then the spec derived from the page structure,
+    then the whole body. Raw markup is never chunked as text (the 2026-11
+    defect: `<!DOCTYPE html>...` as a passage). Plain-text and markdown
+    answers are chunked as text with web addresses. Passages under one
+    heading path are numbered so every address key is unique.
+    """
+    if not _is_html(page.content_type, page.text):
+        if "markdown" in page.content_type.lower():
+            return chunk_markdown(page.text), None
+        return chunk_text(page.text, kind="web"), None
+    from app.agents import librarian
+
+    candidates: list[dict[str, Any]] = [spec for spec in (parser_spec,) if spec]
+    derived = librarian.derive_parser_spec(page.text)
+    if derived is not None:
+        candidates.append(derived)
+    candidates.append(librarian.body_spec())
+    for spec in candidates:
+        try:
+            records = librarian.execute_parser_spec(page.text, spec)
+        except ValueError as exc:
+            if spec is parser_spec:
+                raise ValidationError(f"invalid parser spec: {exc}") from exc
+            continue
+        passages = _web_records_to_passages(records)
+        if passages:
+            return passages, spec
+    return [], None
+
+
+def _web_records_to_passages(records: list[dict[str, str]]) -> list[dict[str, Any]]:
+    """One passage per block record, keyed `h:<heading path>/para<n>` like markdown."""
+    counts: dict[str, int] = {}
+    passages: list[dict[str, Any]] = []
+    for record in records:
+        text = _clean_block(record["body"])
+        if not text:
+            continue
+        path = record["address"] or "body"
+        counts[path] = counts.get(path, 0) + 1
+        passages.append(
+            {
+                "text": text,
+                "address": {"kind": "web", "heading_path": path, "para": counts[path]},
+                "address_key": f"h:{path}/para{counts[path]}",
+            }
+        )
+    return rejoin_list_passages(passages)
+
+
 async def fetch_url(url: str, *, settings: Settings, client: Any | None = None) -> FetchedPage:
     """Fetch one URL via the web provider (guarded, no redirects).
 
@@ -754,11 +850,11 @@ async def intake_url(
     Returns {"source_id": ...} for fetched pages or {"queued": ...}
     for robots-disallowed ones. Non-http(s) schemes are refused with
     422 and internal URLs are refused outright — neither ever reaches
-    the human queue. With `parser_spec` (or the stored spec of an
-    earlier crawl of the same URL) the declarative librarian spec is
-    executed by code (never generated code) and stored on the source
-    for re-crawls; otherwise the page text is chunked with web
-    addresses.
+    the human queue. The page is read through web_passages(): the
+    supplied or stored declarative spec (never generated code), else
+    the derived one, else the whole body; the spec used is stored on
+    the source for re-crawls. A page that gives no readable text is
+    stored as `thin` with no passages and can never be approved.
     """
     from urllib.parse import urlparse
 
@@ -817,37 +913,16 @@ async def intake_url(
     source_id = UUID(str(row[0]))
     if course_id is not None:
         await bind_source_to_course(session, course_id=course_id, source_id=source_id)
-    if parser_spec is None:
-        from app.agents import librarian as _lib
-
-        derived = _lib.derive_parser_spec(page.text)
-        if derived is not None:
-            try:
-                if _lib.execute_parser_spec(page.text, derived):
-                    parser_spec = derived
-            except ValueError:
-                parser_spec = None
-    if parser_spec is not None:
-        from app.agents import librarian
-
-        try:
-            records = librarian.execute_parser_spec(page.text, parser_spec)
-        except ValueError as exc:
-            raise ValidationError(f"invalid parser spec: {exc}") from exc
-        chunks = [
-            {
-                "text": record["body"],
-                "address": {"kind": "web", "anchor": record["address"] or record["title"]},
-                "address_key": record["address"] or f"title:{record['title']}",
-            }
-            for record in records
-        ]
+    chunks, used_spec = web_passages(page, parser_spec)
+    if used_spec is not None:
         await session.execute(
             sa.text("UPDATE sources SET parser_spec = CAST(:spec AS jsonb) WHERE id = :source"),
-            {"spec": json.dumps(parser_spec), "source": str(source_id)},
+            {"spec": json.dumps(used_spec), "source": str(source_id)},
         )
-    else:
-        chunks = chunk_text(page.text, kind="web")
+    if is_thin_page("\n".join(str(chunk.get("text", "")) for chunk in chunks)):
+        await set_ingest_status(session, source_id=source_id, status="thin", message=THIN_MESSAGE)
+        await set_source_as_of(session, source_id=source_id, as_of=date.today())
+        return {"source_id": str(source_id)}
     await ingest_passages(session, source_id=source_id, passages=chunks)
     await set_source_as_of(session, source_id=source_id, as_of=date.today())
     return {"source_id": str(source_id)}
@@ -935,6 +1010,9 @@ async def approve_candidate(
     page = await fetch_url(url, settings=settings, client=client)
     if page.status != 200:
         raise ValidationError(f"URL fetch failed with status {page.status}: {url!r}")
+    chunks, _spec = web_passages(page, None)
+    if is_thin_page("\n".join(str(chunk.get("text", "")) for chunk in chunks)):
+        raise ValidationError(THIN_MESSAGE)
     digest = content_sha256(page.text.encode("utf-8"))
     row = (
         await session.execute(
@@ -962,11 +1040,7 @@ async def approve_candidate(
         source_id = UUID(str(existing[0]))
     else:
         source_id = UUID(str(row[0]))
-        await ingest_passages(
-            session,
-            source_id=source_id,
-            passages=chunk_text(page.text, kind="web"),
-        )
+        await ingest_passages(session, source_id=source_id, passages=chunks)
         await set_source_as_of(session, source_id=source_id, as_of=date.today())
     await session.execute(
         sa.text("UPDATE source_candidates SET status = 'approved' WHERE id = :candidate"),
@@ -1128,8 +1202,8 @@ async def set_ingest_status(
     status: str,
     message: str | None = None,
 ) -> None:
-    """Record one source's ingest state (queued/parsing/ready/failed)."""
-    if status not in ("queued", "parsing", "ready", "failed"):
+    """Record one source's ingest state (queued/parsing/ready/failed/thin)."""
+    if status not in ("queued", "parsing", "ready", "failed", "thin"):
         raise ValidationError(f"unknown ingest status: {status!r}")
     row = (
         await session.execute(
@@ -1150,7 +1224,8 @@ async def list_course_sources(session: AsyncSession, *, course_id: UUID) -> list
     A pending binding is a candidate awaiting human approval; held
     bindings were rejected and stay out of retrieval. Progress is the
     ingested passage count; ingest_status reports the pipeline state
-    (queued/parsing/ready/failed) with a message on failure.
+    (queued/parsing/ready/failed/thin) with a message on failure or
+    when the page gave no readable text.
     """
     rows = (
         await session.execute(
@@ -1287,6 +1362,9 @@ async def resolve_human_queue(
     page = await fetch_url(str(row[2]), settings=settings, client=client)
     if page.status != 200:
         raise ValidationError(f"URL fetch failed with status {page.status}: {row[2]!r}")
+    chunks, _spec = web_passages(page, None)
+    if is_thin_page("\n".join(str(chunk.get("text", "")) for chunk in chunks)):
+        raise ValidationError(THIN_MESSAGE)
     digest = content_sha256(page.text.encode("utf-8"))
     existing = (
         await session.execute(
@@ -1314,9 +1392,7 @@ async def resolve_human_queue(
         source_id = UUID(str(created[0]))
         if course_id is not None:
             await bind_source_to_course(session, course_id=course_id, source_id=source_id)
-        await ingest_passages(
-            session, source_id=source_id, passages=chunk_text(page.text, kind="web")
-        )
+        await ingest_passages(session, source_id=source_id, passages=chunks)
         await set_source_as_of(session, source_id=source_id, as_of=date.today())
     await session.execute(
         sa.text("UPDATE human_queue SET status = 'done' WHERE id = :item"),

@@ -728,3 +728,52 @@ def test_0020_qualifies_plain_group_tags_pins_accepts_and_downgrade_keeps_the_da
         conn.execute(
             "DELETE FROM users WHERE email IN ('m20-owner@example.com', 'm20-learner@example.com')"
         )
+
+
+def test_0021_adds_uncovered_and_downgrade_drops_only_it() -> None:
+    url = _db_url()
+    require_postgres(url)
+    command.upgrade(_cfg(url), "head")
+    assert "uncovered" in _harness_tables(url)["courses"]
+    command.downgrade(_cfg(url), "0020")
+    columns = _harness_tables(url)["courses"]
+    assert "uncovered" not in columns and "through_line" in columns
+    command.upgrade(_cfg(url), "head")
+    assert "uncovered" in _harness_tables(url)["courses"]
+
+
+def test_0022_allows_thin_and_downgrade_turns_it_into_failed_keeping_the_message() -> None:
+    url = _db_url()
+    require_postgres(url)
+    command.upgrade(_cfg(url), "head")
+    sync = _sync_url(url)
+    digest = "m22-" + "0" * 60
+    with psycopg.connect(sync, autocommit=True) as conn:
+        conn.execute("DELETE FROM sources WHERE content_sha256 = %s", (digest,))
+        conn.execute(
+            "INSERT INTO sources (content_sha256, kind, media, title, approval, storage_path,"
+            " ingest_status, ingest_message) VALUES (%s, 'url', 'text', 'm22', 'pending', '',"
+            " 'thin', 'no readable text')",
+            (digest,),
+        )
+    command.downgrade(_cfg(url), "0021")
+    with psycopg.connect(sync, autocommit=True) as conn:
+        row = conn.execute(
+            "SELECT ingest_status, ingest_message FROM sources WHERE content_sha256 = %s",
+            (digest,),
+        ).fetchone()
+        assert row == ("failed", "no readable text"), row
+        try:
+            conn.execute(
+                "UPDATE sources SET ingest_status = 'thin' WHERE content_sha256 = %s", (digest,)
+            )
+        except psycopg.errors.CheckViolation:
+            pass
+        else:
+            raise AssertionError("downgrade must restore the narrower ingest_status check")
+    command.upgrade(_cfg(url), "head")
+    with psycopg.connect(sync, autocommit=True) as conn:
+        conn.execute(
+            "UPDATE sources SET ingest_status = 'thin' WHERE content_sha256 = %s", (digest,)
+        )
+        conn.execute("DELETE FROM sources WHERE content_sha256 = %s", (digest,))

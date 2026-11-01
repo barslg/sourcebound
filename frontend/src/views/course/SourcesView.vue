@@ -148,11 +148,11 @@ async function resolve(item: QueueItem, action: 'approve' | 'dismiss'): Promise<
           <p v-if="candidates.length === 0" class="muted">{{ t('sources.noCandidates') }}</p>
           <ul class="plain-list" data-testid="candidate-list">
             <li v-for="s in candidates" :id="`source-${s.id}`" :key="s.id" class="bell-item stack" data-testid="candidate">
-              <div class="row"><strong>{{ s.title }}</strong><span class="chip">{{ mediaLabel(s.media) }}</span><span class="chip">{{ s.licence || t('sources.noLicence') }}</span><StatusChip v-if="ingestLabel(s)" :tone="s.ingest_status === 'failed' ? 'danger' : 'info'" :label="ingestLabel(s)" /></div>
+              <div class="row"><strong>{{ s.title }}</strong><span class="chip">{{ mediaLabel(s.media) }}</span><span class="chip">{{ s.licence || t('sources.noLicence') }}</span><StatusChip v-if="ingestLabel(s)" :tone="s.ingest_status === 'failed' ? 'danger' : s.ingest_status === 'thin' ? 'warn' : 'info'" :label="ingestLabel(s)" /></div>
               <span class="muted">{{ t(sourceCount(s.progress).key, s.progress) }}</span>
               <span v-if="s.ingest_message" class="mono danger-text">{{ s.ingest_message }}</span>
               <div class="row">
-                <ActionButton action="approve" :label="t('sources.approve')" size="small" :loading="working === s.id" :reason="lacking('source.approve')" @click="decide(s, 'approve')" />
+                <ActionButton action="approve" :label="t('sources.approve')" size="small" :loading="working === s.id" :reason="firstReason(lacking('source.approve'), s.ingest_status === 'thin' && t('sources.thinReason'))" @click="decide(s, 'approve')" />
                 <ActionButton action="reject" :label="t('sources.reject')" size="small" :reason="lacking('source.approve')" @click="decide(s, 'reject')" />
               </div>
             </li>
@@ -163,7 +163,7 @@ async function resolve(item: QueueItem, action: 'approve' | 'dismiss'): Promise<
           <p v-if="library.length === 0" class="muted">{{ t('sources.libraryEmpty') }}</p>
           <ul class="plain-list" data-testid="source-list">
             <li v-for="s in library" :id="`source-${s.id}`" :key="s.id" class="bell-item stack">
-              <div class="row"><strong>{{ s.title }}</strong><span class="chip">{{ mediaLabel(s.media) }}</span><span class="chip">{{ s.licence || t('sources.noLicence') }}</span><span v-if="s.as_of" class="muted">{{ t('sources.asOfOn', { date: s.as_of }) }}</span><StatusChip :tone="s.approval === 'held' ? 'warn' : s.approval === 'approved' ? 'ok' : 'neutral'" :label="t(`sources.state.${s.approval}`, s.approval)" data-testid="source-state" /><StatusChip v-if="ingestLabel(s)" :tone="s.ingest_status === 'failed' ? 'danger' : 'info'" :label="ingestLabel(s)" /></div>
+              <div class="row"><strong>{{ s.title }}</strong><span class="chip">{{ mediaLabel(s.media) }}</span><span class="chip">{{ s.licence || t('sources.noLicence') }}</span><span v-if="s.as_of" class="muted">{{ t('sources.asOfOn', { date: s.as_of }) }}</span><StatusChip :tone="s.approval === 'held' ? 'warn' : s.approval === 'approved' ? 'ok' : 'neutral'" :label="t(`sources.state.${s.approval}`, s.approval)" data-testid="source-state" /><StatusChip v-if="ingestLabel(s)" :tone="s.ingest_status === 'failed' ? 'danger' : s.ingest_status === 'thin' ? 'warn' : 'info'" :label="ingestLabel(s)" /></div>
               <span class="muted" data-testid="source-passages">{{ t(sourceCount(s.progress).key, s.progress) }}</span>
               <span v-if="s.ingest_message" class="mono danger-text">{{ s.ingest_message }}</span>
             </li>

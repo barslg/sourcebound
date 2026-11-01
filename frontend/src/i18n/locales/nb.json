@@ -381,8 +381,10 @@
       "queued": "Venter på å bli lest",
       "parsing": "Blir lest",
       "ready": "Lest",
-      "failed": "Kunne ikke leses"
+      "failed": "Kunne ikke leses",
+      "thin": "Ingen lesbar tekst"
     },
+    "thinReason": "Denne adressen ga ingen lesbar tekst. Lim inn eller last opp innholdet i stedet.",
     "fileChoose": "Velg fil",
     "fileRemove": "Fjern filen"
   },

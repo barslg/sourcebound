@@ -381,8 +381,10 @@
       "queued": "Waiting to be read",
       "parsing": "Being read",
       "ready": "Read",
-      "failed": "Could not be read"
+      "failed": "Could not be read",
+      "thin": "No readable text"
     },
+    "thinReason": "This address gave no readable text. Paste or upload its content instead.",
     "fileChoose": "Choose file",
     "fileRemove": "Remove file"
   },
