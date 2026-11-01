@@ -45,6 +45,13 @@ export const courseRuns = (id: string): string => `${courseItem(id)}/runs`
 export const runResume = (id: string): string => `${runItem(id)}/resume`
 
 export const learnCourses = `${API}/learn/courses`
+export const learnCourse = (id: string): string => `${learnCourses}/${enc(id)}`
+export const learnAsk = (id: string): string => `${learnCourse(id)}/ask`
+export const learnTopic = (id: string): string => `${API}/learn/topics/${enc(id)}`
+export const learnSubmit = (id: string): string => `${learnTopic(id)}/submit`
+export const learnPassage = (id: string): string => `${API}/learn/passages/${enc(id)}`
+export const learnAnswer = (id: string): string => `${API}/learn/blocks/${enc(id)}/answer`
+export const courseReport = (id: string): string => `${courseItem(id)}/report`
 export const humanQueue = `${API}/human-queue`
 export const humanQueueResolve = (id: string): string => `${humanQueue}/${enc(id)}/resolve`
 export const courseSources = (id: string): string => `${courseItem(id)}/sources`

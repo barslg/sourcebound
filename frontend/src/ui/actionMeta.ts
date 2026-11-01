@@ -61,6 +61,12 @@ export const ACTIONS = [
   a('remove-file', 'secondary', ['sources']),
   a('translate', 'primary', ['publish']),
   a('preview', 'secondary', ['publish', 'preview']),
+  a('check-answer', 'primary', ['topic']),
+  a('submit-test', 'primary', ['topic']),
+  a('retake', 'secondary', ['topic']),
+  a('ask', 'primary', ['topic']),
+  a('continue', 'primary', ['course outline']),
+  a('export', 'secondary', ['report']),
 ] as const satisfies readonly ActionMeta[]
 
 export type ActionId = (typeof ACTIONS)[number]['id']

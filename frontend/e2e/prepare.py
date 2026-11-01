@@ -308,6 +308,297 @@ async def seed_translations(session: AsyncSession, owner: str) -> dict[str, str]
     return labs
 
 
+LEARN_PASSAGES = (
+    "Alcohol rub takes twenty seconds when hands are not visibly soiled.",
+    "Soap and water takes forty seconds and is used when hands are soiled.",
+    "Hands are cleaned before touching a patient and after touching surroundings.",
+    "Gloves do not replace hand hygiene.",
+    "Alcohol rub does not remove the spores of Clostridioides difficile.",
+)
+
+
+async def seed_learn(session: AsyncSession, owner: str) -> dict[str, str]:
+    """A published course with all seven block types, a module test, and an nb translation of two blocks."""
+    import uuid
+    from importlib import import_module
+
+    from app.course.tree import BlockSkeleton, CourseTree, ModuleNode, SourceRef, TopicNode
+    from app.services import courses
+    from app.translation.variants import block_digest
+
+    cid = await courses.create_course(
+        session, owner_id=owner, title="Learner lab", language="en", scope_tags=["learn-lab"]
+    )
+    await add_source(
+        session, cid, "Hygiene protocol", "\n\n".join(LEARN_PASSAGES), "approved", "Internal"
+    )
+    await session.execute(
+        sa.text(
+            "UPDATE passages SET address = jsonb_set(address, '{heading_path}', '[\"Hand hygiene\"]')"
+            " WHERE source_id IN (SELECT source_id FROM course_sources WHERE course_id = :c)"
+        ),
+        {"c": str(cid)},
+    )
+    passages = (
+        await session.execute(
+            sa.text(
+                "SELECT p.id, p.text FROM passages p JOIN course_sources cs ON cs.source_id = p.source_id"
+                " WHERE cs.course_id = :c ORDER BY p.address_key"
+            ),
+            {"c": str(cid)},
+        )
+    ).all()
+    chips = [
+        {"handle": f"P{n}", "quote": str(text)[:40], "_pid": str(pid)}
+        for n, (pid, text) in enumerate(passages[:2], start=1)
+    ]
+    public = lambda items: [{k: v for k, v in c.items() if not k.startswith("_")} for c in items]  # noqa: E731
+
+    def fx(name: str) -> tuple[dict[str, object], dict[str, object]]:
+        return import_module(f"app.blocks.{name}.fixture").fixture()  # type: ignore[no-any-return]
+
+    specs: list[dict[str, object]] = []
+
+    def add(
+        name: str,
+        role: str,
+        topic: str,
+        content: dict[str, object],
+        key: dict[str, object],
+        cites: list[dict[str, str]],
+        node: str | None = None,
+    ) -> None:
+        specs.append(
+            {
+                "node": node or f"learn-{name}",
+                "type": name,
+                "role": role,
+                "topic": topic,
+                "content": content,
+                "key": key,
+                "cites": cites,
+            }
+        )
+
+    content, key = fx("reading")
+    content["body"] = (
+        "Hands are rubbed with alcohol for twenty seconds when they are not visibly soiled."
+    )
+    content["citations"] = public(chips[:1])
+    add("reading", "teach", "t1", content, key, chips[:1])
+    content, key = fx("figure")
+    content["caption"] = "Seconds of hand hygiene by method."
+    content["numbers"] = [20, 40]
+    content["citation"] = public(chips[1:2])[0]
+    key["source_numbers"] = [20, 40]
+    add("figure", "example", "t1", content, key, chips[1:2])
+    content, key = fx("choice")
+    content["stem"] = "How long does an alcohol rub take?"
+    content["options"] = ["Twenty seconds", "Forty seconds", "One minute"]
+    content["citations"] = public(chips[:1])
+    key["correct"] = [0]
+    add("choice", "check", "t1", content, key, chips[:1])
+    content, key = fx("matching")
+    content["pairs"] = [
+        {"left": "Alcohol rub", "right": "twenty seconds"},
+        {"left": "Soap and water", "right": "forty seconds"},
+    ]
+    content["citations"] = public(chips)
+    key["mapping"] = {"Alcohol rub": "twenty seconds", "Soap and water": "forty seconds"}
+    key["mapping_by_index"] = {"0": 0, "1": 1}
+    add("matching", "practice", "t1", content, key, chips)
+    content, key = fx("cloze")
+    content["text"] = "Gloves do not replace ___ ___."
+    content["blanks"] = ["___", "___"]
+    key["blanks"] = ["hand", "hygiene"]
+    add("cloze", "practice", "t1", content, key, chips[:1])
+    content, key = fx("scenario_practice")
+    content["scenario"] = "Sort two ward situations into risk tiers."
+    content["items"] = [
+        {"text": "Skipping the rub before a patient", "handle": "P1"},
+        {"text": "Wearing gloves after the rub", "handle": "P2"},
+    ]
+    content["citations"] = public(chips)
+    key["labels"] = {
+        "Skipping the rub before a patient": "high-risk",
+        "Wearing gloves after the rub": "minimal",
+    }
+    key["labels_by_index"] = {"0": "high-risk", "1": "minimal"}
+    key["passages_by_index"] = {"0": "P1", "1": "P2"}
+    add("scenario_practice", "practice", "t1", content, key, chips)
+    content, key = fx("spot_the_error")
+    content["sentences"] = [
+        "Alcohol rub takes forty seconds when hands are not visibly soiled.",
+        "Gloves do not replace hand hygiene.",
+    ]
+    key.update(
+        {
+            "planted_sentence": content["sentences"][0],
+            "planted_index": 0,
+            "kind": "number_date",
+            "passage": "P1",
+            "true_sentence": LEARN_PASSAGES[0],
+        }
+    )
+    add("spot_the_error", "practice", "t1", content, key, chips[:1])
+    content, key = fx("choice")
+    content["stem"] = "What do gloves replace?"
+    content["options"] = ["Nothing, hand hygiene stays", "Hand hygiene", "Soap"]
+    content["citations"] = public(chips[:1])
+    key["correct"] = [0]
+    add("choice", "test", "t2", content, key, chips[:1], node="learn-mt-choice")
+    content, key = fx("matching")
+    content["pairs"] = [
+        {"left": "Alcohol rub", "right": "twenty seconds"},
+        {"left": "Soap and water", "right": "forty seconds"},
+    ]
+    content["citations"] = public(chips)
+    key["mapping"] = {"Alcohol rub": "twenty seconds", "Soap and water": "forty seconds"}
+    key["mapping_by_index"] = {"0": 0, "1": 1}
+    add("matching", "test", "t2", content, key, chips, node="learn-mt-matching")
+    content, key = fx("spot_the_error")
+    content["sentences"] = [
+        "Soap and water takes forty seconds and is used when hands are soiled.",
+        "Gloves replace hand hygiene.",
+    ]
+    key.update(
+        {
+            "planted_sentence": content["sentences"][1],
+            "planted_index": 1,
+            "kind": "negation",
+            "passage": "P1",
+            "true_sentence": LEARN_PASSAGES[3],
+        }
+    )
+    add("spot_the_error", "test", "t2", content, key, chips[:1], node="learn-mt-spot")
+
+    suffix = uuid.uuid4().hex[:8]
+    topics: dict[str, list[dict[str, object]]] = {"t1": [], "t2": []}
+    for spec in specs:
+        topics[str(spec["topic"])].append(spec)
+
+    def skeleton(spec: dict[str, object]) -> BlockSkeleton:
+        return BlockSkeleton(
+            plan_node_id=f"{spec['node']}-{suffix}",
+            role=str(spec["role"]),
+            block_type=str(spec["type"]),
+            brief="brief",
+            source_refs=[SourceRef(handle="P1")],
+        )
+
+    tree = CourseTree(
+        modules=[
+            ModuleNode(
+                plan_node_id=f"m-{suffix}",
+                title="Hand hygiene",
+                purpose="Clean hands at the right moments.",
+                entry_knowledge="none",
+                exit_knowledge="clean hands",
+                topics=[
+                    TopicNode(
+                        plan_node_id=f"t1-{suffix}",
+                        kind="lesson",
+                        title="Rub or wash",
+                        objectives=["Choose the method"],
+                        through_line_note="c",
+                        blocks=[skeleton(x) for x in topics["t1"]],
+                    ),
+                    TopicNode(
+                        plan_node_id=f"t2-{suffix}",
+                        kind="module_test",
+                        title="Hygiene test",
+                        objectives=["Show it"],
+                        through_line_note="c",
+                        blocks=[skeleton(x) for x in topics["t2"]],
+                    ),
+                ],
+            )
+        ]
+    )
+    version_map = await courses.write_tree(session, course_id=cid, tree=tree, plan_digest="learn")
+    for spec in specs:
+        ids = version_map[f"{spec['node']}-{suffix}"]
+        spec["ids"] = ids
+        await session.execute(
+            sa.text(
+                "UPDATE block_versions SET content = CAST(:c AS jsonb), answer_key = CAST(:k AS jsonb) WHERE id = :v"
+            ),
+            {
+                "v": ids["version_id"],
+                "c": json.dumps(spec["content"]),
+                "k": json.dumps(spec["key"]),
+            },
+        )
+        for cite in spec["cites"]:  # type: ignore[attr-defined]
+            await session.execute(
+                sa.text(
+                    "INSERT INTO citations (block_version_id, passage_id, claim_path, quote, quote_start, quote_end, verified_by) VALUES (:v, :p, 'c', :q, 0, :e, 'code')"
+                ),
+                {
+                    "v": ids["version_id"],
+                    "p": cite["_pid"],
+                    "q": cite["quote"],
+                    "e": len(cite["quote"]),
+                },
+            )
+    topic_ids = {
+        str(r[0]): str(r[1])
+        for r in (
+            await session.execute(
+                sa.text(
+                    "SELECT t.plan_node_id, t.id FROM topics t JOIN modules m ON m.id = t.module_id WHERE m.course_id = :c"
+                ),
+                {"c": str(cid)},
+            )
+        ).all()
+    }
+    await session.commit()
+    version = await courses.publish_course(session, course_id=cid)
+    translation = (
+        await session.execute(
+            sa.text(
+                "INSERT INTO course_translations (id, course_version_id, language, status) VALUES (gen_random_uuid(), :v, 'nb', 'partial') RETURNING id"
+            ),
+            {"v": str(version)},
+        )
+    ).scalar_one()
+    norsk = {
+        "reading": {
+            "body": "Hendene gnis med alkohol i tjue sekunder når de ikke er synlig skitne.",
+            "citations": public(chips[:1]),
+        },
+        "choice": {
+            "stem": "Hvor lenge tar alkoholgnidning?",
+            "options": ["Tjue sekunder", "Førti sekunder", "Ett minutt"],
+            "citations": public(chips[:1]),
+        },
+    }
+    for spec in specs:
+        if spec["node"] not in ("learn-reading", "learn-choice"):
+            continue
+        translated = norsk[str(spec["type"])]
+        await session.execute(
+            sa.text(
+                "INSERT INTO translation_blocks (id, translation_id, plan_node_id, block_type, status, content, translated_answer_key, source_digest) VALUES (gen_random_uuid(), :t, :n, :bt, 'ok', CAST(:c AS jsonb), CAST(:k AS jsonb), :d)"
+            ),
+            {
+                "t": str(translation),
+                "n": spec["ids"]["plan_node_id"]
+                if "plan_node_id" in spec["ids"]
+                else f"{spec['node']}-{suffix}",
+                "bt": spec["type"],
+                "c": json.dumps(translated),
+                "k": json.dumps(spec["key"]),
+                "d": block_digest(dict(spec["content"]), dict(spec["key"])),
+            },  # type: ignore[arg-type]
+        )
+    return {
+        "learn": str(cid),
+        "learn_topic": topic_ids[f"t1-{suffix}"],
+        "learn_test": topic_ids[f"t2-{suffix}"],
+    }
+
+
 async def seed_labs(session: AsyncSession, owner: str) -> dict[str, str]:
     from app.runs.executor import new_run
 
@@ -387,6 +678,7 @@ async def seed_labs(session: AsyncSession, owner: str) -> dict[str, str]:
     )
     labs["publish"] = str(publish)
     labs.update(await seed_translations(session, owner))
+    labs.update(await seed_learn(session, owner))
     return labs
 
 

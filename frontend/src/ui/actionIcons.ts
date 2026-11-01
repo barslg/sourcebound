@@ -1,6 +1,6 @@
 import type { Component } from 'vue'
 import {
-  ArchiveX, ArrowDown, ArrowUp, Ban, Bell, CircleCheck, CircleX, CloudDownload, CloudUpload, Copy, Ellipsis, Eye, EyeOff, FileUp, FileX, Globe, Keyboard, Languages,
+  ArchiveX, ArrowDown, ArrowRight, ClipboardCheck, Download, FileCheck, MessageCircleQuestion, RotateCcw, ArrowUp, Ban, Bell, CircleCheck, CircleX, CloudDownload, CloudUpload, Copy, Ellipsis, Eye, EyeOff, FileUp, FileX, Globe, Keyboard, Languages,
   Link2Off, ListTree, LogIn, LogOut, Pencil, PencilLine, Play, Plus, RefreshCcwDot, RefreshCw, RotateCw, Save, Search, Send, ShieldCheck,
   Sparkles, Square, SunMoon, TextCursorInput, Trash2, Upload, UserCheck, UserPlus, X,
 } from 'lucide-vue-next'
@@ -49,4 +49,10 @@ export const ACTION_ICONS: Record<ActionId, Component> = {
   'remove-file': FileX,
   translate: Languages,
   preview: Eye,
+  'check-answer': ClipboardCheck,
+  'submit-test': FileCheck,
+  retake: RotateCcw,
+  ask: MessageCircleQuestion,
+  continue: ArrowRight,
+  export: Download,
 }

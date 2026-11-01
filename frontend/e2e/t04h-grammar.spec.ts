@@ -22,6 +22,9 @@ const INSTANCES: Record<string, Instance> = {
   'course-preview': { who: 'admin', path: () => `/courses/${I().translated}/preview` },
   'course-publish': { who: 'admin', path: () => `/courses/${I().publish}/publish` },
   learn: { who: 'student', path: () => '/learn' },
+  'learn-course': { who: 'student', path: () => `/learn/courses/${I().learn}` },
+  'learn-topic': { who: 'student', path: () => `/learn/topics/${I().learn_topic}` },
+  'course-report': { who: 'admin', path: () => `/courses/${I().learn}/report` },
   'course-runs': { who: 'admin', path: () => `/courses/${I().course}/runs` },
   run: { who: 'admin', path: () => `/runs/${I().run}` },
   users: { who: 'admin', path: () => '/users' },
@@ -38,6 +41,11 @@ async function lookupTitles(page: Page, row: RouteRow, path: string): Promise<{ 
   if (row.object === 'course') {
     const id = path.split('/')[2] as string
     return { course: ((await (await page.request.get(`/api/v1/courses/${id}`)).json()) as { title: string }).title }
+  }
+  if (row.object === 'learn') {
+    const parts = path.split('/')
+    const learnerCourse = parts[2] === 'courses' ? (parts[3] as string) : ((await (await page.request.get(`/api/v1/learn/topics/${parts[3]}`)).json()) as { course_id: string }).course_id
+    return { course: ((await (await page.request.get(`/api/v1/learn/courses/${learnerCourse}`)).json()) as { title: string }).title }
   }
   if (row.object === 'run') {
     const run = (await (await page.request.get(path.replace('/runs/', '/api/v1/runs/'))).json()) as { course_id: string | null }
@@ -73,7 +81,7 @@ test('grammar: purpose line, title, heading, breadcrumb and primary action of ev
     const help = (await page.getByTestId('page-help').first().textContent())?.trim()
     if (help !== text(row.purposeKey as string)) tag(`purpose line is "${help}", registry says "${text(row.purposeKey as string)}"`)
 
-    const wantTitle = [text(row.titleKey as string), row.object === 'course' ? course : null, 'Sourcebound'].filter(Boolean).join(' · ')
+    const wantTitle = [text(row.titleKey as string), row.object === 'course' || row.object === 'learn' ? course : null, 'Sourcebound'].filter(Boolean).join(' · ')
     if (await page.title() !== wantTitle) tag(`browser title is "${await page.title()}", registry says "${wantTitle}"`)
 
     if (row.name !== 'signin') {
@@ -86,7 +94,7 @@ test('grammar: purpose line, title, heading, breadcrumb and primary action of ev
     if (row.parent === null) {
       if (crumbs.length > 0) tag(`has a breadcrumb but no parent in the registry`)
     } else {
-      const want = [...ancestors.map((a) => (a.object === 'course' ? course : text(a.titleKey as string))), row.heading === 'object' ? course : text(row.titleKey as string)]
+      const want = [...ancestors.map((a) => (a.object === 'course' || a.object === 'learn' ? course : text(a.titleKey as string))), row.heading === 'object' ? course : text(row.titleKey as string)]
       if (JSON.stringify(crumbs.map((c) => c.label)) !== JSON.stringify(want)) tag(`breadcrumb is ${JSON.stringify(crumbs.map((c) => c.label))}, parent chain says ${JSON.stringify(want)}`)
       const names = crumbs.slice(0, -1).map((c) => (c.href ? matchRow(c.href)?.name : '(no link)'))
       if (JSON.stringify(names) !== JSON.stringify(ancestors.map((a) => a.name))) tag(`breadcrumb links go to ${JSON.stringify(names)}, parent chain says ${JSON.stringify(ancestors.map((a) => a.name))}`)

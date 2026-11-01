@@ -2,7 +2,7 @@ import type { ActionId } from '../ui/actionMeta'
 import type { SectionEntry } from './guard'
 
 export type PageState = 'loading' | 'empty' | 'error' | 'denied' | 'queued'
-export type ObjectKind = 'course' | 'user' | 'role' | 'invite' | 'run' | 'none'
+export type ObjectKind = 'course' | 'learn' | 'user' | 'role' | 'invite' | 'run' | 'none'
 export type NavIconId = 'courses' | 'users' | 'invites' | 'roles' | 'learn'
 export type Access = { kind: 'public' } | { kind: 'signedIn' } | { kind: 'perm'; code: string }
 
@@ -77,6 +77,9 @@ export const REGISTRY = [
   row({ name: 'invites', path: '/invites', titleKey: 'invites.title', purposeKey: 'invites.intro', access: { kind: 'perm', code: 'invite.create' }, nav: { section: 'main', icon: 'invites', labelKey: 'nav.invites' }, states: LIST, primaryAction: 'create' }),
   row({ name: 'roles', path: '/roles', titleKey: 'roles.title', purposeKey: 'roles.help', access: { kind: 'perm', code: 'role.edit' }, nav: { section: 'main', icon: 'roles', labelKey: 'nav.roles' }, states: LIST, primaryAction: 'create' }),
   row({ name: 'learn', path: '/learn', titleKey: 'learn.title', purposeKey: 'learn.help', access: { kind: 'perm', code: 'learn.read' }, nav: { section: 'main', icon: 'learn', labelKey: 'nav.learn' }, states: LIST }),
+  row({ name: 'learn-course', path: '/learn/courses/:id', titleKey: 'learnCourse.title', purposeKey: 'learnCourse.help', parent: 'learn', access: { kind: 'perm', code: 'learn.read' }, object: 'learn', heading: 'object', states: LIST, primaryAction: 'continue' }),
+  row({ name: 'learn-topic', path: '/learn/topics/:id', titleKey: 'learnTopic.title', purposeKey: 'learnTopic.help', parent: 'learn-course', access: { kind: 'perm', code: 'learn.read' }, object: 'learn', states: LIST }),
+  row({ name: 'course-report', path: '/courses/:id/report', titleKey: 'report.title', purposeKey: 'report.help', parent: 'course-publish', access: courses, object: 'course', heading: 'object', states: LIST, primaryAction: 'export' }),
   row({ name: 'not-found', path: '/:rest(.*)*', titleKey: 'notFound.title', purposeKey: 'notFound.help', access: { kind: 'signedIn' }, bare: false, entry: 'external' }),
 ] as const satisfies readonly RouteRow[]
 
@@ -143,7 +146,7 @@ export function trail(name: string, ctx: TrailContext): Crumb[] {
   for (let r = current.parent ? rowOf(current.parent) : null; r; r = r.parent ? rowOf(r.parent) : null) chain.unshift(r)
   const out: Crumb[] = []
   for (const r of chain) {
-    if (r.object === 'course') {
+    if (r.object === 'course' || r.object === 'learn') {
       if (ctx.courseTitle && ctx.courseId) out.push({ label: ctx.courseTitle, to: pathFor(r.name, { id: ctx.courseId }) })
     } else out.push({ label: ctx.t(r.titleKey as string), to: pathFor(r.name) })
   }
@@ -153,7 +156,7 @@ export function trail(name: string, ctx: TrailContext): Crumb[] {
 
 export function docTitle(name: string, ctx: TrailContext): string {
   const r = rowOf(name)
-  return [ctx.t(r.titleKey as string), r.object === 'course' ? ctx.courseTitle : null, 'Sourcebound'].filter((x): x is string => Boolean(x)).join(' · ')
+  return [ctx.t(r.titleKey as string), r.object === 'course' || r.object === 'learn' ? ctx.courseTitle : null, 'Sourcebound'].filter((x): x is string => Boolean(x)).join(' · ')
 }
 
 export function navEntries(section: 'main' | 'course'): RouteRow[] {

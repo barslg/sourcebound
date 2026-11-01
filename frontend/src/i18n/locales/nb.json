@@ -686,7 +686,13 @@
     "choose-file": "Velg fil",
     "remove-file": "Fjern filen",
     "translate": "Oversett",
-    "preview": "Forhåndsvis som elev"
+    "preview": "Forhåndsvis som elev",
+    "check-answer": "Sjekk svaret",
+    "submit-test": "Lever testen",
+    "retake": "Ta testen på nytt",
+    "ask": "Spør kurset",
+    "continue": "Fortsett",
+    "export": "Eksporter CSV"
   },
   "form": {
     "required": "påkrevd",
@@ -748,13 +754,91 @@
   "learn": {
     "title": "Min læring",
     "help": "Kursene du er påmeldt, med fremgangen din.",
-    "empty": "Du er ikke påmeldt et publisert kurs ennå.",
+    "empty": "Du er ikke påmeldt noe publisert kurs ennå. Be læreren din om en invitasjonslenke.",
     "progress": "{done} av {total} blokker prøvd",
     "status": {
       "not_started": "Ikke startet",
       "in_progress": "Underveis",
       "complete": "Fullført",
       "mastered": "Mestret"
+    },
+    "startCourse": "Start kurset",
+    "continueCourse": "Fortsett der du slapp",
+    "noTopics": "Kurset har ingen emner ennå.",
+    "blankLabel": "Hull {n}",
+    "pickMatch": "Velg samsvar",
+    "pickTier": "Velg et nivå",
+    "pickSource": "Velg kilden som støtter",
+    "tier": {
+      "unacceptable": "Uakseptabel risiko",
+      "high-risk": "Høy risiko",
+      "limited": "Begrenset risiko",
+      "minimal": "Minimal risiko"
+    },
+    "kind": {
+      "number_date": "Tall eller dato",
+      "negation": "Negasjon",
+      "scope": "Virkeområde",
+      "entity_swap": "Byttet navn",
+      "cause_reversal": "Snudd årsak",
+      "bad_citation": "Feil henvisning",
+      "unspecified": "Ingen type oppgitt"
+    },
+    "spotWhich": "Hvilken setning stemmer ikke med kildene?",
+    "spotNone": "Ingen, alle setningene stemmer",
+    "spotKind": "Hva slags feil er det?",
+    "spotKindHelp": "Velg den nærmeste typen.",
+    "pickKind": "Velg en type",
+    "spotPassage": "Hvilket avsnitt viser det riktige utsagnet?",
+    "spotFix": "Rettet verdi (valgfritt)",
+    "spotFixHelp": "Skriv formuleringen kilden støtter.",
+    "result": {
+      "correct": "Riktig",
+      "partial": "Delvis riktig ({score} %)",
+      "notYet": "Ikke ennå",
+      "attempt": "Forsøk {n}",
+      "wrongSentence": "Den gale setningen",
+      "noneWrong": "Ingen setning var feil i denne oppgaven.",
+      "trueStatement": "Hva kilden sier",
+      "passage": "Avsnitt",
+      "hint": "Se her:"
+    },
+    "counters": {
+      "caption": "Din feilfinningslogg etter type (treff / falske alarmer / bom)",
+      "kind": "Feiltype",
+      "mine": "Du",
+      "course": "Hele kurset",
+      "cells": "{hits} treff, {alarms} falske alarmer, {misses} bom"
+    },
+    "type": {
+      "reading": "Lesetekst",
+      "figure": "Figur",
+      "choice": "Spørsmål",
+      "matching": "Samsvar",
+      "cloze": "Hullutfylling",
+      "scenario_practice": "Scenario",
+      "spot_the_error": "Finn feilen"
+    },
+    "blockTitle": "Blokk {n}: {type}",
+    "attempts": "{count} forsøk | {count} forsøk | {count} forsøk",
+    "sources": "Kilder for denne blokken",
+    "checkAnswer": "Sjekk svaret",
+    "answerFirst": "Svar på blokken først.",
+    "answerSomething": "Svar på minst ett spørsmål først.",
+    "companion": {
+      "title": "Kilde",
+      "hint": "Velg en henvisning for å lese kildeavsnittet her.",
+      "asOf": "per {date}",
+      "close": "Lukk kilden"
+    },
+    "tutor": {
+      "title": "Spør om materialet",
+      "help": "Svarene er sitater fra kildene til dette kurset, aldri fri tekst. Hvis kildene ikke sier det, får du beskjed.",
+      "question": "Spørsmålet ditt",
+      "questionHelp": "Opptil 2000 tegn. Eksempel: Hvor lenge skal hendene gnis?",
+      "ask": "Spør kurset",
+      "needQuestion": "Skriv et spørsmål først.",
+      "notInMaterials": "Dette står ikke i kursmaterialet."
     }
   },
   "runs": {
@@ -781,5 +865,47 @@
     "audience_language": "Språk for målgruppen",
     "planted_error": "Plantet feil",
     "block_type": "Blokktype"
+  },
+  "learnCourse": {
+    "title": "Kursoversikt",
+    "help": "Moduler og emner med din fremdrift. Velg et emne eller fortsett der du slapp.",
+    "empty": "Dette kurset har ingen emner å lese ennå.",
+    "backToList": "Tilbake til mine kurs",
+    "language": "Språk",
+    "languageHelp": "Språket du leser på. Blokker som ikke er oversatt ennå vises på kildespråket med et varsel.",
+    "moduleTest": "Modultest"
+  },
+  "learnTopic": {
+    "title": "Emne",
+    "help": "Les blokkene, åpne en kilde ved siden av teksten og sjekk svarene dine. Forsøk blir aldri låst.",
+    "lessonHelp": "Les hver blokk og sjekk svarene underveis.",
+    "testHelp": "Svar på det du kan, og lever hele siden. Du kan ta testen på nytt.",
+    "empty": "Dette emnet har ikke noe innhold å lese ennå.",
+    "backToCourse": "Tilbake til kursoversikten",
+    "testScore": "Testresultat: {score} %",
+    "unanswered": "{count} ubesvarte spørsmål | {count} ubesvart spørsmål | {count} ubesvarte spørsmål",
+    "allAnswered": "Alle spørsmål ble besvart.",
+    "retake": "Ta testen på nytt",
+    "submitTest": "Lever testen",
+    "next": "Neste emne: {title}"
+  },
+  "report": {
+    "title": "Elevrapport",
+    "help": "Fullføring, resultater og feilfinning for hver påmeldte elev.",
+    "link": "Elevrapport",
+    "export": "Eksporter CSV",
+    "notPublished": "Kurset er ikke publisert ennå, så ingen elever kan jobbe med det.",
+    "empty": "Ingen elever er påmeldt ennå. Lag en invitasjon for å legge til den første.",
+    "inviteLink": "Gå til invitasjoner",
+    "lastActivity": "Siste aktivitet",
+    "topicsCaption": "Emner for {name}",
+    "topic": "Emne",
+    "completion": "Fullført",
+    "mastery": "Resultat",
+    "status": "Status",
+    "errorsCaption": "Feilfinning etter type",
+    "courseErrors": "Feilfinning, hele kurset",
+    "courseErrorsHelp": "Treff, falske alarmer og bom etter feiltype for alle elever.",
+    "noErrors": "Ingen feilfinningsforsøk ennå."
   }
 }

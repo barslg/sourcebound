@@ -79,6 +79,7 @@ defineExpose({ reload })
         <StatusChip v-for="tr in course.data.value.translations" :key="tr.language" :tone="translationTone(tr)" :label="translationLabel(tr)" :data-testid="`translation-${tr.language}`" :data-state="translationState(tr)" />
         <ActionButton action="preview" size="small" :reason="previewDenied" data-testid="preview-link" @click="router.push(`/courses/${id}/preview`)" />
         <router-link :to="`/courses/${id}/runs`" data-testid="runs-link">{{ t('runs.link') }}</router-link>
+        <router-link :to="`/courses/${id}/report`" data-testid="report-link">{{ t('report.link') }}</router-link>
       </div>
       <ol class="stage-strip" :aria-label="t('course.stages')">
         <li v-for="s in strip" :key="s.id">

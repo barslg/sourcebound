@@ -86,4 +86,32 @@ export interface InviteListItem { id: string; course_tags: string[]; max_uses: n
 export interface NotificationRow { id: string; kind: string; payload: Record<string, unknown>; read: boolean; created_at: string | null }
 export interface QueueItem { id: string; kind: string; url: string; reason: string; payload: { course_id?: string }; created_at: string | null }
 export interface Permission { code: string; category: string; label: string; description: string }
-export interface LearnCourse { id: string; title: string; language: string; audience: string; progress: { blocks_total: number; blocks_attempted: number; completion: number; status: string } }
+export interface LearnProgress { blocks_total: number; blocks_attempted: number; completion: number; assessed: number; mastery: number | null; status: string }
+export interface LearnCourse { id: string; title: string; language: string; audience: string; progress: LearnProgress }
+export interface LearnTopicRef { id: string; kind: string; title: string; objectives: string[]; progress: LearnProgress }
+export interface LearnModule { id: string; title: string; purpose: string; topics: LearnTopicRef[] }
+export interface LearnOutline { id: string; title: string; language: string; source_language: string; available_languages: Array<{ language: string; status: string }>; progress: LearnProgress; modules: LearnModule[] }
+export interface Chip { handle: string; source_title: string; address_label: string; passage_id: string }
+export interface Attempts { count: number; best_score: number | null; last_score: number | null }
+export interface LearnBlockView { id: string; block_type: string; role: string; ordinal: number; content: Record<string, unknown>; citations: Chip[]; language: string; fallback_notice: string | null; attempts: Attempts; passage_options?: Chip[] }
+export interface LearnTopic { id: string; course_id: string; module_id: string; kind: string; title: string; objectives: string[]; language: string; progress: LearnProgress; blocks: LearnBlockView[] }
+export interface LearnPassage { id: string; text: string; address_label: string; source_title: string; as_of: string | null; course_id: string }
+export interface KindCounts { hits: number; false_alarms: number; misses: number }
+export interface SpotFeedback { wrong_sentence: string; true_statement: string; passage: Chip | null; habit_line: string }
+export interface AnswerResult {
+  block_id: string
+  correct: boolean
+  partial: boolean
+  score: number
+  feedback: { habit: string } | SpotFeedback
+  hint_from_source: Chip | null
+  attempt_no: number
+  source_links: Chip[]
+  counters?: Record<string, unknown>
+  topic_mastery?: LearnProgress
+}
+export interface SubmitResult { topic_id: string; score: number; unanswered: number; results: AnswerResult[]; mastery: LearnProgress }
+export type AskReply = { mode: 'quotes'; quotes: Array<{ quote: string; chip: Chip }> } | { mode: 'not_in_materials'; quotes: []; hint: string }
+export interface ReportTopic { topic_id: string; title: string; kind: string; completion: number; mastery: number | null; status: string; last_activity: string | null }
+export interface ReportLearner { user_id: string; display_name: string; email: string; last_activity: string | null; topics: ReportTopic[]; find_the_error: Record<string, KindCounts> }
+export interface CourseReport { course_id: string; title: string; published: boolean; learners: ReportLearner[]; find_the_error: Record<string, KindCounts> }

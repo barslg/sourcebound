@@ -4,7 +4,7 @@ import { expect, ids, signInAs, test } from './fixtures'
 
 function routes(): string[] {
   const i = ids()
-  return ['/courses', '/users', '/roles', '/invites', `/courses/${i.course}/plan`, `/courses/${i.course}/sources`, `/courses/${i.fix}/fix`, `/courses/${i.publish}/publish`, `/courses/${i.translated}/publish`, `/courses/${i.translated}/preview?language=nb`, `/runs/${i.run}`, '/signin', `/invite/${'ab'.repeat(32)}`, '/waiting', '/nowhere-at-all']
+  return ['/courses', '/users', '/roles', '/invites', `/courses/${i.course}/plan`, `/courses/${i.course}/sources`, `/courses/${i.fix}/fix`, `/courses/${i.publish}/publish`, `/courses/${i.translated}/publish`, `/courses/${i.translated}/preview?language=nb`, `/runs/${i.run}`, `/learn/courses/${i.learn}`, `/learn/topics/${i.learn_topic}`, `/learn/topics/${i.learn_test}`, `/courses/${i.learn}/report`, '/signin', `/invite/${'ab'.repeat(32)}`, '/waiting', '/nowhere-at-all']
 }
 
 async function bad(page: Page): Promise<string[]> {

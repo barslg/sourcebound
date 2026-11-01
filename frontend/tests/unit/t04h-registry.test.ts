@@ -61,7 +61,7 @@ describe('route registry: the router is built from it and nothing else', () => {
     }
   })
   it('names the object in the path: :id for a course, :runId for a run, :token for an invite', () => {
-    const want = { course: ':id', run: ':runId', invite: ':token' } as const
+    const want = { course: ':id', learn: ':id', run: ':runId', invite: ':token' } as const
     for (const r of pages.filter((x) => x.name !== 'not-found')) {
       const params = r.path.split('/').filter((s) => s.startsWith(':'))
       expect(params, r.name).toEqual(r.object in want ? [want[r.object as keyof typeof want]] : [])

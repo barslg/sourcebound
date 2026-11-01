@@ -227,3 +227,23 @@ textarea { font: inherit; color: var(--sb-fg); background: var(--sb-surface); bo
 kbd { border: 1px solid var(--sb-border); border-radius: var(--sb-radius-sm); padding: 1px 6px; background: var(--sb-bg); }
 .guarded { position: relative; }
 .bell-count { position: absolute; top: -4px; right: -4px; pointer-events: none; }
+
+.learn-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 340px); gap: var(--sb-space-5); align-items: start; }
+.learn-main { max-width: 75ch; }
+.companion { position: sticky; top: calc(var(--sb-space-6) * 2); border: 1px solid var(--sb-border); border-radius: var(--sb-radius); padding: var(--sb-space-3); background: var(--sb-surface); }
+.passage-text { margin: 0; padding-left: var(--sb-space-3); border-left: 3px solid var(--sb-border); }
+.answer-set { border: 0; padding: 0; margin: 0; }
+.answer-set legend { font-weight: 600; padding: 0; margin-bottom: var(--sb-space-2); }
+.answer-option { display: flex; align-items: flex-start; gap: var(--sb-space-2); min-height: 32px; flex-wrap: wrap; }
+.answer-option input { margin-top: 4px; }
+.cite-chip { cursor: pointer; font: inherit; background: var(--sb-surface); color: var(--sb-accent); border: 1px solid var(--sb-border); border-radius: var(--sb-radius); display: inline-flex; gap: var(--sb-space-2); align-items: center; padding: var(--sb-space-1) var(--sb-space-2); min-height: 32px; text-align: left; }
+.cite-chip[aria-expanded='true'] { border-color: var(--sb-accent); }
+.cloze-line { line-height: 2.4; }
+.cloze-input { width: 10ch; margin: 0 var(--sb-space-1); }
+.disclosure { display: inline-flex; align-items: center; gap: var(--sb-space-2); background: none; border: 0; font: inherit; font-weight: 600; color: var(--sb-fg); cursor: pointer; min-height: 32px; padding: 0; }
+.tutor-head { margin: 0; font-size: var(--sb-fs-md); }
+.grow { flex: 1 1 12ch; }
+.spot-facts { display: grid; grid-template-columns: max-content 1fr; gap: var(--sb-space-1) var(--sb-space-3); margin: 0; }
+.spot-facts dt { font-weight: 600; }
+.spot-facts dd { margin: 0; }
+@media (max-width: 1100px) { .learn-layout { grid-template-columns: 1fr; } .companion { position: static; } }

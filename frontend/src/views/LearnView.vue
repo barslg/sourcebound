@@ -17,7 +17,7 @@ const courses = useResource<LearnCourse[]>('learn:courses', (signal) => request<
   <ResourceState :loading="courses.loading.value" :error="courses.error.value" :empty="(courses.data.value ?? []).length === 0" :empty-text="t('learn.empty')" @retry="courses.reload()">
     <ul class="plain-list" data-testid="learn-list">
       <li v-for="c in courses.data.value" :key="c.id" class="bell-item row" data-testid="learn-item">
-        <strong>{{ c.title }}</strong>
+        <router-link :to="`/learn/courses/${c.id}`" data-testid="learn-open"><strong>{{ c.title }}</strong></router-link>
         <span v-if="c.audience" class="muted">{{ t('course.factAudience', { audience: c.audience }) }}</span>
         <StatusChip :tone="c.progress.status === 'mastered' || c.progress.status === 'complete' ? 'ok' : 'info'" :label="t(`learn.status.${c.progress.status}`)" />
         <span class="muted">{{ t('learn.progress', { done: c.progress.blocks_attempted, total: c.progress.blocks_total }) }}</span>

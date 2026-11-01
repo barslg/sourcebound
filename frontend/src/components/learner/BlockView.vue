@@ -8,6 +8,7 @@ import ReadingBlock from './ReadingBlock.vue'
 import ScenarioBlock from './ScenarioBlock.vue'
 import SpotErrorBlock from './SpotErrorBlock.vue'
 
+defineOptions({ inheritAttrs: false })
 const BY_TYPE: Record<string, Component> = {
   reading: ReadingBlock,
   choice: ChoiceBlock,
@@ -22,6 +23,6 @@ const view = computed(() => BY_TYPE[props.type] ?? null)
 </script>
 
 <template>
-  <component :is="view" v-if="view" :content="content" />
+  <component :is="view" v-if="view" v-bind="$attrs" :content="content" />
   <slot v-else />
 </template>

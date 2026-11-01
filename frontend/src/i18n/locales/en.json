@@ -686,7 +686,13 @@
     "choose-file": "Choose file",
     "remove-file": "Remove file",
     "translate": "Translate",
-    "preview": "Preview as learner"
+    "preview": "Preview as learner",
+    "check-answer": "Check answer",
+    "submit-test": "Submit test",
+    "retake": "Retake test",
+    "ask": "Ask the course",
+    "continue": "Continue",
+    "export": "Export CSV"
   },
   "form": {
     "required": "required",
@@ -748,13 +754,91 @@
   "learn": {
     "title": "My learning",
     "help": "The courses you are enrolled in, with your progress.",
-    "empty": "You are not enrolled in a published course yet.",
+    "empty": "You are not enrolled in a published course yet. Ask your teacher for an invite link.",
     "progress": "{done} of {total} blocks tried",
     "status": {
       "not_started": "Not started",
       "in_progress": "In progress",
       "complete": "Complete",
       "mastered": "Mastered"
+    },
+    "startCourse": "Start the course",
+    "continueCourse": "Continue where you left off",
+    "noTopics": "The course has no topics yet.",
+    "blankLabel": "Gap {n}",
+    "pickMatch": "Pick the match",
+    "pickTier": "Pick a tier",
+    "pickSource": "Pick the supporting source",
+    "tier": {
+      "unacceptable": "Unacceptable risk",
+      "high-risk": "High risk",
+      "limited": "Limited risk",
+      "minimal": "Minimal risk"
+    },
+    "kind": {
+      "number_date": "Number or date",
+      "negation": "Negation",
+      "scope": "Scope",
+      "entity_swap": "Swapped name",
+      "cause_reversal": "Reversed cause",
+      "bad_citation": "Bad citation",
+      "unspecified": "No kind named"
+    },
+    "spotWhich": "Which sentence does not match the sources?",
+    "spotNone": "None, every sentence holds",
+    "spotKind": "What kind of error is it?",
+    "spotKindHelp": "Pick the closest kind.",
+    "pickKind": "Pick a kind",
+    "spotPassage": "Which passage shows the true statement?",
+    "spotFix": "Corrected value (optional)",
+    "spotFixHelp": "Write the wording the source supports.",
+    "result": {
+      "correct": "Correct",
+      "partial": "Partly correct ({score}%)",
+      "notYet": "Not yet",
+      "attempt": "Attempt {n}",
+      "wrongSentence": "The wrong sentence",
+      "noneWrong": "No sentence was wrong in this exercise.",
+      "trueStatement": "What the source says",
+      "passage": "Passage",
+      "hint": "Look here:"
+    },
+    "counters": {
+      "caption": "Your find-the-error record by kind (hits / false alarms / misses)",
+      "kind": "Error kind",
+      "mine": "You",
+      "course": "Whole course",
+      "cells": "{hits} hits, {alarms} false alarms, {misses} misses"
+    },
+    "type": {
+      "reading": "Reading",
+      "figure": "Figure",
+      "choice": "Question",
+      "matching": "Matching",
+      "cloze": "Gap fill",
+      "scenario_practice": "Scenario",
+      "spot_the_error": "Find the error"
+    },
+    "blockTitle": "Block {n}: {type}",
+    "attempts": "{count} attempts | {count} attempt | {count} attempts",
+    "sources": "Sources for this block",
+    "checkAnswer": "Check answer",
+    "answerFirst": "Answer the block first.",
+    "answerSomething": "Answer at least one question first.",
+    "companion": {
+      "title": "Source",
+      "hint": "Select a citation to read the source passage here.",
+      "asOf": "as of {date}",
+      "close": "Close source"
+    },
+    "tutor": {
+      "title": "Ask about the materials",
+      "help": "Answers are quotes from this course sources, never free text. If the sources do not say it, you are told so.",
+      "question": "Your question",
+      "questionHelp": "Up to 2000 characters. Example: How long must hands be rubbed?",
+      "ask": "Ask the course",
+      "needQuestion": "Type a question first.",
+      "notInMaterials": "This is not in the course materials."
     }
   },
   "runs": {
@@ -781,5 +865,47 @@
     "audience_language": "Language for the audience",
     "planted_error": "Planted error",
     "block_type": "Block type"
+  },
+  "learnCourse": {
+    "title": "Course outline",
+    "help": "Modules and topics with your progress. Pick a topic or continue where you left off.",
+    "empty": "This course has no topics to read yet.",
+    "backToList": "Back to my courses",
+    "language": "Language",
+    "languageHelp": "The language you read in. Blocks not yet translated show the source text with a notice.",
+    "moduleTest": "Module test"
+  },
+  "learnTopic": {
+    "title": "Topic",
+    "help": "Read the blocks, open a source beside the text, and check your answers. Attempts never lock.",
+    "lessonHelp": "Read each block and check your answers as you go.",
+    "testHelp": "Answer what you can, then submit the whole page. You can retake the test.",
+    "empty": "This topic has no content to read yet.",
+    "backToCourse": "Back to the course outline",
+    "testScore": "Test score: {score}%",
+    "unanswered": "{count} questions unanswered | {count} question unanswered | {count} questions unanswered",
+    "allAnswered": "Every question was answered.",
+    "retake": "Retake test",
+    "submitTest": "Submit test",
+    "next": "Next topic: {title}"
+  },
+  "report": {
+    "title": "Learner report",
+    "help": "Completion, scores and find-the-error results for each enrolled learner.",
+    "link": "Learner report",
+    "export": "Export CSV",
+    "notPublished": "The course is not published yet, so no learner can work on it.",
+    "empty": "No learner is enrolled yet. Create an invite to add the first one.",
+    "inviteLink": "Go to invites",
+    "lastActivity": "Last activity",
+    "topicsCaption": "Topics of {name}",
+    "topic": "Topic",
+    "completion": "Completion",
+    "mastery": "Score",
+    "status": "Status",
+    "errorsCaption": "Find-the-error by kind",
+    "courseErrors": "Find-the-error, whole course",
+    "courseErrorsHelp": "Hits, false alarms and misses by error kind across all learners.",
+    "noErrors": "No find-the-error attempts yet."
   }
 }

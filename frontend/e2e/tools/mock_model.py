@@ -55,6 +55,8 @@ def carried(text):
 def reply_for(prompt, schema):
     CALLS[0] += 1
     head = prompt[:30]
+    LOG.write(json.dumps({"call": CALLS[0], "head": head}) + "\n")
+    LOG.flush()
     base = fill(schema)
     if head.startswith("# Researcher"):
         handles = sorted(
