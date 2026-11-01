@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.errors import ValidationError
 from app.llm.registry import resolve_step
+from app.runs.stop_text import EMPTY_PLAN, MODEL_DOWN, plain_marker, plain_step_error, plain_stop
 
 RUN_LOCK_PREFIX = "run:"
 # Whole approved source the architect may see (BRIEF §3: ≤200k tokens).
@@ -179,11 +180,7 @@ async def finish_step(session: AsyncSession, *, step_id: UUID, output: dict[str,
 
 
 def safe_stop_marker(marker: str) -> str:
-    """Stop markers carry a plain sentence only, never reply/request text.
-
-    The exception class and schema path stay in run_steps.error; the
-    run-level marker is what the author reads on screen.
-    """
+    """Stop markers are a step + exception class, or an already plain sentence from plain_stop."""
     import re as _re
 
     clean = marker.replace("\x00", "")
@@ -195,9 +192,7 @@ def safe_stop_marker(marker: str) -> str:
         return f"The run stopped at step {step}. Resume to continue from there."
     if clean == "cancel requested":
         return clean
-    if clean.startswith("The run stopped"):
-        return clean
-    return "The run stopped. Resume to continue from the last finished step."
+    return clean[:500]
 
 
 async def stop_run(session: AsyncSession, *, run_id: UUID, marker: str) -> None:
@@ -279,8 +274,6 @@ async def get_run(session: AsyncSession, *, run_id: UUID) -> dict[str, Any]:
         for e in (row[2] or [])
         if isinstance(e, dict)
     ]
-    raw_marker = str(row[5] or "")
-    safe_marker = safe_stop_marker(raw_marker) if raw_marker else None
     return {
         "id": str(run_id),
         "status": row[0],
@@ -288,7 +281,8 @@ async def get_run(session: AsyncSession, *, run_id: UUID) -> dict[str, Any]:
         "compiled_dag": safe_dag,
         "dag_digest": row[3],
         "estimate": row[4],
-        "stop_marker": safe_marker,
+        "stop_marker": plain_marker(row[5])[0],
+        "stop_code": plain_marker(row[5])[1] or _code_of_plain(row[5]),
         "kind": row[6] if len(row) > 6 else None,
         "cost_so_far": str(spent),
         "topics": await _run_topics(session, course_id=row[1]),
@@ -298,11 +292,36 @@ async def get_run(session: AsyncSession, *, run_id: UUID) -> dict[str, Any]:
                 "status": step[1],
                 "input_digest": step[2],
                 "attempt": step[3],
-                "error": step[4],
+                "error": plain_step_error(str(step[0]), step[4]),
             }
             for step in steps
         ],
     }
+
+
+async def list_runs(session: AsyncSession, *, course_id: UUID) -> list[dict[str, Any]]:
+    """Runs of one course, newest first: id, status, kind, cost, started, plain stop."""
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT r.id, r.status, r.kind, r.created_at, r.stop_marker,"
+                " COALESCE((SELECT SUM(l.cost_usd) FROM llm_calls l WHERE l.run_id = r.id), 0)"
+                " FROM runs r WHERE r.course_id = :course ORDER BY r.created_at DESC, r.id"
+            ),
+            {"course": str(course_id)},
+        )
+    ).all()
+    return [
+        {
+            "id": str(row[0]),
+            "status": row[1],
+            "kind": row[2],
+            "created_at": row[3].isoformat(),
+            "stop_marker": plain_marker(row[4])[0],
+            "cost_so_far": str(row[5]),
+        }
+        for row in rows
+    ]
 
 
 async def _run_topics(session: AsyncSession, *, course_id: Any) -> list[dict[str, Any]]:
@@ -543,7 +562,7 @@ async def _drive_locked(
                     await stop_run(
                         failed,
                         run_id=run_id,
-                        marker=f"stopped at {step_key}: {type(exc).__name__}: {exc}"[:2000],
+                        marker=plain_stop(step_key, type(exc).__name__, str(exc))[0],
                     )
                 async with factory() as fresh:
                     return await get_run(fresh, run_id=run_id)
@@ -2303,6 +2322,11 @@ GENERATION_HANDLERS: dict[str, str] = {
     "rework_blocks": "rework_blocks_step",
     "saboteur": "saboteur_step",
 }
+
+
+def _code_of_plain(marker: str | None) -> str | None:
+    """Machine code for a marker already written as a plain sentence."""
+    return {EMPTY_PLAN: "empty_plan", MODEL_DOWN: "model_down"}.get(marker or "")
 
 
 def generation_handlers() -> dict[str, Any]:

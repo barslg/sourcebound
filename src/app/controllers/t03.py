@@ -452,6 +452,17 @@ async def _run_in_scope(ctx: RequestContext, *, run_id: UUID) -> dict[str, Any]:
     return run
 
 
+async def list_course_runs(ctx: RequestContext, *, course_id: str) -> list[dict[str, Any]]:
+    from app.runs.executor import list_runs as list_use_case
+    from app.services.courses import get_course as get_course_use_case
+
+    actor = require_auth(ctx)
+    require(actor, "run.start")
+    course = await get_course_use_case(ctx.db, course_id=UUID(course_id))
+    _owner_or_404(course, actor.user_id, actor.is_superadmin)
+    return await list_use_case(ctx.db, course_id=UUID(course_id))
+
+
 async def get_run(ctx: RequestContext, *, run_id: str) -> dict[str, Any]:
     actor = require_auth(ctx)
     require(actor, "run.start")
@@ -677,6 +688,14 @@ async def resolve_human_queue(ctx: RequestContext, *, item_id: str, body: Any) -
     )
     await ctx.db.commit()
     return result
+
+
+async def list_tags(ctx: RequestContext) -> list[dict[str, Any]]:
+    from app.services.courses import list_tags as list_use_case
+
+    actor = require_auth(ctx)
+    require(actor, "course.edit")
+    return await list_use_case(ctx.db, actor=actor)
 
 
 async def get_report(

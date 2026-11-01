@@ -377,7 +377,10 @@ async def test_planted_500_stops_run_and_resume_pays_nothing_twice(
         t03_session, run_id, _plan_mock_handler(fail_architect=True), settings
     )
     assert stopped["status"] == "stopped"
-    assert stopped["stop_marker"] and "architect:plan" in stopped["stop_marker"]
+    assert stopped["stop_code"] == "model_down"
+    assert any(
+        s["step_key"] == "architect:plan" and s["status"] != "done" for s in stopped["steps"]
+    )
 
     async def paid_cost(agent: str) -> Any:
         from decimal import Decimal

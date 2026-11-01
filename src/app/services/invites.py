@@ -29,7 +29,6 @@ from app.services.audit import write_audit
 
 STUDENT_ROLE_NAME = "student"
 STUDENT_PERMISSION_CODES: tuple[str, ...] = (
-    "section.courses",
     "learn.read",
     "learn.answer",
     "learn.ask",
@@ -321,6 +320,13 @@ async def _ensure_student_role(session: AsyncSession, role_name: str) -> None:
             actor=None,
         )
         return
+    await session.execute(
+        sa.text(
+            "DELETE FROM role_permissions WHERE role_id = :role"
+            " AND permission_code = 'section.courses'"
+        ),
+        {"role": str(exists[0])},
+    )
     for code in STUDENT_PERMISSION_CODES:
         await session.execute(
             sa.text(

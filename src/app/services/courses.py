@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.course.tree import ConstraintRow, CourseTree
 from app.errors import ConflictError, NotFoundError, UnprocessableError, ValidationError
+from app.rbac.principal import Principal
 
 PLAN_EDIT_OPS = (
     "rename_module",
@@ -76,6 +77,55 @@ async def owns_any_course(session: AsyncSession, *, owner_id: UUID, course_ids: 
     return int(row) > 0
 
 
+async def course_facts(session: AsyncSession, course_ids: list[UUID]) -> dict[str, dict[str, int]]:
+    """Counters every reader of a course shares (list rows and the course header).
+
+    held_count: blocks held by a check; draft_count: blocks written but not yet
+    read or accepted (status draft); pending_sources and source_count: course sources.
+    """
+    if not course_ids:
+        return {}
+    ids = [str(item) for item in course_ids]
+    blocks = (
+        await session.execute(
+            sa.text(
+                "SELECT m.course_id, count(*) FILTER (WHERE b.status = 'held'),"
+                " count(*) FILTER (WHERE b.status = 'draft'), count(*) FROM blocks b"
+                " JOIN topics tp ON tp.id = b.topic_id JOIN modules m ON m.id = tp.module_id"
+                " WHERE m.course_id = ANY(CAST(:ids AS uuid[])) GROUP BY m.course_id"
+            ),
+            {"ids": ids},
+        )
+    ).all()
+    sources = (
+        await session.execute(
+            sa.text(
+                "SELECT course_id, count(*) FILTER (WHERE approval = 'pending'), count(*)"
+                " FROM course_sources WHERE course_id = ANY(CAST(:ids AS uuid[]))"
+                " GROUP BY course_id"
+            ),
+            {"ids": ids},
+        )
+    ).all()
+    out = {
+        item: {
+            "held_count": 0,
+            "draft_count": 0,
+            "pending_sources": 0,
+            "source_count": 0,
+            "written_count": 0,
+        }
+        for item in ids
+    }
+    for course, held, draft, total in blocks:
+        out[str(course)].update(
+            held_count=int(held), draft_count=int(draft), written_count=int(total) - int(draft)
+        )
+    for course, pending, total in sources:
+        out[str(course)].update(pending_sources=int(pending), source_count=int(total))
+    return out
+
+
 async def get_course(session: AsyncSession, *, course_id: UUID) -> dict[str, Any]:
     """One course row with its profile; 404 when missing."""
     row = (
@@ -107,7 +157,50 @@ async def get_course(session: AsyncSession, *, course_id: UUID) -> dict[str, Any
             {"course": str(course_id)},
         )
     ).all()
+    counts = (
+        await session.execute(
+            sa.text(
+                "SELECT count(DISTINCT tp.id), count(b.id) FROM modules m"
+                " LEFT JOIN topics tp ON tp.module_id = m.id"
+                " LEFT JOIN blocks b ON b.topic_id = tp.id WHERE m.course_id = :course"
+            ),
+            {"course": str(course_id)},
+        )
+    ).one()
+    current_version = row[7]
+    if current_version is None:
+        latest = (
+            await session.execute(
+                sa.text(
+                    "SELECT id FROM course_versions WHERE course_id = :course"
+                    " ORDER BY created_at DESC LIMIT 1"
+                ),
+                {"course": str(course_id)},
+            )
+        ).first()
+        current_version = latest[0] if latest else None
+    translations = (
+        (
+            await session.execute(
+                sa.text(
+                    "SELECT ct.language, ct.status,"
+                    " count(*) FILTER (WHERE tb.status = 'ok'),"
+                    " count(*) FILTER (WHERE tb.status = 'held'),"
+                    " count(*) FILTER (WHERE tb.status = 'failed')"
+                    " FROM course_translations ct"
+                    " LEFT JOIN translation_blocks tb ON tb.translation_id = ct.id"
+                    " WHERE ct.course_version_id = :version GROUP BY ct.language, ct.status"
+                    " ORDER BY ct.language"
+                ),
+                {"version": str(current_version)},
+            )
+        ).all()
+        if current_version is not None
+        else []
+    )
+    facts = (await course_facts(session, [course_id]))[str(course_id)]
     return {
+        **facts,
         "id": str(row[0]),
         "owner_id": str(row[1]),
         "title": row[2],
@@ -116,6 +209,19 @@ async def get_course(session: AsyncSession, *, course_id: UUID) -> dict[str, Any
         "scope_tags": list(row[5] or []),
         "row_version": row[6],
         "published_version_id": str(row[7]) if row[7] else None,
+        "current_version_id": str(current_version) if current_version else None,
+        "topic_count": int(counts[0]),
+        "block_count": int(counts[1]),
+        "translations": [
+            {
+                "language": str(item[0]),
+                "status": str(item[1]),
+                "ok": int(item[2]),
+                "held": int(item[3]),
+                "failed": int(item[4]),
+            }
+            for item in translations
+        ],
         "profile": (
             {
                 "methodology_codes": profile[0],
@@ -957,8 +1063,10 @@ async def list_courses(
             {} if is_superadmin else {"owner": str(owner_id)},
         )
     ).all()
+    facts = await course_facts(session, [UUID(str(row[0])) for row in rows])
     return [
         {
+            **facts[str(row[0])],
             "id": str(row[0]),
             "title": row[1],
             "language": row[2],
@@ -973,6 +1081,23 @@ async def list_courses(
         }
         for row in rows
     ]
+
+
+async def list_tags(session: AsyncSession, *, actor: Principal) -> list[dict[str, Any]]:
+    """Existing scope tags with the visible courses carrying each, for the pickers.
+
+    Visibility follows the course library (superadmin: all, others: own);
+    a scoped caller sees only the tags inside its scope.
+    """
+    rows = await list_courses(session, owner_id=actor.user_id, is_superadmin=actor.is_superadmin)
+    scope = actor.scope_for("course.edit")
+    by_tag: dict[str, list[dict[str, str]]] = {}
+    for row in rows:
+        for tag in row["scope_tags"]:
+            if scope is not None and tag not in scope:
+                continue
+            by_tag.setdefault(tag, []).append({"id": row["id"], "title": row["title"]})
+    return [{"tag": tag, "courses": by_tag[tag]} for tag in sorted(by_tag)]
 
 
 async def course_estimate(session: AsyncSession, *, course_id: UUID) -> dict[str, Any]:

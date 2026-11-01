@@ -161,6 +161,13 @@ def _cases(w: World) -> list[tuple[str, str, str, dict[str, Any], dict[str, int]
             {},
             {"owner": 200, "other_owner": 404, "student": 403, "anon": 401},
         ),
+        (
+            "runs",
+            "GET",
+            f"/api/v1/courses/{w.course}/runs",
+            {},
+            {"owner": 200, "other_owner": 404, "student": 403, "anon": 401},
+        ),
     ]
 
 

@@ -24,6 +24,7 @@ runs_router = APIRouter(prefix="/runs", tags=["runs"])
 blocks_router = APIRouter(prefix="/blocks", tags=["blocks"])
 methodologies_router = APIRouter(prefix="/methodologies", tags=["methodologies"])
 human_queue_router = APIRouter(prefix="/human-queue", tags=["human-queue"])
+tags_router = APIRouter(prefix="/tags", tags=["tags"])
 
 
 @courses_router.post("", status_code=201)
@@ -72,6 +73,15 @@ async def edit_plan(
     return await controller.edit_plan(
         ctx, course_id=course_id, operations=body.operations, base_version=body.base_version
     )
+
+
+@courses_router.get("/{course_id}/runs")
+async def list_course_runs(
+    course_id: Annotated[str, Depends(course_id_param)],
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> list[dict[str, Any]]:
+    """Runs of one course, newest first, with status, kind and cost."""
+    return await controller.list_course_runs(ctx, course_id=course_id)
 
 
 @courses_router.get("/{course_id}/plan")
@@ -367,6 +377,14 @@ async def resolve_human_queue(
 ) -> dict[str, Any]:
     """Resolve one queued URL: approve ingests it, dismiss drops it."""
     return await controller.resolve_human_queue(ctx, item_id=item_id, body={"action": body.action})
+
+
+@tags_router.get("")
+async def list_tags(
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> list[dict[str, Any]]:
+    """Existing course labels with the courses carrying each (for pickers)."""
+    return await controller.list_tags(ctx)
 
 
 @methodologies_router.get("")

@@ -18,7 +18,7 @@ from uuid import UUID
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.errors import NotFoundError, ValidationError
+from app.errors import NotFoundError, UnprocessableError, ValidationError
 from app.rbac.principal import Principal
 from app.rbac.require import require
 from app.services.audit import write_audit
@@ -161,7 +161,6 @@ async def submit_plan(
     defer: Callable[[UUID], Awaitable[None]] | None = None,
 ) -> UUID:
     """Submit plan generation: researcher passes plus the architect."""
-    from app.errors import UnprocessableError
 
     require(actor, "course.plan")
     if not queries or not all(query.strip() for query in queries):
@@ -189,7 +188,6 @@ async def submit_generate(
     defer: Callable[[UUID], Awaitable[None]] | None = None,
 ) -> UUID:
     """Submit block generation; refused while a required question is open."""
-    from app.errors import UnprocessableError
     from app.services.courses import blocking_questions
 
     require(actor, "course.generate")

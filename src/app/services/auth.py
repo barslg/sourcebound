@@ -121,6 +121,16 @@ async def refuse_if_unusable(session: AsyncSession, user_id: UUID) -> None:
             raise AuthError("this account is banned and cannot sign in")
 
 
+async def login_state_exists(session: AsyncSession, state: str) -> bool:
+    """True while a one-time sign-in state is still unspent."""
+    row = (
+        await session.execute(
+            sa.text("SELECT 1 FROM auth_states WHERE state = :state"), {"state": state}
+        )
+    ).first()
+    return row is not None
+
+
 async def begin_login(
     session: AsyncSession,
     provider: Provider,
@@ -232,7 +242,12 @@ async def finish_login(
         )
         raise AuthError("this sign-in attempt expired; please try again")
     bound = str(stored[3]) if stored[3] is not None else None
-    if bound is not None and (expected_session_id is None or str(expected_session_id) != bound):
+    if bound is not None and expected_session_id is None:
+        raise AuthError(
+            "this sign-in attempt came back without its session cookie; open the sign-in"
+            " page again and keep the same address (127.0.0.1 and localhost are different sites)"
+        )
+    if bound is not None and str(expected_session_id) != bound:
         raise AuthError("this sign-in attempt was started in another session")
     await session.execute(sa.text("DELETE FROM auth_states WHERE state = :state"), {"state": state})
     next_url = validate_next_url(str(stored[2])) if stored[2] else None

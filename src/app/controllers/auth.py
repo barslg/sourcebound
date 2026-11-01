@@ -63,10 +63,21 @@ async def finish_login(
     state: str,
     code: str,
     request: Request | None = None,
-) -> tuple[dto.LoginDoneResponse, str]:
-    """Finish a login; return (payload, fresh_session_token_for_cookie)."""
-    from app.services.auth import finish_login as finish_use_case
+) -> tuple[dto.LoginDoneResponse, str] | None:
+    """Finish a login; return (payload, fresh_session_token_for_cookie).
 
+    None means the state was already spent by a signed-in browser (a repeated
+    callback request): nothing to do, the caller sends the browser home.
+    """
+    from app.services.auth import finish_login as finish_use_case
+    from app.services.auth import login_state_exists
+
+    if (
+        ctx.login_session is not None
+        and ctx.login_session.user_id is not None
+        and not await login_state_exists(ctx.db, state)
+    ):
+        return None
     provider = provider_for(ctx.settings, provider_name, request)
     pending = ctx.login_session.pending_invite_id if ctx.login_session else None
     expected = ctx.login_session.id if ctx.login_session else None

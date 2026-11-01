@@ -89,6 +89,7 @@ class InviteRequest(BaseModel):
 
 
 class InviteResponse(BaseModel):
+    id: str
     token: str
     course_tags: list[str]
     max_uses: int | None

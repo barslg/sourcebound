@@ -206,6 +206,58 @@ async def ban_user(session: AsyncSession, *, actor: Principal, user_id: UUID, re
     )
 
 
+async def unban_user(session: AsyncSession, *, actor: Principal, user_id: UUID) -> None:
+    """Lift a ban: clear the stamp and the persisted ban rows, under the ban scope rules."""
+    require(actor, "user.ban")
+    target = await _target_row(session, user_id)
+    _refuse_superadmin_target(actor, is_superadmin=bool(target[2]))
+    require_scope(actor, await _target_tags(session, user_id), code="user.ban")
+    email = normalize_email(str(target[1]))
+    banned_here = target[3] is not None
+    identities = (
+        await session.execute(
+            sa.text("SELECT provider, subject FROM identities WHERE user_id = :user"),
+            {"user": str(user_id)},
+        )
+    ).all()
+    removed = len(
+        (
+            await session.execute(
+                sa.text("DELETE FROM bans WHERE email = :email RETURNING id"), {"email": email}
+            )
+        ).all()
+    )
+    for provider, subject in identities:
+        removed += len(
+            (
+                await session.execute(
+                    sa.text(
+                        "DELETE FROM bans WHERE provider = :provider"
+                        " AND subject_digest = :digest RETURNING id"
+                    ),
+                    {
+                        "provider": str(provider),
+                        "digest": identity_digest(str(provider), str(subject)),
+                    },
+                )
+            ).all()
+        )
+    if not banned_here and removed == 0:
+        raise ConflictError("this account is not banned")
+    await session.execute(
+        sa.text("UPDATE users SET banned_at = NULL, banned_reason = '' WHERE id = :user"),
+        {"user": str(user_id)},
+    )
+    await write_audit(
+        session,
+        actor_id=actor.user_id,
+        action="user.unban",
+        entity="user",
+        entity_id=str(user_id),
+        meta={},
+    )
+
+
 async def _owned_invites(session: AsyncSession, user_id: UUID) -> list[Any]:
     rows = (
         await session.execute(
