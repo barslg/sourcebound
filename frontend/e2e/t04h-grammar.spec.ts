@@ -14,6 +14,7 @@ const INSTANCES: Record<string, Instance> = {
   courses: { who: 'admin', path: () => '/courses' },
   'course-sources': { who: 'admin', path: () => `/courses/${I().course}/sources` },
   'course-plan': { who: 'admin', path: () => `/courses/${I().course}/plan` },
+  'course-generate': { who: 'admin', path: () => `/courses/${I().course}/generate` },
   'course-fix': {
     who: 'admin',
     path: () => `/courses/${I().fix}/fix`,

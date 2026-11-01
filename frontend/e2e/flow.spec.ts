@@ -63,14 +63,13 @@ test('author path: create, source, plan, generate, fix one block, translate, pre
 
   await page.goto(`/courses/${courseId}/plan`)
   await page.locator('label[for^="m-"]').first().click()
-  await page.locator('#b-aud').fill('ward nurses')
   await page.locator('#b-q').fill('hand hygiene')
   await page.getByTestId('plan-build').click()
-  await expect(page.getByTestId('plan-tree')).toBeVisible({ timeout: 180_000 })
+  await expect(page.getByTestId('plan-outline')).toBeVisible({ timeout: 180_000 })
   const planned = await api<PlanApi>(admin, 'GET', `/courses/${courseId}/plan`)
   expect(blocksOf(planned).length).toBeGreaterThan(0)
 
-  await page.reload()
+  await page.goto(`/courses/${courseId}/generate`)
   await page.getByTestId('generate').click()
   const run = await until(() => api<Array<{ id: string; status: string; kind: string | null }>>(admin, 'GET', `/courses/${courseId}/runs`), (r) => r.some((x) => x.kind === 'generation' && x.status === 'done'), 'generation run done')
   const gen = run.find((x) => x.kind === 'generation')

@@ -36,7 +36,7 @@ describe('next action names the control that resolves it', () => {
     expect(nextAction({ ...base, pendingSources: 2, firstPendingId: 's9' }).to).toBe('/courses/c1/sources#source-s9')
     expect(nextAction({ ...base, generated: true, held: 1, firstHeldId: 'b1' }).to).toBe('/courses/c1/fix#held-b1')
     expect(nextAction({ ...base, generated: true }).to).toBe('/courses/c1/publish#publish-open')
-    expect(nextAction(base).to).toBe('/courses/c1/plan#generate')
+    expect(nextAction(base).to).toBe('/courses/c1/generate#generate')
     expect(nextAction({ ...base, published: true }).to).toBeNull()
   })
   it('gives each stage one state', () => {

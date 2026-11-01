@@ -28,14 +28,12 @@ const CONTROLS: Array<[RegExp, Call]> = [
   [/^Reject source$/, 'POST /api/v1/sources/{}/reject'],
   [/^Approve address$/, 'POST /api/v1/human-queue/{}/resolve'],
   [/^Dismiss address$/, 'POST /api/v1/human-queue/{}/resolve'],
-  [/^Save plan$/, 'PATCH /api/v1/courses/{}/plan'],
-  [/^Apply new title$/, 'ui'],
-  [/^Move (up|down)$/, 'ui'],
-  [/^Delete from plan$/, 'ui'],
-  [/^Save answer$/, 'ui'],
+  [/^Save answer$/, 'PATCH /api/v1/courses/{}/plan'],
   [/^Generate course$/, 'POST /api/v1/courses/{}/generate/submit'],
+  [/^Generate again$/, 'POST /api/v1/courses/{}/generate/submit'],
   [/^Build plan$/, 'POST /api/v1/courses/{}/plan/submit'],
-  [/^Show or hide the topics of /, 'ui'],
+  [/^Add module$/, 'PATCH /api/v1/courses/{}/plan'],
+  [/^Show or hide the blocks of /, 'ui'],
   [/^Rewrite all held blocks/, 'POST /api/v1/courses/{}/held/rewrite'],
   [/^Rewrite block$/, 'POST /api/v1/blocks/{}/rewrite'],
   [/^Edit brief$/, 'ui'],
@@ -140,7 +138,7 @@ function routes(): string[] {
   const i = ids()
   return [
     '/courses', '/users', '/roles', '/invites',
-    `/courses/${i.course}/plan`, `/courses/${i.course}/sources`, `/courses/${i.course}/fix`, `/courses/${i.course}/publish`,
+    `/courses/${i.course}/plan`, `/courses/${i.course}/generate`, `/courses/${i.course}/sources`, `/courses/${i.course}/fix`, `/courses/${i.course}/publish`,
     `/courses/${i.empty}/plan`, `/courses/${i.sources}/sources`, `/courses/${i.fix}/fix`, `/courses/${i.fix}/publish`,
     `/runs/${i.run}`, `/runs/${i.live_run}`,
   ]

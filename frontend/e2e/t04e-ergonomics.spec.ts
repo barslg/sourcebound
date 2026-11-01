@@ -17,7 +17,7 @@ function authorRoutes(): Array<[string, string]> {
   const i = ids()
   return [
     ['courses', '/courses'], ['users', '/users'], ['roles', '/roles'], ['invites', '/invites'],
-    ['plan', `/courses/${i.course}/plan`], ['sources', `/courses/${i.sources}/sources`], ['fix', `/courses/${i.fix}/fix`],
+    ['plan', `/courses/${i.course}/plan`], ['generate', `/courses/${i.course}/generate`], ['sources', `/courses/${i.sources}/sources`], ['fix', `/courses/${i.fix}/fix`],
     ['publish', `/courses/${i.publish}/publish`], ['run', `/runs/${i.run}`],
   ]
 }
@@ -201,9 +201,7 @@ for (const width of [1280, 1024]) {
     expect(problems).toEqual([])
     if (width === 1024) {
       await open(page, `/courses/${ids().course}/plan`)
-      await expect(page.getByRole('tab', { name: /Questions and generate/ })).toBeVisible()
-      await expect(page.getByTestId('before-card')).toBeHidden()
-      await page.getByRole('tab', { name: /Questions and generate/ }).click()
+      await expect(page.getByTestId('plan-outline')).toBeVisible()
       await expect(page.getByTestId('before-card')).toBeVisible()
     }
   })
