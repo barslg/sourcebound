@@ -1,4 +1,7 @@
 # Local: docker compose up -d --build. Postgres also reachable at localhost:5434.
+# The image builds from a fresh clone but docker-entrypoint.sh refuses to start migrate, api
+# and worker without prompts/<agent>/system.md: `docker compose logs migrate` then says so
+# in plain words. The product never runs on stubs.
 services:
   db:
     image: postgres:16
