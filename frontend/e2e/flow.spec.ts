@@ -69,10 +69,12 @@ test('author path: create, source, plan, generate, fix one block, translate, pre
 
   await page.reload()
   await page.getByTestId('generate').click()
-  const generated = await until(() => api<CourseApi>(admin, 'GET', `/courses/${courseId}`), (c) => c.held_count > 0 && c.draft_count === 0, 'generation finished with held blocks')
-  const run = await api<Array<{ id: string; status: string; kind: string | null }>>(admin, 'GET', `/courses/${courseId}/runs`)
-  expect(run[0]?.status).toBe('done')
-  console.log(`FLOW generation run ${run[0]?.id} status ${run[0]?.status} held ${generated.held_count}`)
+  const run = await until(() => api<Array<{ id: string; status: string; kind: string | null }>>(admin, 'GET', `/courses/${courseId}/runs`), (r) => r.some((x) => x.kind === 'generation' && x.status === 'done'), 'generation run done')
+  const gen = run.find((x) => x.kind === 'generation')
+  const generated = await api<CourseApi>(admin, 'GET', `/courses/${courseId}`)
+  expect(generated.held_count).toBeGreaterThan(0)
+  expect(generated.draft_count).toBe(0)
+  console.log(`FLOW generation run ${gen?.id} status ${gen?.status} held ${generated.held_count} draft ${generated.draft_count}`)
 
   const squash = (v: string): string => v.replace(/\s+/g, ' ').trim()
   await page.goto('/courses')
@@ -115,7 +117,9 @@ test('author path: create, source, plan, generate, fix one block, translate, pre
   await expect(page.getByTestId('published-note')).toBeVisible()
   const published = await api<CourseApi>(admin, 'GET', `/courses/${courseId}`)
   expect(published.status).toBe('published')
-  expect(published.translations.some((t) => t.language === 'nb' && t.status === 'ready')).toBe(true)
+  const kept = await api<{ available_languages: Array<{ language: string; status: string }>; blocks: Array<{ language: string; fallback_notice: string | null }> }>(admin, 'GET', `/courses/${courseId}/learner?lang=nb`)
+  expect(kept.available_languages.some((l) => l.language === 'nb' && l.status === 'ready')).toBe(true)
+  expect(kept.blocks.every((b) => b.language === 'nb' && b.fallback_notice === null)).toBe(true)
 
   await page.goto(`/invites?course=${courseId}`)
   await page.getByTestId('invite-create').click()

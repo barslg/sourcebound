@@ -10,7 +10,8 @@ from app.course.tree import BLOCK_TYPES
 
 LOG = open(sys.argv[2] if len(sys.argv) > 2 else "tmp/mock-model.log", "a")
 HELD_BEFORE: dict[str, int] = {}
-NB = "Dette er en norsk tekst og det er ikke en test for de som har"
+CALLS = [0]
+NB = "Dette er en norsk tekst også for ansatte, fordi det gjelder deres arbeid"
 
 
 def fill(s):
@@ -46,7 +47,13 @@ def last_json(prompt):
     return json.loads(prompt[i + 1 :])
 
 
+def carried(text):
+    """What a translation must keep verbatim: numbers, [P1] markers and gaps."""
+    return re.findall(r"\[P\d+\]|___|\d+(?:[.,]\d+)?", text)
+
+
 def reply_for(prompt, schema):
+    CALLS[0] += 1
     head = prompt[:30]
     base = fill(schema)
     if head.startswith("# Researcher"):
@@ -134,6 +141,7 @@ def reply_for(prompt, schema):
             hold = node.endswith("-b0") and HELD_BEFORE.get(node, 0) < 2
             HELD_BEFORE[node] = HELD_BEFORE.get(node, 0) + 1
             v = "hold" if hold else "pass"
+            LOG.write(json.dumps({"reader_node": node, "verdict": v}) + "\n")
             out.append(
                 {
                     "plan_node_id": b["plan_node_id"],
@@ -159,8 +167,8 @@ def reply_for(prompt, schema):
         return {
             **base,
             "segments": [
-                {"id": s["id"], "text": NB + " " + s["text"][:0] + str(i)}
-                for i, s in enumerate(segs)
+                {"id": s["id"], "text": " ".join([NB, *carried(s["text"])])}
+                for s in segs
             ],
         }
     try:
@@ -175,7 +183,7 @@ def reply_for(prompt, schema):
         block_type = "reading"
     return {
         "block_type": block_type,
-        "text": "Staff apply the cited passage at work.",
+        "text": f"Staff apply the cited passage at work (take {CALLS[0]}).",
         "citations": [{"passage_id": h, "quote": quote}],
         "answer": "key",
         "options": [{"text": "Yes", "correct": True}, {"text": "No", "correct": False}],
