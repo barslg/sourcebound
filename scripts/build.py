@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tomllib
@@ -163,8 +164,23 @@ def commit(task: dict) -> None:
     sh("git", "commit", "-q", "--allow-empty", "-m", f"build({task['id']}): {task['title']}")
 
 
+def quota_reset_from_log(task: dict) -> str | None:
+    """The reset time Muse reported when the subscription window ran out, else None."""
+    logs = sorted(LOGS.glob(f"{task['id']}-*.jsonl"))
+    if not logs:
+        return None
+    text = logs[-1].read_bytes().decode("utf-8", "replace")
+    m = re.search(r"Subscription quota exhausted\. Your usage window resets at ([0-9T:\-]+Z)", text)
+    return m.group(1) if m else None
+
+
 def main() -> int:
     state = load_state()
+    paused = state.get("paused_until")
+    if paused and datetime.now(UTC) < datetime.fromisoformat(paused.replace("Z", "+00:00")):
+        print(f"paused until {paused} (Muse subscription window)", file=sys.stderr)
+        return 3
+    state.pop("paused_until", None)
     task = next_task(state)
     if task is None:
         print("all tasks done")
@@ -186,6 +202,14 @@ def main() -> int:
     gate_output = cur.get("gate_output") if cur.get("id") == task["id"] else None
     print(f"{task['id']} attempt {attempt}: {task['title']}")
     code = run_muse(task, build_prompt(task, state, gate_output))
+    paused_until = quota_reset_from_log(task)
+    if paused_until:
+        # The subscription window is exhausted: not an attempt, just wait for the reset.
+        state["in_progress"]["attempt"] = attempt - 1
+        state["paused_until"] = paused_until
+        save_state(state)
+        print(f"{task['id']}: Muse quota exhausted; paused until {paused_until}", file=sys.stderr)
+        return 3
     ok, out = gate()
     if code == 0 and ok:
         commit(task)
