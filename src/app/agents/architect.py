@@ -166,9 +166,11 @@ def _handoff_errors(output: Any, require_last: bool = False) -> list[str]:
     topics = [topic for module in output.modules for topic in module.topics]
     if len(topics) < 2 and not require_last:
         return []
-    handed = set()
+    # a topic's own through_line_note IS its handoff: the schema asks for it on
+    # every topic, so the handoffs list may repeat it but never has to
+    handed = {t.plan_node_id for t in topics if t.through_line_note.strip()}
     if output.through_line is not None:
-        handed = {h.topic_plan_node_id for h in output.through_line.handoffs if h.note.strip()}
+        handed |= {h.topic_plan_node_id for h in output.through_line.handoffs if h.note.strip()}
     boundary = topics if require_last else topics[:-1]
     return [
         f"through-line: no handoff for topic boundary after {topic.title!r}"

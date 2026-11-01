@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-MAX_SECTIONS = 400
+MAX_SECTIONS = 120
 _HEADING_LEVELS = 2
 
 

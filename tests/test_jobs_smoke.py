@@ -1800,7 +1800,8 @@ async def test_garbage_reply_is_rejected_once_and_never_re_asked(t03_session: As
         if str(body.get("input", "")).startswith("# Architect"):
             architect_posts += 1
             garbage = _plan_completed("this is not json")
-            garbage["usage"]["output_tokens"] = int(body["max_output_tokens"])
+            # garbage under the budget is garbage; at the budget it is a truncation (re-asked once)
+            garbage["usage"]["output_tokens"] = int(body["max_output_tokens"]) - 1
             return httpx2.Response(200, json=garbage)
         return base(request)
 

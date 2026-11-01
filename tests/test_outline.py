@@ -105,7 +105,10 @@ def test_a_scoped_module_hands_its_last_topic_over_too() -> None:
             },
         }
     )
+    # every topic carries a through_line_note, and that note is its handoff
     assert _handoff_errors(output) == []
+    assert _handoff_errors(output, require_last=True) == []
+    output.modules[0].topics[1].through_line_note = " "
     assert _handoff_errors(output, require_last=True) == [
         "through-line: no handoff for topic boundary after 'm1-t2'"
     ]

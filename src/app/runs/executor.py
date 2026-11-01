@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.course.handles import address_sort_key, handle_map
 from app.errors import ValidationError
-from app.llm.registry import resolve_step
+from app.llm.registry import DEFAULT_MODEL, resolve_step
 from app.runs.stop_text import EMPTY_PLAN, MODEL_DOWN, plain_marker, plain_step_error, plain_stop
 
 RUN_LOCK_PREFIX = "run:"
@@ -819,6 +819,8 @@ async def plan_architect_step(
 
 
 OUTLINE_MIN_PASSAGES = 40
+MODULE_PLAN_MODEL = DEFAULT_MODEL
+MODULE_PLAN_OUTPUT_TOKENS = 20000
 
 
 async def _plan_output(
@@ -849,6 +851,9 @@ async def _plan_output(
 
     codes = list(profile.get("methodology_codes", []))
     handles = {str(p["handle"]) for p in passages}
+    # the outline and every module call keep variant 0: an accepted reply is
+    # served by the reply store on the next attempt, a rejected one was evicted
+    variant = 0
     if len(passages) < OUTLINE_MIN_PASSAGES:
         return dict(
             await provider.generate_json(
@@ -899,8 +904,12 @@ async def _plan_output(
             else "",
         }
         own_handles = {str(p["handle"]) for p in own}
+        # a module plan is 8–16k tokens of JSON: Spark with a 20k budget writes it in one
+        # go for a fifth of Wonder's price (Wonder cut 8 of 8 module replies at 8k)
         reply = await provider.generate_json(
             agent="architect",
+            model=MODULE_PLAN_MODEL,
+            max_output_tokens=MODULE_PLAN_OUTPUT_TOKENS,
             prompt=architect.build_prompt(
                 profile,
                 constraints,
@@ -935,18 +944,71 @@ async def _plan_output(
             continue
         for handle in module_handles(sections, [str(item.get("section", ""))]):
             uncovered.append({"handle": handle, "reason": str(item.get("reason", ""))})
+    # the 60 % rule and figure gating were enforced per module over that module's
+    # passages; what no module cites after that is the planner's declared leftover
+    cited = {
+        str(ref.get("handle", ""))
+        for m in merged_modules
+        for t in m.get("topics", [])
+        for b in t.get("blocks", [])
+        for ref in b.get("source_refs", [])
+        if isinstance(ref, dict)
+    }
+    declared = {str(item.get("handle", "")) for item in uncovered if isinstance(item, dict)}
+    for passage in passages:
+        handle = str(passage["handle"])
+        if passage.get("is_content", True) and handle not in cited and handle not in declared:
+            uncovered.append({"handle": handle, "reason": "not cited by any module's plan"})
     merged = {
         "modules": merged_modules,
         "estimate_inputs": {k: max(v, 1) for k, v in estimate.items()},
         "through_line": {"case": str(plan.get("case", "")), "handoffs": handoffs},
         "uncovered": uncovered,
     }
-    errors = _rejectable_architect_errors(
-        merged, prescription, handles, methodology_codes=codes, passages=passages
-    )
+    errors = _rejectable_architect_errors(merged, prescription, handles, methodology_codes=codes)
     if errors:
         raise ValidationError("architect output rejected: " + "; ".join(errors)[:800])
     return merged
+
+
+def _fill_handoffs_from_notes(reply: dict[str, Any], module_scope: dict[str, Any] | None) -> None:
+    """Every topic's through_line_note becomes its handoff when the list lacks one.
+
+    The schema asks for the note on every topic; Wonder then omits the
+    separate handoffs list for some topics (8 of 8 module replies on
+    2026-11-02 cost $2.80 in rejections). The note is the same fact, so
+    code copies it instead of paying again; a scoped module's last topic
+    without any note hands the case to the next module by name.
+    """
+    topics = [
+        t
+        for m in reply.get("modules", [])
+        if isinstance(m, dict)
+        for t in m.get("topics", [])
+        if isinstance(t, dict)
+    ]
+    if not topics:
+        return
+    through = reply.get("through_line")
+    if not isinstance(through, dict):
+        through = {"case": str((module_scope or {}).get("case", "")), "handoffs": []}
+        reply["through_line"] = through
+    handoffs = through.setdefault("handoffs", [])
+    present = {
+        str(h.get("topic_plan_node_id", ""))
+        for h in handoffs
+        if isinstance(h, dict) and str(h.get("note", "")).strip()
+    }
+    nxt = str((module_scope or {}).get("next_module", "")).strip()
+    for index, topic in enumerate(topics):
+        node = str(topic.get("plan_node_id", ""))
+        if node in present:
+            continue
+        note = str(topic.get("through_line_note", "")).strip()
+        if not note and module_scope is not None and index == len(topics) - 1:
+            note = f"The case continues in the next module: {nxt}." if nxt else ""
+        if note:
+            handoffs.append({"topic_plan_node_id": node, "note": note})
 
 
 def _uncovered_with_addresses(parsed: Any, passages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -986,6 +1048,7 @@ def _rejectable_architect_errors(
     from app.agents import architect
     from app.course.tree import ArchitectOutput
 
+    _fill_handoffs_from_notes(reply, module_scope)
     errors = architect.check_output(
         reply, prescription, handles, passages=passages, module_scope=module_scope
     )

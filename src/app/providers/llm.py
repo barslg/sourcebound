@@ -235,9 +235,10 @@ class MetaProvider:
                     store_reply=False,
                     status="rejected",
                 )
-                # An empty text with the whole budget spent is a truncation (reasoning ate the
-                # output); ask once more with twice the budget and less reasoning, then give up.
-                truncated = not bad.raw_text.strip() and bad.output_tokens >= budget
+                # The whole budget spent is a truncation — an empty text (reasoning ate the
+                # output) or a JSON cut mid-way (the outline of 400 sections at 6k tokens);
+                # ask once more with twice the budget and less reasoning, then give up.
+                truncated = bad.output_tokens >= budget
                 if ask == 1 and truncated:
                     budget = budget * 2
                     started = time.monotonic()
