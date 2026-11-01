@@ -910,6 +910,100 @@ def _plan_handle_map(raw_tree: dict[str, Any]) -> dict[str, str]:
     return mapping
 
 
+RETRIEVED_PER_TOPIC = 8
+
+
+def scoped_plan(tree: dict[str, Any], topic_node: str) -> dict[str, Any]:
+    """The frozen plan a step sees: its own module in full, the other modules as titles.
+
+    Every block prompt carried the whole plan; on a big course that is
+    the largest part of every call and it is never prefix-cached (the
+    sources section before it differs per topic).
+    """
+    modules: list[dict[str, Any]] = []
+    for module in tree.get("modules", []):
+        own = any(str(t.get("plan_node_id", "")) == topic_node for t in module.get("topics", []))
+        if own:
+            modules.append(module)
+        else:
+            modules.append(
+                {
+                    "plan_node_id": str(module.get("plan_node_id", "")),
+                    "title": str(module.get("title", "")),
+                    "topics": [
+                        {
+                            "plan_node_id": str(t.get("plan_node_id", "")),
+                            "title": str(t.get("title", "")),
+                        }
+                        for t in module.get("topics", [])
+                    ],
+                }
+            )
+    return {**tree, "modules": modules}
+
+
+def _topic_of(topic_index: dict[str, dict[str, Any]], node: str) -> str:
+    return next((t for t, meta in topic_index.items() if node in meta["blocks"]), "")
+
+
+async def _topic_sources(
+    session: AsyncSession,
+    *,
+    course_id: UUID,
+    raw_tree: dict[str, Any],
+    sources: list[dict[str, Any]],
+    topic_index: dict[str, dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Per topic, the passages its generators and reader see: cited ones plus retrieval.
+
+    A big source set never travels whole into a block prompt: the topic
+    gets the passages its plan cites (a module test: the module's), plus
+    the course's best full-text matches for its title and objectives.
+    Handles stay the course-wide ones. An empty selection falls back to
+    every passage, so a plan without refs still generates.
+    """
+    from app.course.handles import handle_number
+    from app.providers.retrieval import get_retriever
+
+    owner: dict[str, dict[str, Any]] = {}
+    for passage in sources:
+        for pid in [passage["passage_id"], *passage.get("merged_ids", [])]:
+            owner.setdefault(str(pid), passage)
+    module_cited: dict[str, list[str]] = {}
+    for module in raw_tree.get("modules", []):
+        ids: list[str] = []
+        for topic in module.get("topics", []):
+            ids += topic_index.get(str(topic.get("plan_node_id", "")), {}).get(
+                "cited_passage_ids", []
+            )
+        for topic in module.get("topics", []):
+            module_cited[str(topic.get("plan_node_id", ""))] = ids
+    retriever = get_retriever("fts")
+    out: dict[str, list[dict[str, Any]]] = {}
+    for topic_node, meta in topic_index.items():
+        wanted = list(meta["cited_passage_ids"])
+        if meta["topic_kind"] == "module_test":
+            wanted += module_cited.get(topic_node, [])
+        query = f"{meta['topic_title']} {meta['topic_purpose']}".strip()
+        if query:
+            try:
+                found = await retriever.search_course(
+                    session, query=query, course_id=course_id, limit=RETRIEVED_PER_TOPIC
+                )
+                wanted += [str(item.passage_id) for item in found]
+            except Exception:  # retrieval is an enrichment, never a stop
+                pass
+        chosen: dict[str, dict[str, Any]] = {}
+        for pid in wanted:
+            found_passage = owner.get(str(pid))
+            if found_passage is not None:
+                chosen.setdefault(found_passage["passage_id"], found_passage)
+        out[topic_node] = sorted(
+            chosen.values(), key=lambda p: handle_number(str(p.get("handle", "")))
+        ) or list(sources)
+    return out
+
+
 async def _course_sources(
     session: AsyncSession, *, course_id: UUID, raw_tree: dict[str, Any]
 ) -> list[dict[str, Any]]:
@@ -999,12 +1093,16 @@ async def run_rewrite_operation(
     if not rows:
         raise NotFoundError("no named blocks found for rewrite")
     sources = await _course_sources(session, course_id=course_id, raw_tree=raw_tree)
+    by_topic = await _topic_sources(
+        session, course_id=course_id, raw_tree=raw_tree, sources=sources, topic_index=topic_index
+    )
     dossier = {"thesis": "", "glossary": {}, "handoffs": []}
     dag: list[dict[str, Any]] = []
     gen_keys_by_topic: dict[str, list[str]] = {}
     for _bid, node, btype, role, brief, hold_reason, topic_node, versions in rows:
         agent = _role_agent(str(role))
         key = f"{agent}:{node}"
+        scoped = by_topic.get(str(topic_node), sources)
         gen_keys_by_topic.setdefault(str(topic_node), []).append(key)
         reason = str(hold_reason or "")
         depends: list[str] = []
@@ -1020,7 +1118,7 @@ async def run_rewrite_operation(
                     "depends_on": [],
                     "course_id": str(course_id),
                     "course_language": str(course.get("language", "en")),
-                    "sources": sources,
+                    "sources": scoped,
                     "variant_offset": int(versions or 0),
                     "rewrite": True,
                     "hold_reason": reason,
@@ -1034,10 +1132,10 @@ async def run_rewrite_operation(
                 "depends_on": depends,
                 "course_id": str(course_id),
                 "course_language": str(course.get("language", "en")),
-                "plan": tree,
+                "plan": scoped_plan(tree, str(topic_node)),
                 "dossier": dossier,
                 "block_type": str(btype),
-                "sources": sources,
+                "sources": scoped,
                 "variant_offset": int(versions or 0),
                 "rewrite": True,
                 **(_spot_fields(topic_index, str(node)) if str(btype) == "spot_the_error" else {}),
@@ -1058,9 +1156,9 @@ async def run_rewrite_operation(
                 "depends_on": keys,
                 "course_id": str(course_id),
                 "course_language": str(course.get("language", "en")),
-                "plan": tree,
+                "plan": scoped_plan(tree, topic_node),
                 "dossier": dossier,
-                "sources": sources,
+                "sources": by_topic.get(topic_node, sources),
                 "blocks": [],
             }
         )
@@ -1114,6 +1212,9 @@ async def run_generate_operation(
     topic_index = _topic_index(raw_tree)
     profile = course.get("profile") or {}
     sources = await _course_sources(session, course_id=course_id, raw_tree=raw_tree)
+    by_topic = await _topic_sources(
+        session, course_id=course_id, raw_tree=raw_tree, sources=sources, topic_index=topic_index
+    )
     raw = compile_generation_dag(
         profile={
             "methodology_codes": list(profile.get("methodology_codes", [])),
@@ -1164,7 +1265,8 @@ async def run_generate_operation(
             node = str(entry["step_key"]).partition(":")[2]
             skel = dict(blocks_by_id.get(node, {"plan_node_id": node}))
             e["block_type"] = str(skel.get("block_type", "reading"))
-            e["sources"] = sources
+            e["sources"] = by_topic.get(_topic_of(topic_index, node), sources)
+            e["plan"] = scoped_plan(tree, _topic_of(topic_index, node))
             e["skeleton"] = {
                 "plan_node_id": node,
                 "brief": str(skel.get("brief", "")),
@@ -1174,11 +1276,13 @@ async def run_generate_operation(
             if e["block_type"] == "spot_the_error":
                 e.update(_spot_fields(topic_index, node))
         elif handler == "saboteur":
-            e["sources"] = sources
-            e.update(_spot_fields(topic_index, str(entry["step_key"]).partition(":")[2]))
+            node = str(entry["step_key"]).partition(":")[2]
+            e["sources"] = by_topic.get(_topic_of(topic_index, node), sources)
+            e.update(_spot_fields(topic_index, node))
         elif handler == "read_topic":
             topic = str(entry["step_key"]).partition(":")[2]
-            e["sources"] = sources
+            e["sources"] = by_topic.get(topic, sources)
+            e["plan"] = scoped_plan(tree, topic)
             e["blocks"] = [
                 {"plan_node_id": b["plan_node_id"]} for b in blocks_by_topic.get(topic, [])
             ]
