@@ -2,9 +2,12 @@
 
 Code decides, in this order: retrieval over the course's approved
 passages (FTS, planted exercise sentences are block content and never
-passages); no passage above the score threshold means `not_in_materials`
-without any model call; otherwise the model chooses fragments and code
-keeps only those that are verbatim in their passage. Caller:
+passages); a passage reaches the model only when its score clears the
+threshold AND it holds at least `min_covered` distinct content lexemes
+of the question (a rank alone overlaps on off-topic questions); no such
+passage means `not_in_materials` without any model call; otherwise the
+model chooses fragments and code keeps only those that are verbatim in
+their passage. Caller:
 controllers/learn.py ask (the learner's tutor panel).
 """
 
@@ -41,6 +44,7 @@ async def ask(
     language: str | None,
     make_provider_factory: Any,
     min_score: float,
+    min_covered: int,
     max_passages: int,
     max_chars: int,
 ) -> dict[str, Any]:
@@ -63,6 +67,7 @@ async def ask(
         if item.score is not None
         and item.score >= min_score
         and await _is_content(session, item.passage_id)
+        and await _covers_question(session, text, item, min_covered=min_covered)
     ][:max_passages]
     if not usable:
         return _not_in_materials()
@@ -106,6 +111,37 @@ async def ask(
     if not kept:
         return _not_in_materials()
     return {"mode": QUOTES, "quotes": kept}
+
+
+async def _covers_question(
+    session: AsyncSession, question: str, item: Any, *, min_covered: int
+) -> bool:
+    """True when the passage holds `min_covered` distinct content lexemes of the question.
+
+    Lexemes are the question's tsvector terms in the passage's own text
+    search config (stop words are gone); a `simple` config keeps them,
+    so only terms of 4+ characters count there. A question with fewer
+    content lexemes than `min_covered` needs all of them. Caller: ask.
+    """
+    row = (
+        await session.execute(
+            sa.text(
+                "WITH q AS (SELECT unnest(tsvector_to_array("
+                "to_tsvector(CAST(:cfg AS regconfig), :q))) AS lex),"
+                " p AS (SELECT tsvector_to_array(to_tsvector(CAST(:cfg AS regconfig), :t))"
+                " AS lexes) SELECT count(*), count(*) FILTER (WHERE lex = ANY(p.lexes))"
+                " FROM q CROSS JOIN p WHERE (NOT :simple OR length(lex) >= 4)"
+            ),
+            {
+                "cfg": item.ts_config,
+                "q": question,
+                "t": item.text,
+                "simple": item.ts_config == "simple",
+            },
+        )
+    ).one()
+    total, matched = int(row[0]), int(row[1])
+    return total > 0 and matched >= min(min_covered, total)
 
 
 async def _is_content(session: AsyncSession, passage_id: UUID) -> bool:

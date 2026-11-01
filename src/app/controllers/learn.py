@@ -132,6 +132,7 @@ async def ask(
         language=language,
         make_provider_factory=lambda: planruns.real_provider_factory(settings),
         min_score=settings.tutor_min_score,
+        min_covered=settings.tutor_min_covered,
         max_passages=settings.tutor_max_passages,
         max_chars=settings.tutor_question_max_chars,
     )

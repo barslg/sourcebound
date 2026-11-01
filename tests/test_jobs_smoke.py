@@ -1428,28 +1428,38 @@ async def test_an_authors_accept_survives_a_fresh_run_replaying_the_reader_hold(
 
 
 TUTOR_REAL = (
-    "Who must ensure AI literacy of staff?",
-    "What AI practices are prohibited?",
-    "What is the maximum fine for prohibited AI practices?",
-    "How large are fines for non-compliance with operator obligations?",
-    "Does the AI Act ban subliminal techniques?",
-    "What are the four functions of the AI RMF Core?",
-    "What does the MAP function do?",
-    "Which characteristics make an AI system trustworthy?",
-    "How does the framework define risk?",
-    "Is the AI RMF mandatory or voluntary?",
+    "Which measures must deployers take so their staff are AI literate?",
+    "Does the literacy duty consider the context the AI system is used in?",
+    "Is it allowed to use an AI system with subliminal techniques?",
+    "Can an AI system manipulate people into decisions that harm them?",
+    "How much is the fine for using a prohibited AI practice?",
+    "What percentage of worldwide turnover can an undertaking be fined?",
+    "What fine applies to notified bodies that do not comply?",
+    "Are providers responsible for the AI literacy of persons acting on their behalf?",
+    "What is the fine of EUR 15 000 000 for?",
+    "Which deceptive techniques are prohibited?",
+    "What does GOVERN do?",
+    "Which function analyzes and monitors AI risk?",
+    "List the characteristics of a trustworthy AI system.",
+    "What should users know after the MAP function?",
+    "Is GOVERN a cross-cutting function?",
+    "How is risk measured?",
+    "Are the categories broken into subcategories?",
+    "Is privacy part of trustworthiness?",
+    "Does risk treatment include responding to incidents?",
 )
+TUTOR_REFUSED_REAL = ("What is the purpose of MANAGE?",)
 TUTOR_OFF_TOPIC = (
     "What is the capital of Norway?",
-    "How do I bake sourdough bread?",
-    "Who won the football world cup in 2018?",
-    "What are the fines for speeding on the motorway?",
-    "How many staff does a restaurant need?",
-    "What is the weather forecast for Oslo tomorrow?",
-    "Explain how photosynthesis works.",
-    "What is the maximum tax rate on income?",
-    "Who must wear a helmet when cycling?",
-    "What measures reduce carbon emissions in transport?",
+    "How do I reset my password?",
+    "Which staff training is needed for forklift drivers?",
+    "What is the penalty for late tax returns?",
+    "How do I measure the temperature of an oven?",
+    "Who is responsible for fire safety in an office?",
+    "What are the risks of smoking?",
+    "Explain the rules of chess.",
+    "How do I manage my time better?",
+    "What is the maximum speed on Norwegian roads?",
 )
 
 
@@ -1462,11 +1472,14 @@ class _CountingProvider:
 
 
 async def test_tutor_threshold_keeps_off_topic_questions_away_from_the_model(world: Any) -> None:
-    """Money guard: 10 real questions reach the model, 10 off-topic ones never do ($0).
+    """Money guard: held-out real questions reach the model, off-topic ones never do ($0).
 
-    Two public sources (EUR-Lex AI Act excerpt, NIST AI RMF excerpt); the
-    default threshold sits between the lowest real score (0.0304) and the
-    highest off-topic score (0.0203).
+    Two public sources (EUR-Lex AI Act excerpt, verbatim NIST AI RMF
+    excerpt). The questions are the held-out set (the thresholds were
+    calibrated on other questions): a passage needs the default score AND
+    two distinct content lexemes of the question. One real question names
+    a word no passage holds ("purpose") and is refused: the cost of the
+    coverage rule, pinned so a change of the rule shows.
     """
     from pathlib import Path
 
@@ -1491,7 +1504,7 @@ async def test_tutor_threshold_keeps_off_topic_questions_away_from_the_model(wor
     await library.approve_source(s, source_id=source, approved_by=world.w["user_id"])
     await s.commit()
     principal = await load_principal(s, world.student)
-    threshold = Settings(_env_file=None).tutor_min_score
+    defaults = Settings(_env_file=None)
 
     async def reaches_model(question: str) -> tuple[int, dict[str, Any]]:
         _CountingProvider.calls = 0
@@ -1502,7 +1515,8 @@ async def test_tutor_threshold_keeps_off_topic_questions_away_from_the_model(wor
             question,
             language=None,
             make_provider_factory=lambda: lambda session: _CountingProvider(),
-            min_score=threshold,
+            min_score=defaults.tutor_min_score,
+            min_covered=defaults.tutor_min_covered,
             max_passages=4,
             max_chars=500,
         )
@@ -1511,6 +1525,9 @@ async def test_tutor_threshold_keeps_off_topic_questions_away_from_the_model(wor
     for question in TUTOR_REAL:
         calls, _ = await reaches_model(question)
         assert calls == 1, ("a real question was refused", question)
+    for question in TUTOR_REFUSED_REAL:
+        calls, reply = await reaches_model(question)
+        assert calls == 0 and reply["mode"] == NOT_IN_MATERIALS, ("coverage rule changed", question)
     for question in TUTOR_OFF_TOPIC:
         calls, reply = await reaches_model(question)
         assert calls == 0 and reply["mode"] == NOT_IN_MATERIALS, ("paid for off-topic", question)

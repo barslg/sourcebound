@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     mastery_threshold: float = 0.8
     answer_max_bytes: int = 20000
     tutor_min_score: float = 0.025
+    tutor_min_covered: int = 2
     tutor_max_passages: int = 4
     tutor_question_max_chars: int = 500
 
