@@ -203,36 +203,46 @@ class MetaProvider:
             return cached
 
         started = time.monotonic()
-        try:
-            answered = await self._get_client().respond_json(
-                model=resolved_model,
-                prompt=prompt,
-                schema=schema,
-                prompt_cache_key=cache_key,
-                effort=resolved_effort,
-                max_output_tokens=resolved_tokens,
-            )
-        except UnparseableReplyError as bad:
-            # The call completed and was billed: log it before failing.
-            await self._record_call(
-                agent=agent,
-                model=resolved_model,
-                version=version,
-                input_tokens=bad.input_tokens,
-                cached_tokens=bad.cached_tokens,
-                output_tokens=bad.output_tokens,
-                reasoning_tokens=bad.reasoning_tokens,
-                duration_ms=int((time.monotonic() - started) * 1000),
-                body=body,
-                data={"raw_text": bad.raw_text},
-                run_id=run_id,
-                step_id=step_id,
-                variant=variant,
-                subject_user_id=subject_user_id,
-                store_reply=False,
-                status="rejected",
-            )
-            raise
+        budget = resolved_tokens
+        for ask in (1, 2):
+            try:
+                answered = await self._get_client().respond_json(
+                    model=resolved_model,
+                    prompt=prompt,
+                    schema=schema,
+                    prompt_cache_key=cache_key,
+                    effort=resolved_effort if ask == 1 else "medium",
+                    max_output_tokens=budget,
+                )
+                break
+            except UnparseableReplyError as bad:
+                # The call completed and was billed: log it before anything else.
+                await self._record_call(
+                    agent=agent,
+                    model=resolved_model,
+                    version=version,
+                    input_tokens=bad.input_tokens,
+                    cached_tokens=bad.cached_tokens,
+                    output_tokens=bad.output_tokens,
+                    reasoning_tokens=bad.reasoning_tokens,
+                    duration_ms=int((time.monotonic() - started) * 1000),
+                    body=body,
+                    data={"raw_text": bad.raw_text},
+                    run_id=run_id,
+                    step_id=step_id,
+                    variant=variant,
+                    subject_user_id=subject_user_id,
+                    store_reply=False,
+                    status="rejected",
+                )
+                # An empty text with the whole budget spent is a truncation (reasoning ate the
+                # output); ask once more with twice the budget and less reasoning, then give up.
+                truncated = not bad.raw_text.strip() and bad.output_tokens >= budget
+                if ask == 1 and truncated:
+                    budget = budget * 2
+                    started = time.monotonic()
+                    continue
+                raise
         duration_ms = int((time.monotonic() - started) * 1000)
         errors: list[str] = list(check(answered.data)) if check is not None else []
         await self._record_call(
