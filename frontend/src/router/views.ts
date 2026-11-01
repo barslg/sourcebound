@@ -10,6 +10,7 @@ export const VIEWS: Record<Exclude<RouteName, 'home'>, Loader> = {
   courses: () => import('@/views/CoursesView.vue'),
   'course-sources': () => import('@/views/course/SourcesView.vue'),
   'course-plan': () => import('@/views/course/PlanView.vue'),
+  'course-generate': () => import('@/views/course/GenerateView.vue'),
   'course-fix': () => import('@/views/course/FixView.vue'),
   'course-preview': () => import('@/views/course/PreviewView.vue'),
   'course-publish': () => import('@/views/course/PublishView.vue'),

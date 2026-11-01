@@ -58,7 +58,7 @@ export function nextAction(c: StageFacts): Action {
   if (c.pendingSources > 0 && !c.generated) return { key: 'needs.sources', to: `${base}/sources#${c.firstPendingId ? `source-${c.firstPendingId}` : 'sources-list'}` }
   if (!c.profile || !c.plan) return { key: c.profile ? 'needs.plan' : 'needs.profile', to: `${base}/plan#build-plan` }
   if (c.openQuestions > 0) return { key: 'needs.questions', to: `${base}/plan#${c.firstQuestionKey ? `question-${c.firstQuestionKey}` : 'questions'}` }
-  if (!c.generated) return { key: 'needs.generate', to: `${base}/plan#generate` }
+  if (!c.generated) return { key: 'needs.generate', to: `${base}/generate#generate` }
   if (c.held > 0) return { key: 'needs.fix', to: `${base}/fix#${c.firstHeldId ? `held-${c.firstHeldId}` : 'held-list'}` }
   if (c.draft > 0) return { key: 'needs.unread', to: `${base}/fix#held-list` }
   return { key: 'needs.publish', to: `${base}/publish#publish-open` }

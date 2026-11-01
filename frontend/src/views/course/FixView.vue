@@ -76,7 +76,7 @@ function startEdit(block: HeldBlock): void {
       <Section :title="t('fix.title')" :help="t('fix.help')" />
       <ResourceState :loading="held.loading.value" :error="held.error.value" :empty="(held.data.value?.blocks ?? []).length === 0" :empty-text="!generated ? t('fix.notGenerated') : unread > 0 ? t('fix.unread', { count: t('count.block', unread) }) : t('fix.empty')" @retry="held.reload()">
         <template #empty-actions>
-          <router-link :to="generated && unread === 0 ? `/courses/${courseId}/publish` : `/courses/${courseId}/plan#generate`" data-testid="fix-exit">{{ generated && unread === 0 ? t('fix.goPublish') : t('fix.goGenerate') }}</router-link>
+          <router-link :to="generated && unread === 0 ? `/courses/${courseId}/publish` : `/courses/${courseId}/generate#generate`" data-testid="fix-exit">{{ generated && unread === 0 ? t('fix.goPublish') : t('fix.goGenerate') }}</router-link>
         </template>
         <div v-if="squares.length > 0" class="stack" data-testid="lecture-squares">
           <h3>{{ t('fix.lectures') }}</h3>

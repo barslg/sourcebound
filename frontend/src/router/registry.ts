@@ -43,7 +43,7 @@ const row = <const N extends string>(r: Partial<RouteRow> & { name: N; path: str
   ...r,
 })
 
-const stage = <const I extends 'sources' | 'plan' | 'fix' | 'publish'>(id: I, states: readonly PageState[], primaryAction: ActionId, access: Access) =>
+const stage = <const I extends 'sources' | 'plan' | 'generate' | 'fix' | 'publish'>(id: I, states: readonly PageState[], primaryAction: ActionId | null, access: Access) =>
   row({
     name: `course-${id}` as `course-${I}`,
     path: `/courses/:id/${id}`,
@@ -67,7 +67,8 @@ export const REGISTRY = [
   row({ name: 'home', path: '/', redirect: '/courses', access: { kind: 'signedIn' } }),
   row({ name: 'courses', path: '/courses', titleKey: 'courses.title', purposeKey: 'courses.help', access: courses, nav: { section: 'main', icon: 'courses', labelKey: 'nav.courses' }, states: LIST, primaryAction: 'create' }),
   stage('sources', LIST, 'create', courses),
-  stage('plan', [...LIST, 'queued'], 'save', courses),
+  stage('plan', [...LIST, 'queued'], 'add-module', courses),
+  stage('generate', [...LIST, 'queued'], 'generate', courses),
   stage('fix', [...LIST, 'queued'], 'rewrite', courses),
   row({ name: 'course-preview', path: '/courses/:id/preview', titleKey: 'preview.title', purposeKey: 'preview.help', parent: 'course-publish', access: { kind: 'perm', code: 'learner.view' }, object: 'course', states: ONE }),
   stage('publish', [...ONE, 'queued'], 'publish', courses),
@@ -90,7 +91,7 @@ export const CATCH_ALL = 'not-found'
 export const STAGE_TO_ROUTE: Readonly<Record<string, RouteName>> = {
   sources: 'course-sources',
   plan: 'course-plan',
-  generate: 'course-plan',
+  generate: 'course-generate',
   fix: 'course-fix',
   publish: 'course-publish',
 }
