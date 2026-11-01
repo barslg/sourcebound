@@ -125,7 +125,7 @@ async function resolve(item: QueueItem, action: 'approve' | 'dismiss'): Promise<
 <template>
   <CourseHeader ref="header" :course-id="courseId">
     <div class="row">
-      <ActionButton class="row-end" action="create" :label="t('sources.add')" :reason="lacking('source.upload')" data-testid="source-add" @click="drawer = true" />
+      <ActionButton id="source-add" class="row-end" action="create" :label="t('sources.add')" :reason="lacking('source.upload')" data-testid="source-add" @click="drawer = true" />
     </div>
     <div id="sources-list" class="stack">
       <section v-if="waiting.length > 0" class="stack" data-testid="human-queue">

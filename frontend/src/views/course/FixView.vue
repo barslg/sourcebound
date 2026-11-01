@@ -14,6 +14,7 @@ import Section from '@/components/Section.vue'
 import { usd } from '@/composables/labels'
 import { notify, notifyError } from '@/composables/notify'
 import type { PlanTree } from '@/composables/planTree'
+import { holdText } from '@/composables/holdReason'
 import { lacking } from '@/composables/reasons'
 import { useQueued } from '@/composables/useQueued'
 import { useResource } from '@/composables/useResource'
@@ -29,7 +30,7 @@ const unread = computed(() => (plan.data.value?.modules ?? []).flatMap((m) => m.
 const working = ref<string | null>(null)
 const editing = ref<string | null>(null)
 const draft = ref('')
-const queue = useQueued(async () => { await Promise.all([held.reload(true), plan.reload(true), header.value?.reload()]) })
+const queue = useQueued(() => `rewrite:${courseId.value}`, async () => { await Promise.all([held.reload(true), plan.reload(true), header.value?.reload()]) })
 
 async function act(block: HeldBlock, kind: 'rewrite' | 'accept' | 'edit'): Promise<void> {
   working.value = `${kind}:${block.id}`
@@ -80,7 +81,7 @@ function startEdit(block: HeldBlock): void {
           <li v-for="b in held.data.value?.blocks ?? []" :id="`held-${b.id}`" :key="b.id" class="held-row" data-testid="held-row">
             <div class="stack">
               <router-link :to="`/courses/${courseId}/plan`"><strong>{{ b.topic_title }}</strong></router-link>
-              <span>{{ b.hold_reason }}</span>
+              <span>{{ holdText(b.hold_reason, (id) => t(`holdItem.${id}`)) }}</span>
               <template v-if="editing === b.id">
                 <FormField :id="`brief-${b.id}`" :label="t('fix.editLabel')" :help="t('fix.editHint')" required :error="draft.trim().length === 0 ? t('form.isRequired') : null">
                   <textarea :id="`brief-${b.id}`" v-model="draft" rows="3"></textarea>
@@ -98,8 +99,10 @@ function startEdit(block: HeldBlock): void {
             </div>
             <blockquote class="passage">
               <p>{{ b.passage || t('fix.noPassage') }}</p>
-              <cite v-if="b.address" class="mono">{{ b.address }}</cite>
-              <router-link :to="`/courses/${courseId}/sources#sources-list`">{{ t('fix.openSources') }}</router-link>
+              <div class="row">
+                <template v-if="b.address"><span class="muted">{{ t('fix.passageAddress') }}</span><cite class="chip mono" data-testid="passage-address">{{ b.address }}</cite></template>
+                <router-link :to="`/courses/${courseId}/sources#sources-list`">{{ t('fix.openSources') }}</router-link>
+              </div>
             </blockquote>
           </li>
         </ul>

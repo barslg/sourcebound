@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import Checkbox from 'primevue/checkbox'
@@ -150,8 +150,8 @@ const bloom = ref('understand')
 const audience = ref('')
 const queriesText = ref('')
 const building = ref(false)
-const planQueue = useQueued(async () => { await Promise.all([plan.reload(true), estimate.reload(true), header.value?.reload()]) })
-const genQueue = useQueued(async () => { await header.value?.reload() })
+const planQueue = useQueued(() => `plan:${courseId.value}`, async () => { await Promise.all([plan.reload(true), estimate.reload(true), header.value?.reload()]) })
+const genQueue = useQueued(() => `generate:${courseId.value}`, async () => { await header.value?.reload() })
 const buildError = ref<string | null>(null)
 async function buildPlan(): Promise<void> {
   building.value = true
@@ -191,6 +191,15 @@ onBeforeRouteLeave(() => {
   return new Promise<boolean>((done) => { leaveAsk.value = (ok) => { leaveAsk.value = null; done(ok) } })
 })
 function warnUnload(event: BeforeUnloadEvent): void { if (dirty.value) event.preventDefault() }
+const BEFORE_ANCHORS = /^#(questions|question-.+|generate|build-plan)$/
+async function openTabOfHash(hash: string): Promise<void> {
+  if (!narrow.value || !hash) return
+  tab.value = BEFORE_ANCHORS.test(hash) ? 'before' : 'plan'
+  await nextTick()
+  document.getElementById(hash.slice(1))?.scrollIntoView()
+}
+watch(() => route.hash, (hash) => { void openTabOfHash(hash) })
+watch(narrow, () => { void openTabOfHash(route.hash) })
 onMounted(() => {
   window.addEventListener('beforeunload', warnUnload)
   media = window.matchMedia('(max-width: 1099px)')
@@ -220,7 +229,7 @@ onBeforeUnmount(() => {
       <p v-else-if="saveError" class="mono danger-text" role="alert" data-testid="save-error">{{ saveError }}</p>
       <div class="plan-tabs" role="tablist" :aria-label="t('plan.tabs')">
         <button id="tab-plan" type="button" class="plan-tab" role="tab" :aria-selected="tab === 'plan'" aria-controls="plan-centre" @click="tab = 'plan'">{{ t('plan.tabPlan') }}</button>
-        <button id="tab-before" type="button" class="plan-tab" role="tab" :aria-selected="tab === 'before'" aria-controls="before-card" @click="tab = 'before'">{{ t('plan.before') }}</button>
+        <button id="tab-before" type="button" class="plan-tab" role="tab" :aria-selected="tab === 'before'" aria-controls="before-card" @click="tab = 'before'">{{ t('plan.tabBefore') }}</button>
       </div>
       <div class="plan-grid">
         <section class="stack" :aria-label="t('plan.treeLabel')">

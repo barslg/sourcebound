@@ -225,7 +225,7 @@
     "maxUses": "Plasser",
     "maxUsesHint": "Valgfritt. La stå tomt for ubegrenset, for eksempel: 30",
     "expires": "Utløper",
-    "expiresHint": "Valgfritt, for eksempel: 2026-12-31",
+    "expiresHint": "Valgfritt. Velg siste dag lenken virker.",
     "create": "Opprett invitasjon",
     "created": "Invitasjon opprettet.",
     "revoked": "Invitasjon trukket tilbake.",
@@ -252,7 +252,8 @@
     "reloadToRevoke": "Last siden på nytt for å trekke denne tilbake.",
     "unknownCourse": "Et kurs du ikke kan se",
     "revokeTitle": "Trekke tilbake invitasjonen for {name}?",
-    "revokeBody": "Lenken slutter å virke med en gang. De som allerede har akseptert, beholder tilgangen."
+    "revokeBody": "Lenken slutter å virke med en gang. De som allerede har akseptert, beholder tilgangen.",
+    "expiresPast": "Velg i dag eller en senere dag."
   },
   "needs": {
     "profile": "sette kursprofilen",
@@ -279,7 +280,7 @@
     "tabPublish": "Publisering",
     "blockedBy": "Blokkert: {why}",
     "needsNowLabel": "Trenger nå:",
-    "pendingCount": "{n} venter",
+    "pendingCount": "{n} venter | {n} venter | {n} venter",
     "questionCount": "{count} åpne spørsmål | {count} åpent spørsmål | {count} åpne spørsmål",
     "stages": "Kursets trinn",
     "help": {
@@ -348,7 +349,7 @@
     "noLicence": "lisens ikke oppgitt",
     "asOfOn": "per {date}",
     "passages": {
-      "some": "{n} avsnitt lest",
+      "some": "{n} avsnitt lest | {n} avsnitt lest | {n} avsnitt lest",
       "none": "Ingen avsnitt lest ennå"
     },
     "state": {
@@ -471,7 +472,8 @@
     "addSourceFirst": "Legg til og godkjenn en kilde først",
     "goSources": "Gå til Kilder",
     "regenerateTitle": "Generere kurset på nytt?",
-    "regenerateBody": "Kurset er allerede generert. Hver blokk i planen skrives og sjekkes på nytt, noe som koster omtrent {cost}. For å endre bare én blokk, skriv den om på siden Hva som må rettes."
+    "regenerateBody": "Kurset er allerede generert. Hver blokk i planen skrives og sjekkes på nytt, noe som koster omtrent {cost}. For å endre bare én blokk, skriv den om på siden Hva som må rettes.",
+    "tabBefore": "Spørsmål og generering"
   },
   "run": {
     "title": "Genereringskjøring",
@@ -552,7 +554,8 @@
     "openSources": "Åpne kildene",
     "saveBrief": "Lagre oppgave",
     "typeBrief": "Skriv oppdraget for å lagre.",
-    "unread": "Ingenting er holdt tilbake, men {count} venter fortsatt på lesing. Generer på nytt for å fullføre."
+    "unread": "Ingenting er holdt tilbake, men {count} venter fortsatt på lesing. Generer på nytt for å fullføre.",
+    "passageAddress": "Passasjeadresse"
   },
   "publish": {
     "title": "Publiser",
@@ -706,7 +709,7 @@
     "labelsHelp": "Velg eksisterende merker. Tomt betyr alle kurs.",
     "placeholder": "Velg blant eksisterende",
     "empty": "Ingen kurs eller merker finnes ennå.",
-    "courseCount": "{n} kurs",
+    "courseCount": "{n} kurs | {n} kurs | {n} kurs",
     "loadError": "Kurslisten kunne ikke lastes: {message}",
     "unknownCourse": "et kurs utenfor listen din"
   },
@@ -769,5 +772,14 @@
       "translation": "Oversetting"
     },
     "link": "Kjøringer"
+  },
+  "holdItem": {
+    "task_fit": "Passer til oppgaven",
+    "grounding": "Forankret i kildene",
+    "continuity": "Henger sammen med kurset",
+    "answer_key": "Fasit",
+    "audience_language": "Språk for målgruppen",
+    "planted_error": "Plantet feil",
+    "block_type": "Blokktype"
   }
 }

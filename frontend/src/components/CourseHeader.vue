@@ -51,7 +51,7 @@ const strip = computed(() => {
   if (!f) return []
   return stages(f, f.sourceCount).map((s) => {
     const to = `${pathFor(STAGE_TO_ROUTE[s.id] as string, { id })}${s.id === 'generate' ? '#generate' : ''}`
-    const count = s.id === 'sources' ? (f.pendingSources > 0 ? `${f.sourceCount} · ${t('course.pendingCount', { n: f.pendingSources })}` : String(f.sourceCount)) : s.id === 'fix' ? String(f.held + f.draft) : s.id === 'plan' && f.openQuestions > 0 ? t('course.questionCount', f.openQuestions) : ''
+    const count = s.id === 'sources' ? (f.pendingSources > 0 ? `${f.sourceCount} · ${t('course.pendingCount', f.pendingSources)}` : String(f.sourceCount)) : s.id === 'fix' ? String(f.held + f.draft) : s.id === 'plan' && f.openQuestions > 0 ? t('course.questionCount', f.openQuestions) : ''
     return { ...s, to, count }
   })
 })

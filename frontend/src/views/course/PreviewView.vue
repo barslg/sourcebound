@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Select from 'primevue/select'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
@@ -53,9 +54,7 @@ function textOf(block: LearnerBlock): string {
   <PageHeader :course="course.data.value" />
   <div class="stack">
     <FormField id="p-lang" :label="t('preview.language')" :help="t('preview.languageHint')">
-      <select id="p-lang" v-model="language" class="native-select" data-testid="preview-language">
-        <option v-for="code in COURSE_LANGUAGES" :key="code" :value="code">{{ t(`language.${code}`) }}</option>
-      </select>
+      <Select v-model="language" input-id="p-lang" :options="COURSE_LANGUAGES.map((code) => ({ code, label: t(`language.${code}`) }))" option-label="label" option-value="code" data-testid="preview-language" />
     </FormField>
     <ResourceState :loading="loading" :error="error" :empty="doc !== null && doc.blocks.length === 0" :empty-text="t('preview.empty')" @retry="load">
       <ol v-if="doc" class="stack plain-list" data-testid="preview-blocks">

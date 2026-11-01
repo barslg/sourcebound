@@ -31,7 +31,7 @@ const error = ref<string | null>(null)
 
 const languages = ref<string[]>([])
 const translating = ref(false)
-const translation = useQueued(async () => { dropCached(`course:${courseId.value}`); await header.value?.reload() })
+const translation = useQueued(() => `translate:${courseId.value}`, async () => { dropCached(`course:${courseId.value}`); await header.value?.reload() })
 const targets = (course: CourseDoc | null): readonly string[] => COURSE_LANGUAGES.filter((code) => code !== (course?.language ?? 'en'))
 
 async function translate(): Promise<void> {

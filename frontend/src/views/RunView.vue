@@ -12,6 +12,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import ResourceState from '@/components/ResourceState.vue'
 import Section from '@/components/Section.vue'
 import { usd } from '@/composables/labels'
+import { holdText } from '@/composables/holdReason'
 import { firstReason, lacking } from '@/composables/reasons'
 import { notify, notifyError } from '@/composables/notify'
 import type { PlanTree } from '@/composables/planTree'
@@ -102,7 +103,7 @@ async function act(kind: 'resume' | 'cancel'): Promise<void> {
       <template v-if="held && held.blocks.length > 0">
         <Section :title="t('run.held')" :help="t('run.heldHelp')" />
         <ul class="plain-list" data-testid="run-held">
-          <li v-for="b in held.blocks" :key="b.id" class="bell-item"><router-link :to="`/courses/${courseId}/fix#held-${b.id}`">{{ b.topic_title }}</router-link> <span class="muted">{{ b.hold_reason }}</span></li>
+          <li v-for="b in held.blocks" :key="b.id" class="bell-item"><router-link :to="`/courses/${courseId}/fix#held-${b.id}`">{{ b.topic_title }}</router-link> <span class="muted">{{ holdText(b.hold_reason, (id) => t(`holdItem.${id}`)) }}</span></li>
         </ul>
       </template>
       <Section :title="t('run.steps')" :help="t('run.stepsHelp')" />

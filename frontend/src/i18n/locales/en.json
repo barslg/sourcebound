@@ -225,7 +225,7 @@
     "maxUses": "Seats",
     "maxUsesHint": "Optional. Leave empty for unlimited, for example: 30",
     "expires": "Expires",
-    "expiresHint": "Optional, for example: 2026-12-31",
+    "expiresHint": "Optional. Pick the last day the link works.",
     "create": "Create invite",
     "created": "Invite created.",
     "revoked": "Invite revoked.",
@@ -252,7 +252,8 @@
     "reloadToRevoke": "Reload the page to revoke this one.",
     "unknownCourse": "A course you cannot see",
     "revokeTitle": "Revoke the invite for {name}?",
-    "revokeBody": "The link stops working at once. People who already accepted keep their access."
+    "revokeBody": "The link stops working at once. People who already accepted keep their access.",
+    "expiresPast": "Pick today or a later day."
   },
   "needs": {
     "profile": "set the course profile",
@@ -279,7 +280,7 @@
     "tabPublish": "Publish",
     "blockedBy": "Blocked: {why}",
     "needsNowLabel": "Needs now:",
-    "pendingCount": "{n} pending",
+    "pendingCount": "{n} pending | {n} pending | {n} pending",
     "questionCount": "{count} open questions | {count} open question | {count} open questions",
     "stages": "Course stages",
     "help": {
@@ -348,7 +349,7 @@
     "noLicence": "licence not stated",
     "asOfOn": "as of {date}",
     "passages": {
-      "some": "{n} passages read",
+      "some": "{n} passages read | {n} passage read | {n} passages read",
       "none": "No passages read yet"
     },
     "state": {
@@ -471,7 +472,8 @@
     "addSourceFirst": "Add and approve a source first",
     "goSources": "Go to Sources",
     "regenerateTitle": "Generate the course again?",
-    "regenerateBody": "The course was generated already. Every block of the plan is written and checked again, which costs about {cost}. To change one block only, rewrite it on the What to fix page."
+    "regenerateBody": "The course was generated already. Every block of the plan is written and checked again, which costs about {cost}. To change one block only, rewrite it on the What to fix page.",
+    "tabBefore": "Questions and generate"
   },
   "run": {
     "title": "Generation run",
@@ -552,7 +554,8 @@
     "openSources": "Open the sources",
     "saveBrief": "Save brief",
     "typeBrief": "Write the brief to save it.",
-    "unread": "Nothing is held, but {count} are still waiting to be read. Generate again to finish them."
+    "unread": "Nothing is held, but {count} are still waiting to be read. Generate again to finish them.",
+    "passageAddress": "Passage address"
   },
   "publish": {
     "title": "Publish",
@@ -706,7 +709,7 @@
     "labelsHelp": "Choose existing labels. Empty means all courses.",
     "placeholder": "Choose from existing",
     "empty": "No courses or labels exist yet.",
-    "courseCount": "{n} courses",
+    "courseCount": "{n} courses | {n} course | {n} courses",
     "loadError": "The list of courses could not be loaded: {message}",
     "unknownCourse": "a course outside your list"
   },
@@ -769,5 +772,14 @@
       "translation": "Translation"
     },
     "link": "Runs"
+  },
+  "holdItem": {
+    "task_fit": "Fits the task",
+    "grounding": "Grounded in the sources",
+    "continuity": "Continues the course",
+    "answer_key": "Answer key",
+    "audience_language": "Language for the audience",
+    "planted_error": "Planted error",
+    "block_type": "Block type"
   }
 }

@@ -35,11 +35,11 @@ const copy = computed(() => (props.by === 'course' ? { label: t('scope.coursesLa
 <template>
   <div data-testid="scope-picker">
     <FormField :id="id" :label="copy.label" :help="copy.help">
-      <MultiSelect :model-value="modelValue" :input-id="id" :options="options" option-label="label" option-value="value" display="chip" :placeholder="t('scope.placeholder')" :empty-message="t('scope.empty')" :loading="tags.loading.value" @update:model-value="emit('update:modelValue', $event as string[])">
+      <MultiSelect :model-value="modelValue" :input-id="id" :options="options" option-label="label" option-value="value" display="chip" :placeholder="t('scope.placeholder')" :empty-message="t('scope.empty')" :loading="tags.loading.value" :disabled="tags.loading.value && (tags.data.value ?? []).length === 0" @update:model-value="emit('update:modelValue', $event as string[])">
         <template #option="{ option }">
           <span class="row">
             <span>{{ option.label }}</span>
-            <span v-if="by === 'label'" class="count">{{ t('scope.courseCount', { n: option.count }) }}</span>
+            <span v-if="by === 'label'" class="count">{{ t('scope.courseCount', option.count) }}</span>
           </span>
         </template>
       </MultiSelect>

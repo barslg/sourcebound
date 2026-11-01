@@ -227,4 +227,3 @@ textarea { font: inherit; color: var(--sb-fg); background: var(--sb-surface); bo
 kbd { border: 1px solid var(--sb-border); border-radius: var(--sb-radius-sm); padding: 1px 6px; background: var(--sb-bg); }
 .guarded { position: relative; }
 .bell-count { position: absolute; top: -4px; right: -4px; pointer-events: none; }
-.native-select { min-height: 40px; padding: 0 var(--sb-space-3); border: 1px solid var(--sb-border); border-radius: var(--sb-radius-sm); background: var(--sb-surface); color: var(--sb-fg); font: inherit; }

@@ -3,7 +3,6 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import InputNumber from 'primevue/inputnumber'
-import InputText from 'primevue/inputtext'
 import { ApiError, request } from '@/api/client'
 import { ENDPOINTS, inviteRevoke } from '@/api/endpoints'
 import type { Invite, InviteListItem } from '@/api/types'
@@ -29,6 +28,8 @@ const picked = ref<string[]>(typeof route.query.course === 'string' ? [route.que
 const pickedTags = ref<string[]>([])
 const maxUses = ref<number | null>(null)
 const expires = ref('')
+const today = new Date().toLocaleDateString('sv-SE')
+const expiryError = computed(() => (expires.value && expires.value < today ? t('invites.expiresPast') : null))
 const busy = ref(false)
 const error = ref<string | null>(null)
 const created = ref<Made[]>([])
@@ -41,14 +42,14 @@ function linkOf(token: string): string {
 const usesText = (i: { max_uses: number | null; used_count: number }): string => (i.max_uses === null ? t('invites.usesUnlimited', { used: i.used_count }) : t('invites.uses', { used: i.used_count, max: i.max_uses }))
 
 async function create(): Promise<void> {
-  if (pickedTags.value.length === 0) return
+  if (pickedTags.value.length === 0 || expiryError.value) return
   busy.value = true
   error.value = null
   try {
     const before = new Set((await request<InviteListItem[]>(ENDPOINTS.invites)).map((i) => i.id))
-    const body: Record<string, unknown> = { course_tags: pickedTags.value, granted_role: 'student' }
+    const body: Record<string, unknown> = { course_tags: pickedTags.value }
     if (maxUses.value !== null) body.max_uses = maxUses.value
-    if (expires.value.trim()) body.expires_at = new Date(expires.value.trim()).toISOString()
+    if (expires.value) body.expires_at = new Date(`${expires.value}T23:59:59`).toISOString()
     const invite = await request<Invite>(ENDPOINTS.invites, { method: 'POST', body })
     const after = await request<InviteListItem[]>(ENDPOINTS.invites)
     const fresh = after.find((i) => !before.has(i.id)) ?? null
@@ -57,7 +58,7 @@ async function create(): Promise<void> {
     await existing.reload(true)
     notify('success', t('invites.created'))
   } catch (cause) {
-    error.value = cause instanceof ApiError ? cause.message : cause instanceof RangeError ? cause.message : String(cause)
+    error.value = cause instanceof ApiError ? cause.message : String(cause)
   } finally {
     busy.value = false
   }
@@ -89,8 +90,8 @@ async function copy(token: string): Promise<void> {
     <FormField id="inv-max" :label="t('invites.maxUses')" :help="t('invites.maxUsesHint')">
       <InputNumber v-model="maxUses" input-id="inv-max" :min="1" :use-grouping="false" />
     </FormField>
-    <FormField id="inv-exp" :label="t('invites.expires')" :help="t('invites.expiresHint')">
-      <InputText id="inv-exp" v-model="expires" />
+    <FormField id="inv-exp" :label="t('invites.expires')" :help="t('invites.expiresHint')" :error="expiryError">
+      <input id="inv-exp" v-model="expires" type="date" :min="today" data-testid="invite-expires" />
     </FormField>
     <p v-if="error" class="mono danger-text" role="alert" data-testid="form-error">{{ error }}</p>
     <div class="row">

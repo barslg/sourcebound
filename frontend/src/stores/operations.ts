@@ -15,6 +15,7 @@ export const useOperationsStore = defineStore('operations', () => {
   const order = ref<string[]>([])
   const unread = ref<Set<string>>(new Set())
   const failure = ref<string | null>(null)
+  const tags = ref<Record<string, string>>({})
   const notifications = ref<NotificationRow[]>([])
 
   const list = computed(() => order.value.map((id) => items.value[id]).filter((o): o is Operation => o !== undefined))
@@ -58,6 +59,20 @@ export const useOperationsStore = defineStore('operations', () => {
     if (open.length > 0) await loadNotifications()
   }
 
+  function tagOperation(id: string, tag: string): void {
+    tags.value = { ...tags.value, [id]: tag }
+  }
+
+  function openFor(tag: string): string | null {
+    for (const id of order.value) {
+      if (tags.value[id] === tag && !TERMINAL.has(items.value[id]?.status ?? 'queued')) return id
+    }
+    for (const [id, t] of Object.entries(tags.value)) {
+      if (t === tag && !TERMINAL.has(items.value[id]?.status ?? 'queued')) return id
+    }
+    return null
+  }
+
   function register(id: string): void {
     if (!order.value.includes(id)) order.value = [id, ...order.value]
     unread.value = new Set(unread.value).add(id)
@@ -84,15 +99,12 @@ export const useOperationsStore = defineStore('operations', () => {
   function reset(): void {
     items.value = {}
     order.value = []
+    tags.value = {}
     unread.value = new Set()
     notifications.value = []
   }
 
-  async function submitEcho(message: string): Promise<void> {
-    await request(ENDPOINTS.operationEcho, { method: 'POST', body: { message } })
-  }
-
-  return { items, order, list, unread, unreadCount, failure, notifications, loadNotifications, markNotificationsRead, refresh, register, onBus, refetchOpen, markAllRead, reset, submitEcho }
+  return { items, order, list, unread, unreadCount, failure, notifications, loadNotifications, markNotificationsRead, refresh, register, onBus, refetchOpen, markAllRead, reset, tagOperation, openFor }
 })
 
 export function isTerminal(status: string): boolean {
