@@ -214,7 +214,7 @@ prompt = "build/tasks/T10a.md"
 model = "muse-wonder-1.0"
 effort = "high"
 max_steps = 600
-depends = ["T04N"]
+depends = ["T04N", "T11", "T12"]
 
 [[task]]
 id = "T10b"
@@ -224,3 +224,57 @@ model = "muse-wonder-1.0"
 effort = "high"
 max_steps = 600
 depends = ["T10a"]
+
+[[task]]
+id = "T11"
+title = "courses strong by construction: passage coverage instead of quotas, checks ask only what the topic taught, no false adjacency, a planted error in every module test, topic coverage in the plan, thin URL sources refused, handoffs rendered"
+prompt = "build/tasks/T11.md"
+model = "muse-wonder-1.0"
+effort = "high"
+max_steps = 600
+depends = ["T04N"]
+
+[[task]]
+id = "T12"
+title = "richer block tools bound to sources: markdown bodies, code blocks with highlighting, copy and graded predict/fix exercises, tables with cited cells, Mermaid diagrams, figures from passage numbers, architect prescription by passage kind"
+prompt = "build/tasks/T12.md"
+model = "muse-wonder-1.0"
+effort = "high"
+max_steps = 600
+depends = ["T11"]
+
+[[task]]
+id = "T13"
+title = "intake wizard: a course from the author's brief → profile, open questions, suggested sources"
+prompt = "build/tasks/T13.md"
+model = "muse-wonder-1.0"
+effort = "high"
+max_steps = 500
+depends = ["T10b"]
+
+[[task]]
+id = "T16"
+title = "public reader: a published course readable by share link without an account, attempts graded by code, no tutor"
+prompt = "build/tasks/T16.md"
+model = "muse-wonder-1.0"
+effort = "high"
+max_steps = 500
+depends = ["T13"]
+
+[[task]]
+id = "T14"
+title = "glossary from passages with reader popover and glossary-first translation"
+prompt = "build/tasks/T14.md"
+model = "muse-wonder-1.0"
+effort = "high"
+max_steps = 500
+depends = ["T16"]
+
+[[task]]
+id = "T22"
+title = "generate-again keeps accepted blocks and says so; per-course cost rollup on the course home"
+prompt = "build/tasks/T22.md"
+model = "muse-wonder-1.0"
+effort = "high"
+max_steps = 500
+depends = ["T14"]
