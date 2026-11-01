@@ -106,6 +106,7 @@ def check_output(
     except PydanticValidationError as exc:
         return [f"schema: {error['loc']}: {error['msg']}" for error in exc.errors()]
     errors = validate_tree(CourseTree(modules=output.modules), prescription)
+    errors += _handoff_errors(output)
     if passages:
         errors += _coverage_errors(output, passages)
     if handles is not None:
@@ -122,6 +123,26 @@ def check_output(
     block_count = sum(len(topic.blocks) for module in output.modules for topic in module.topics)
     output.estimate_inputs.blocks = block_count
     return errors
+
+
+def _handoff_errors(output: Any) -> list[str]:
+    """One through-line handoff per topic boundary, or the plan is rejected.
+
+    Topics in plan order: every topic except the last must hand the
+    case over (through_line.handoffs naming that topic). A run that
+    produced no handoff for a boundary holds at the plan step.
+    """
+    topics = [topic for module in output.modules for topic in module.topics]
+    if len(topics) < 2:
+        return []
+    handed = set()
+    if output.through_line is not None:
+        handed = {h.topic_plan_node_id for h in output.through_line.handoffs if h.note.strip()}
+    return [
+        f"through-line: no handoff for topic boundary after {topic.title!r}"
+        for topic in topics[:-1]
+        if topic.plan_node_id not in handed
+    ]
 
 
 def _coverage_errors(output: Any, passages: list[dict[str, Any]]) -> list[str]:

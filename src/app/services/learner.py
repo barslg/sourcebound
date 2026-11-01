@@ -148,6 +148,7 @@ async def topic_entries(session: AsyncSession, course: dict[str, Any]) -> list[d
             entries.append(
                 {
                     "id": topic["id"],
+                    "plan_node_id": topic.get("plan_node_id", ""),
                     "module_id": module["id"],
                     "module_title": module.get("title", ""),
                     "module_purpose": module.get("purpose", ""),
@@ -570,7 +571,24 @@ async def topic_view(
         for b in topic["blocks"]
     ]
     await record_served_language(session, principal.user_id, [b["id"] for b in blocks], language)
+    # Through-line: the handoff of this topic renders as one Next line.
+    handoffs = (course["snapshot"].get("tree", {}).get("through_line") or {}).get("handoffs", [])
+    note = next(
+        (
+            str(h.get("note", ""))
+            for h in handoffs
+            if isinstance(h, dict) and h.get("topic_plan_node_id") == topic.get("plan_node_id")
+        ),
+        "",
+    )
+    all_topics = [
+        t
+        for m in course["snapshot"].get("tree", {}).get("modules", [])
+        for t in m.get("topics", [])
+    ]
+    is_last = bool(all_topics) and topic.get("plan_node_id") == all_topics[-1].get("plan_node_id")
     return {
+        "next_line": f"Next: {note}" if note and not is_last else "",
         "id": topic["id"],
         "course_id": course["id"],
         "module_id": topic["module_id"],

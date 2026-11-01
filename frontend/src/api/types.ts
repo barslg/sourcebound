@@ -94,7 +94,7 @@ export interface LearnOutline { id: string; title: string; language: string; sou
 export interface Chip { handle: string; source_title: string; address_label: string; passage_id: string }
 export interface Attempts { count: number; best_score: number | null; last_score: number | null }
 export interface LearnBlockView { id: string; block_type: string; role: string; ordinal: number; content: Record<string, unknown>; citations: Chip[]; language: string; fallback_notice: string | null; attempts: Attempts; passage_options?: Chip[] }
-export interface LearnTopic { id: string; course_id: string; module_id: string; kind: string; title: string; objectives: string[]; language: string; progress: LearnProgress; blocks: LearnBlockView[] }
+export interface LearnTopic { id: string; course_id: string; module_id: string; kind: string; title: string; objectives: string[]; language: string; progress: LearnProgress; blocks: LearnBlockView[]; next_line?: string }
 export interface LearnPassage { id: string; text: string; address_label: string; source_title: string; as_of: string | null; course_id: string }
 export interface KindCounts { hits: number; false_alarms: number; misses: number }
 export interface SpotFeedback { wrong_sentence: string; true_statement: string; passage: Chip | null; habit_line: string }

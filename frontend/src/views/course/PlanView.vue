@@ -277,6 +277,9 @@ watch(() => route.hash, (hash) => {
           </div>
         </section>
 
+        <section v-if="(plan.data.value?.through_line?.handoffs ?? []).length > 0" class="stack" data-testid="handoffs">
+          <p v-for="h in plan.data.value?.through_line?.handoffs ?? []" :key="h.topic_plan_node_id" class="muted">Next: {{ h.note }}</p>
+        </section>
         <section v-if="(plan.data.value?.uncovered ?? []).length > 0" class="stack" data-testid="not-used">
           <p class="muted">{{ t('plan.notUsed', { list: (plan.data.value?.uncovered ?? []).map((u) => `${u.handle} — ${u.reason}`).join('; ') }) }}</p>
         </section>
