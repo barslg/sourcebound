@@ -92,7 +92,7 @@ def check_block_output(payload: dict[str, Any], block_type: str = "reading") -> 
         for i, c in enumerate(citations):
             if not isinstance(c, dict) or not str(c.get("quote", "")).strip():
                 errors.append(f"citations[{i}]: quote is required")
-            handle = str(c.get("passage_id", c.get("handle", ""))) if isinstance(c, dict) else ""
+            handle = str(c.get("passage_id", "")) if isinstance(c, dict) else ""
             if handle and _UUID_RE.fullmatch(handle):
                 errors.append(f"citations[{i}]: passage handle must be a P-handle, not a UUID")
     # per-type shape is NOT rejected here: the executor validates the

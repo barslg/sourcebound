@@ -1496,7 +1496,7 @@ async def generate_block_step(
         resolved_citations = []
         citation_pids: list[str] = []
         for cit in output.get("citations", []):
-            handle = str(cit.get("passage_id", cit.get("handle", "")))
+            handle = str(cit.get("passage_id", ""))
             pid = handle_to_passage.get(handle, handle)
             quote = str(cit.get("quote", ""))
             passage_text = stored.get(pid, "")
