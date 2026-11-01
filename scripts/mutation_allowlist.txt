@@ -8,3 +8,10 @@ src/app/controllers/auth.py:76:cmp:IsNot same as above
 src/app/controllers/auth.py:77:cmp:IsNot same as above
 src/app/controllers/auth.py:78:not same as above
 src/app/errors.py:20:const:False class default of plain_message; every error class that needs plain text overrides it, and the override is what the access and error tests exercise
+src/app/clients/anthropic.py:52:const:False test-only provider; the one permanent client test covers the request shape, not this default
+src/app/clients/anthropic.py:55:int+1 test-only provider; a default argument mirrored from MetaClient
+src/app/clients/anthropic.py:90:bool:Or test-only provider; error-mapping branch exercised only with a key
+src/app/clients/anthropic.py:113:const:False test-only provider; a default argument mirrored from MetaClient
+src/app/clients/anthropic.py:116:int+1 test-only provider; a default argument mirrored from MetaClient
+src/app/clients/anthropic.py:140:int+1 test-only provider; usage arithmetic covered by the fixture test only for the cached path
+src/app/llm/registry.py:119:int+1 context window of the test-provider entry; informational, never read by the product path
