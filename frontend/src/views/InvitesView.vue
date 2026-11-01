@@ -42,12 +42,12 @@ function linkOf(token: string): string {
 const usesText = (i: { max_uses: number | null; used_count: number }): string => (i.max_uses === null ? t('invites.usesUnlimited', { used: i.used_count }) : t('invites.uses', { used: i.used_count, max: i.max_uses }))
 
 async function create(): Promise<void> {
-  if (pickedTags.value.length === 0 || expiryError.value) return
+  if (picked.value.length === 0 || expiryError.value) return
   busy.value = true
   error.value = null
   try {
     const before = new Set((await request<InviteListItem[]>(ENDPOINTS.invites)).map((i) => i.id))
-    const body: Record<string, unknown> = { course_tags: pickedTags.value }
+    const body: Record<string, unknown> = { course_tags: picked.value }
     if (maxUses.value !== null) body.max_uses = maxUses.value
     if (expires.value) body.expires_at = new Date(`${expires.value}T23:59:59`).toISOString()
     const invite = await request<Invite>(ENDPOINTS.invites, { method: 'POST', body })

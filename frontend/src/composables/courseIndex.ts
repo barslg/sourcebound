@@ -24,7 +24,7 @@ export function useCourseIndex() {
 }
 
 export function coursesForTags(courses: IndexedCourse[], tags: string[]): IndexedCourse[] {
-  return courses.filter((c) => c.tags.some((tag) => tags.includes(tag)))
+  return courses.filter((c) => tags.includes(c.id) || c.tags.some((tag) => tags.includes(tag)))
 }
 
 export function scopeTitles(courses: IndexedCourse[], tags: string[], fallback: string): string[] {
