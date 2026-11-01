@@ -314,6 +314,7 @@ async def write_tree(
     plan_digest: str,
     run_step_id: UUID | None = None,
     held: dict[str, str] | None = None,
+    uncovered: list[dict[str, Any]] | None = None,
 ) -> dict[str, dict[str, str]]:
     """Replace the plan tree: modules, topics, block skeletons in order.
 
@@ -351,6 +352,11 @@ async def write_tree(
         await session.execute(
             sa.text("UPDATE courses SET through_line = CAST(:tl AS jsonb) WHERE id = :course"),
             {"tl": tree.through_line.model_dump_json(), "course": str(course_id)},
+        )
+    if uncovered is not None:
+        await session.execute(
+            sa.text("UPDATE courses SET uncovered = CAST(:u AS jsonb) WHERE id = :course"),
+            {"u": json.dumps(uncovered), "course": str(course_id)},
         )
     for module_index, module in enumerate(tree.modules):
         module_id = (
@@ -684,6 +690,13 @@ async def read_tree(session: AsyncSession, *, course_id: UUID) -> dict[str, Any]
         tree["through_line"] = await read_through_line(session, course_id=course_id) or None
     except NotFoundError:
         tree["through_line"] = None
+    uncovered_row = (
+        await session.execute(
+            sa.text("SELECT uncovered FROM courses WHERE id = :course"),
+            {"course": str(course_id)},
+        )
+    ).first()
+    tree["uncovered"] = list(uncovered_row[0] or []) if uncovered_row is not None else []
     return tree
 
 

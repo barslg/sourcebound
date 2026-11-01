@@ -5,7 +5,7 @@ export function sourceHandles(block: PlanBlock): string[] {
 
 export interface PlanTopic { id: string; kind: string; title: string; objectives: string[]; through_line_note: string; plan_node_id: string; blocks: PlanBlock[] }
 export interface PlanModule { id: string; title: string; purpose: string; entry_knowledge: string; exit_knowledge: string; topics: PlanTopic[] }
-export interface PlanTree { modules: PlanModule[] }
+export interface PlanTree { modules: PlanModule[]; uncovered?: Array<{ handle: string; reason: string }>; through_line?: { case?: string; handoffs?: Array<{ topic_plan_node_id: string; note: string }> } | null }
 
 export interface PlanNode {
   key: string

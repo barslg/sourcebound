@@ -103,6 +103,13 @@ class CourseTree(BaseModel):
     through_line: ThroughLine | None = None
 
 
+class UncoveredPassage(BaseModel):
+    """One content passage the plan deliberately leaves out, with why."""
+
+    handle: str = Field(pattern=r"^P[1-9][0-9]*$")
+    reason: str = Field(min_length=1)
+
+
 class EstimateInputs(BaseModel):
     """Architect-declared generation size for the forecast."""
 
@@ -117,6 +124,7 @@ class ArchitectOutput(BaseModel):
     modules: list[ModuleNode] = Field(min_length=1)
     estimate_inputs: EstimateInputs
     through_line: ThroughLine | None = None
+    uncovered: list[UncoveredPassage] = Field(default_factory=list)
 
 
 class ConstraintRow(BaseModel):
@@ -297,6 +305,10 @@ ARCHITECT_SCHEMA: dict[str, Any] = _strict_object(
                 },
             }
         ),
+        "uncovered": {
+            "type": "array",
+            "items": _strict_object({"handle": _string(), "reason": _string()}),
+        },
     }
 )
 

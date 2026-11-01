@@ -457,6 +457,7 @@
     "buildCard": "Build the plan from your sources",
     "outline": "Course outline",
     "outlineHelp": "Titles save when you leave the field. Open a topic to see its blocks.",
+    "notUsed": "Not used: {list}",
     "moreFor": "More actions for {name}",
     "kind": {
       "lesson": "Lesson",

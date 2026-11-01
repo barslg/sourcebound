@@ -277,6 +277,10 @@ watch(() => route.hash, (hash) => {
           </div>
         </section>
 
+        <section v-if="(plan.data.value?.uncovered ?? []).length > 0" class="stack" data-testid="not-used">
+          <p class="muted">{{ t('plan.notUsed', { list: (plan.data.value?.uncovered ?? []).map((u) => `${u.handle} — ${u.reason}`).join('; ') }) }}</p>
+        </section>
+
         <section class="next-card" data-testid="next-step">
           <Section :title="t('plan.nextTitle')" :help="t('plan.nextHelp')" />
           <router-link v-if="(validation?.blocking_questions ?? []).length === 0" class="link-button" :to="`/courses/${courseId}/generate`" data-testid="next-generate">{{ t('plan.nextOpen') }}</router-link>

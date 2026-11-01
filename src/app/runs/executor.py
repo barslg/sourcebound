@@ -719,7 +719,7 @@ async def plan_architect_step(
         await session.execute(
             sa.text(
                 "SELECT passages.id, passages.address_key, passages.text,"
-                " passages.source_id, passages.ts_config FROM passages"
+                " passages.source_id, passages.ts_config, passages.is_content FROM passages"
                 " JOIN course_sources cs ON cs.source_id = passages.source_id"
                 " AND cs.course_id = :course AND cs.approval = 'approved'"
                 " JOIN sources s ON s.id = passages.source_id"
@@ -743,13 +743,24 @@ async def plan_architect_step(
 
     merged = rejoin_list_passages(
         [
-            {"id": row[0], "address_key": row[1], "text": str(row[2]), "source_id": str(row[3])}
+            {
+                "id": row[0],
+                "address_key": row[1],
+                "text": str(row[2]),
+                "source_id": str(row[3]),
+                "is_content": bool(row[5]) if len(row) > 5 else True,
+            }
             for row in picked
         ]
     )
     handle_to_passage = {f"P{index}": row["id"] for index, row in enumerate(merged, 1)}
     passages = [
-        {"handle": f"P{index}", "address_key": row["address_key"], "text": str(row["text"])}
+        {
+            "handle": f"P{index}",
+            "address_key": row["address_key"],
+            "text": str(row["text"]),
+            "is_content": bool(row.get("is_content", True)),
+        }
         for index, row in enumerate(merged, 1)
     ]
     source_languages = sorted(
@@ -794,6 +805,7 @@ async def plan_architect_step(
                 prescription,
                 handles,
                 methodology_codes=list(profile.get("methodology_codes", [])),
+                passages=passages,
             ),
         )
         parsed = ArchitectOutput.model_validate(output)
@@ -806,6 +818,7 @@ async def plan_architect_step(
             plan_digest=digest,
             run_step_id=claim["step_id"],
             held=held,
+            uncovered=[item.model_dump() for item in parsed.uncovered],
         )
         await write_plan_citations(session, version_map=version_map, refs=refs)
         from app.services.courses import record_source_passages
@@ -824,6 +837,7 @@ def _rejectable_architect_errors(
     prescription: dict[str, list[str]],
     handles: set[str],
     methodology_codes: list[str] | None = None,
+    passages: list[dict[str, Any]] | None = None,
 ) -> list[str]:
     """Architect errors that stop the run; unknown handles hold instead.
 
@@ -837,7 +851,7 @@ def _rejectable_architect_errors(
     from app.agents import architect
     from app.course.tree import ArchitectOutput
 
-    errors = architect.check_output(reply, prescription, handles)
+    errors = architect.check_output(reply, prescription, handles, passages=passages)
     if errors and all("unknown handle" in error for error in errors):
         return []
     if errors:
