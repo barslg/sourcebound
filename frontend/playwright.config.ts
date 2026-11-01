@@ -55,10 +55,11 @@ export default defineConfig({
       timeout: 60000,
     },
     {
-      command: 'uv run procrastinate --app=app.tasks.worker.app worker',
+      // the worker's own output is the only trace of a hung or crashed job: keep it
+      command: 'uv run procrastinate --app=app.tasks.worker.app worker 2>&1 | tee -a tmp/e2e-worker.log',
       cwd: '..',
       env: backendEnv,
-      wait: { stderr: /Starting worker/ },
+      wait: { stdout: /Starting worker/ },
       reuseExistingServer: false,
       timeout: 60000,
     },
