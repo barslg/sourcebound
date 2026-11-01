@@ -1,4 +1,4 @@
-.PHONY: check check-live check-public check-frontend ci-local gates
+.PHONY: check check-live check-public check-frontend ci-local gates check-contract
 check:
 	uv run ruff check src tests migrations scripts
 	uv run ruff format --check src tests migrations scripts
@@ -7,6 +7,8 @@ check:
 	uv run python scripts/run_gates.py
 gates:
 	uv run python scripts/run_gates.py
+check-contract:
+	uv run python scripts/check_contract.py
 check-live:
 	uv run pytest
 check-public:

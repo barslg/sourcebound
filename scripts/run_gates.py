@@ -26,6 +26,7 @@ GATES = (
     "check_routes",
     "check_callers",
     "check_scoped_sql",
+    "check_contract",
 )
 
 SUMMARY_RE = re.compile(r"^(?P<name>\w+): (?P<count>\d+) (?P<unit>[\w ]+?) checked$")
@@ -50,6 +51,8 @@ def run_gate(name: str) -> tuple[bool, str, str]:
             f"{name}: FAILED (exit {proc.returncode}, {seconds:.1f}s)",
             proc.stdout + proc.stderr,
         )
+    if lines and re.match(rf"^{name}: skipped, ", lines[-1]):
+        return True, f"{name}: SKIPPED - {lines[-1].split('skipped, ', 1)[1]}", ""
     if match is None:
         return False, f"{name}: FAILED (no 'N units checked' line)", proc.stdout
     if int(match["count"]) == 0:

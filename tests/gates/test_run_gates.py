@@ -49,3 +49,12 @@ def test_every_gate_script_is_in_the_runner() -> None:
     """A scripts/check_*.py gate missing from GATES would never run in CI."""
     on_disk = {path.stem for path in (ROOT / "scripts").glob("check_*.py")}
     assert on_disk == set(runner.GATES)
+
+
+def test_gate_that_names_its_missing_input_is_skipped_visibly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A gate whose input tree is absent says so; the line stays visible, not a silent pass."""
+    _fake_gate(tmp_path, monkeypatch, "print('fake_gate: skipped, no frontend here')\n")
+    ok, line, _ = runner.run_gate("fake_gate")
+    assert ok and "SKIPPED" in line and "no frontend here" in line
