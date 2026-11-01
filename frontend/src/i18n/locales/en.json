@@ -912,6 +912,7 @@
     "moduleTest": "Module test"
   },
   "learnTopic": {
+    "nextLine": "Next: {note}",
     "title": "Topic",
     "help": "Read the blocks, open a source beside the text, and check your answers. Attempts never lock.",
     "lessonHelp": "Read each block and check your answers as you go.",

@@ -100,9 +100,10 @@ async def course_facts(session: AsyncSession, course_ids: list[UUID]) -> dict[st
     sources = (
         await session.execute(
             sa.text(
-                "SELECT course_id, count(*) FILTER (WHERE approval = 'pending'), count(*)"
-                " FROM course_sources WHERE course_id = ANY(CAST(:ids AS uuid[]))"
-                " GROUP BY course_id"
+                "SELECT cs.course_id, count(*) FILTER (WHERE cs.approval = 'pending'"
+                " AND s.ingest_status IS DISTINCT FROM 'thin'), count(*)"
+                " FROM course_sources cs JOIN sources s ON s.id = cs.source_id"
+                " WHERE cs.course_id = ANY(CAST(:ids AS uuid[])) GROUP BY cs.course_id"
             ),
             {"ids": ids},
         )

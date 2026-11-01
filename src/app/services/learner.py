@@ -588,7 +588,7 @@ async def topic_view(
     ]
     is_last = bool(all_topics) and topic.get("plan_node_id") == all_topics[-1].get("plan_node_id")
     return {
-        "next_line": f"Next: {note}" if note and not is_last else "",
+        "next_note": note if note and not is_last else "",
         "id": topic["id"],
         "course_id": course["id"],
         "module_id": topic["module_id"],

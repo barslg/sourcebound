@@ -144,7 +144,7 @@ function retake(): void {
           <p class="muted">{{ submitted.unanswered > 0 ? t('learnTopic.unanswered', submitted.unanswered) : t('learnTopic.allAnswered') }}</p>
           <ActionButton action="retake" :label="t('learnTopic.retake')" data-testid="retake" @click="retake" />
         </div>
-        <p v-if="topic.data.value.next_line" class="hint" data-testid="through-line">{{ topic.data.value.next_line }}</p>
+        <p v-if="topic.data.value.next_note" class="hint" data-testid="through-line">{{ t('learnTopic.nextLine', { note: topic.data.value.next_note }) }}</p>
         <LearnBlockCard v-for="(b, i) in topic.data.value.blocks" :key="b.id" v-model:draft="drafts[b.id] as Draft" :block="b" :index="i" :result="results[b.id] ?? null" :busy="busy[b.id]" :test-mode="isTest" :open-id="openId" @check="check(b.id, b.block_type)" @open="open" />
         <div v-if="isTest && !submitted"><ActionButton accent action="submit-test" :label="t('learnTopic.submitTest')" :loading="submitting" :reason="submitReason" data-testid="submit-test" @click="submit" /></div>
         <footer v-if="lessonSources.length > 0" class="sources-footer stack" data-testid="sources-footer">

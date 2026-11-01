@@ -912,6 +912,7 @@
     "moduleTest": "Modultest"
   },
   "learnTopic": {
+    "nextLine": "Neste: {note}",
     "title": "Emne",
     "help": "Les blokkene, åpne en kilde ved siden av teksten og sjekk svarene dine. Forsøk blir aldri låst.",
     "lessonHelp": "Les hver blokk og sjekk svarene underveis.",
