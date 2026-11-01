@@ -1621,6 +1621,15 @@ async def generate_block_step(
             }
             holds += coverage_holds(text, cited_texts)
             holds += adjacency_holds(text, [cit["handle"] for cit in resolved_citations])
+        if block_type == "figure":
+            from app.course.grounding import passage_kind
+
+            cited_kinds = {
+                passage_kind(stored.get(handle_to_passage.get(c["handle"], c["handle"]), ""))
+                for c in resolved_citations
+            }
+            if cited_kinds and cited_kinds <= {"prose"}:
+                holds.append("figure: cited passage has no numbers or structure to draw")
         if is_question and block_type != "spot_the_error":
             from app.course.grounding import taught_holds
 

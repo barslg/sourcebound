@@ -147,6 +147,17 @@ def _coverage_errors(output: Any, passages: list[dict[str, Any]]) -> list[str]:
             elsewhere = normalize(
                 " ".join(text for h, text in by_handle.items() if h not in assigned)
             )
+            for block in topic.blocks:
+                if block.block_type != "figure":
+                    continue
+                from app.course.grounding import passage_kind
+
+                kinds = {passage_kind(by_handle.get(ref.handle, "")) for ref in block.source_refs}
+                if kinds <= {"prose"}:
+                    errors.append(
+                        f"figure: block {block.plan_node_id} cites only prose passages; "
+                        "a figure needs numbers or a structure to draw"
+                    )
             for term in content_terms(topic.title):
                 variants = (term, term.rstrip("s"), f"{term}s")
                 if not any(v in assigned_text for v in variants) and any(
