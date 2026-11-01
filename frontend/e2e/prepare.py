@@ -320,7 +320,6 @@ LEARN_PASSAGES = (
 async def seed_learn(session: AsyncSession, owner: str) -> dict[str, str]:
     """A published course with all seven block types, a module test, and an nb translation of two blocks."""
     import uuid
-    from importlib import import_module
 
     from app.course.tree import BlockSkeleton, CourseTree, ModuleNode, SourceRef, TopicNode
     from app.services import courses
@@ -355,7 +354,15 @@ async def seed_learn(session: AsyncSession, owner: str) -> dict[str, str]:
     public = lambda items: [{k: v for k, v in c.items() if not k.startswith("_")} for c in items]  # noqa: E731
 
     def fx(name: str) -> tuple[dict[str, object], dict[str, object]]:
-        return import_module(f"app.blocks.{name}.fixture").fixture()  # type: ignore[no-any-return]
+        # Block fixtures live under tests/block_fixtures (moved out of src by the callers gate).
+        from importlib.util import module_from_spec, spec_from_file_location
+
+        path = ROOT / "tests" / "block_fixtures" / f"{name}.py"
+        spec = spec_from_file_location(f"block_fixture_{name}", path)
+        assert spec is not None and spec.loader is not None, path
+        module = module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.fixture()  # type: ignore[no-any-return]
 
     specs: list[dict[str, object]] = []
 
