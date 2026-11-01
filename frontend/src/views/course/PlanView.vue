@@ -3,21 +3,19 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { ChevronDown, ChevronRight } from 'lucide-vue-next'
-import Checkbox from 'primevue/checkbox'
 import InputText from 'primevue/inputtext'
 import { ApiError, request } from '@/api/client'
-import { courseItem, coursePlan, coursePlanSubmit, courseProfile, courseSources } from '@/api/endpoints'
-import type { CourseDoc, SourceRow } from '@/api/types'
+import { courseItem, coursePlan, coursePlanSubmit, courseProfile, courseRuns, courseSources } from '@/api/endpoints'
+import type { CourseDoc, RunListItem, SourceRow } from '@/api/types'
 import CourseHeader from '@/components/CourseHeader.vue'
 import ActionButton from '@/components/ActionButton.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import FormField from '@/components/FormField.vue'
+import PlanBuildForm from '@/components/PlanBuildForm.vue'
 import Section from '@/components/Section.vue'
-import Queued from '@/components/Queued.vue'
 import ResourceState from '@/components/ResourceState.vue'
 import RowMenu, { type RowMenuItem } from '@/components/RowMenu.vue'
-import { METHODOLOGY_CODES } from '@/composables/methodologies'
 import { firstReason, lacking } from '@/composables/reasons'
 import { humanize } from '@/composables/labels'
 import { useQueued } from '@/composables/useQueued'
@@ -172,7 +170,10 @@ const methodologies = ref<string[]>([])
 const queriesText = ref('')
 const building = ref(false)
 const buildError = ref<string | null>(null)
-const planQueue = useQueued(() => `plan:${courseId.value}`, async () => { await Promise.all([plan.reload(true), header.value?.reload()]) })
+const rebuildOpen = ref(false)
+const runs = useResource<RunListItem[]>(`runs:${courseId.value}`, (signal) => request<RunListItem[]>(courseRuns(courseId.value), { signal }))
+const latestPlanRun = computed(() => (runs.data.value ?? []).find((r) => r.kind === 'plan') ?? null)
+const planQueue = useQueued(() => `plan:${courseId.value}`, async () => { await Promise.all([plan.reload(true), runs.reload(true), header.value?.reload()]) })
 async function buildPlan(): Promise<void> {
   building.value = true
   buildError.value = null
@@ -223,22 +224,18 @@ watch(() => route.hash, (hash) => {
 
       <ResourceState :loading="plan.loading.value" :error="plan.error.value" :empty="isEmpty" :empty-text="t('plan.buildCard')" @retry="plan.reload()">
         <template #empty-actions>
-          <form id="build-plan" class="stack build-form" data-testid="build-card" @submit.prevent="buildPlan">
-            <FormField id="b-meth" group :label="t('plan.methodology')" :help="t('plan.methodologyHint')" required :error="methodologies.length === 0 ? t('plan.pickMethodology') : null">
-              <div v-for="code in METHODOLOGY_CODES" :key="code" class="perm-check">
-                <Checkbox v-model="methodologies" :input-id="`m-${code}`" :value="code" />
-                <label :for="`m-${code}`"><strong>{{ t(`methodology.${code}.name`) }}</strong> <span class="hint">{{ t(`methodology.${code}.line`) }}</span></label>
-              </div>
-            </FormField>
-            <FormField id="b-q" :label="t('plan.queries')" :help="t('plan.queriesHint')" required :error="queriesText.trim().length === 0 ? t('plan.typeQueries') : null"><textarea id="b-q" v-model="queriesText" rows="3"></textarea></FormField>
-            <router-link v-if="noSources" :to="`/courses/${courseId}/sources`" data-testid="go-sources">{{ t('plan.goSources') }}</router-link>
-            <p v-if="buildError" class="mono danger-text" role="alert" data-testid="build-error">{{ buildError }}</p>
-            <div>
-              <ActionButton type="submit" action="build-plan" :label="t('plan.buildButton')" :loading="building" :reason="firstReason(lacking('course.plan'), noSources && t('plan.addSourceFirst'), methodologies.length === 0 && t('plan.pickMethodology'), queriesText.trim().length === 0 && t('plan.typeQueries'), planQueue.queued.value && t('plan.alreadyQueued'))" data-testid="plan-build" />
-            </div>
-            <Queued v-if="planQueue.queued.value" />
-          </form>
+          <p v-if="latestPlanRun?.status === 'stopped'" class="mono danger-text" role="alert" data-testid="plan-stopped">{{ latestPlanRun.stop_marker ?? t('plan.buildStopped') }}</p>
+          <PlanBuildForm v-model:methodologies="methodologies" v-model:queries-text="queriesText" :course-id="courseId" form-id="build-plan" field-prefix="b" choice-prefix="m" card-testid="build-card" submit-testid="plan-build" :submit-label="latestPlanRun?.status === 'stopped' ? t('plan.buildAgain') : t('plan.buildButton')" :building="building" :build-error="buildError" :no-sources="noSources" :op-queued="planQueue.queued.value" @submit="buildPlan" />
         </template>
+
+        <section v-if="latestPlanRun?.status === 'stopped'" class="stack" data-testid="plan-stopped">
+          <Section :title="t('plan.stoppedTitle')" :help="t('plan.stoppedHelp')" />
+          <p class="mono danger-text" role="alert">{{ latestPlanRun.stop_marker ?? t('plan.buildStopped') }}</p>
+          <div>
+            <ActionButton action="build-plan" :label="t('plan.buildAgain')" :reason="lacking('course.plan')" data-testid="plan-rebuild" @click="rebuildOpen = true" />
+          </div>
+          <PlanBuildForm v-if="rebuildOpen" v-model:methodologies="methodologies" v-model:queries-text="queriesText" :course-id="courseId" form-id="rebuild-plan" field-prefix="rb" choice-prefix="rb-m" card-testid="rebuild-card" submit-testid="plan-rebuild-submit" :submit-label="t('plan.buildAgain')" :building="building" :build-error="buildError" :no-sources="noSources" :op-queued="planQueue.queued.value" @submit="buildPlan" />
+        </section>
 
         <section class="stack" :aria-label="t('plan.outline')">
           <Section :title="t('plan.outline')" :help="t('plan.outlineHelp')" />

@@ -3,8 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { request } from '@/api/client'
-import { courseEstimate, courseGenerate, coursePlan, courseRuns, runCancel, runItem, runResume } from '@/api/endpoints'
-import type { Estimate, RunListItem } from '@/api/types'
+import { courseEstimate, courseGenerate, coursePlan, courseRuns, courseSources, runCancel, runItem, runResume } from '@/api/endpoints'
+import type { Estimate, RunListItem, SourceRow } from '@/api/types'
 import CourseHeader from '@/components/CourseHeader.vue'
 import ActionButton from '@/components/ActionButton.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -30,6 +30,8 @@ const header = ref<InstanceType<typeof CourseHeader> | null>(null)
 const plan = useResource<PlanTree>(`plan:${courseId.value}`, (signal) => request<PlanTree>(coursePlan(courseId.value), { signal }))
 const estimate = useResource<Estimate>(`estimate:${courseId.value}`, (signal) => request<Estimate>(courseEstimate(courseId.value), { signal }))
 const runs = useResource<RunListItem[]>(`runs:${courseId.value}`, (signal) => request<RunListItem[]>(courseRuns(courseId.value), { signal }))
+const sourceRows = useResource<SourceRow[]>(`sources:${courseId.value}`, (signal) => request<SourceRow[]>(courseSources(courseId.value), { signal }))
+const noSources = computed(() => sourceRows.data.value !== null && !sourceRows.data.value.some((s) => s.approval === 'approved' && s.progress > 0))
 const hasPlan = computed(() => (plan.data.value?.modules ?? []).length > 0)
 const alreadyGenerated = computed(() => (plan.data.value?.modules ?? []).some((m) => m.topics.some((x) => x.blocks.some((b) => b.status !== 'draft'))))
 const latest = computed(() => (runs.data.value ?? []).find((r) => r.kind === 'generation') ?? null)
@@ -55,6 +57,7 @@ const runId = computed(() => {
 })
 
 async function generate(): Promise<void> {
+  if (noSources.value) return
   generating.value = true
   try {
     const made = await request<{ operation_id: string }>(courseGenerate(courseId.value), { method: 'POST', body: { idempotency_key: crypto.randomUUID() } })
@@ -116,7 +119,8 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
 
           <div id="generate" class="stack generate-box">
             <div class="row">
-              <ActionButton action="generate" :label="alreadyGenerated ? t('generate.generateAgain') : t('plan.generate')" :loading="generating" :reason="firstReason(lacking('run.start'), active && t('plan.alreadyQueued'), validation && (validation.blocking_questions ?? []).length > 0 && t('plan.questionsOpen'), validation && (validation.tree_errors ?? []).length > 0 && t('plan.treeInvalid'), genQueue.queued.value && t('plan.alreadyQueued'))" data-testid="generate" @click="alreadyGenerated ? (confirmRegenerate = true) : generate()" />
+              <ActionButton action="generate" :label="alreadyGenerated ? t('generate.generateAgain') : t('plan.generate')" :loading="generating" :reason="firstReason(lacking('run.start'), noSources && t('generate.approveSources'), active && t('plan.alreadyQueued'), validation && (validation.blocking_questions ?? []).length > 0 && t('plan.questionsOpen'), validation && (validation.tree_errors ?? []).length > 0 && t('plan.treeInvalid'), genQueue.queued.value && t('plan.alreadyQueued'))" data-testid="generate" @click="alreadyGenerated ? (confirmRegenerate = true) : generate()" />
+              <router-link v-if="noSources" :to="`/courses/${courseId}/sources`" data-testid="go-sources">{{ t('generate.approveSources') }}</router-link>
               <router-link v-if="validation && (validation.blocking_questions ?? []).length > 0" :to="`/courses/${courseId}/plan#questions`" data-testid="go-questions">{{ t('generate.goQuestions') }}</router-link>
             </div>
             <Queued v-if="genQueue.queued.value" />

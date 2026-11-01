@@ -265,7 +265,8 @@
     "sources": "godkjenn kildene som venter",
     "fix": "rett blokkene som er holdt tilbake",
     "addSources": "legg til og godkjenn en kilde",
-    "unread": "vent til blokkene er lest, eller generer på nytt"
+    "unread": "vent til blokkene er lest, eller generer på nytt",
+    "planStopped": "Planbyggingen stoppet: {reason}"
   },
   "course": {
     "status": {
@@ -424,6 +425,10 @@
     "queries": "Hva du skal lete etter i kildene",
     "queriesHint": "Ett søk per linje. Eksempel: trinn i håndhygiene",
     "buildButton": "Bygg plan",
+    "buildAgain": "Bygg på nytt",
+    "stoppedTitle": "Planbyggingen stoppet",
+    "stoppedHelp": "Den siste planbyggingen stoppet før planen ble skrevet. Bygg på nytt, eller svar på de åpne spørsmålene nedenfor først.",
+    "buildStopped": "Den siste planbyggingen stoppet før planen ble skrevet.",
     "treeToggle": "Vis eller skjul emnene i {name}",
     "alreadyFirst": "Allerede først.",
     "alreadyLast": "Allerede sist.",
@@ -963,6 +968,7 @@
     "doneTitle": "Alt er skrevet",
     "goFixHeld": "Hva som må fikses ({held} holdt tilbake)",
     "goPublish": "Publiser",
-    "generateAgain": "Generer igjen"
+    "generateAgain": "Generer igjen",
+    "approveSources": "Godkjenn minst én kilde først"
   }
 }

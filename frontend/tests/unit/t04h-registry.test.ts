@@ -95,7 +95,12 @@ describe('route registry: every row is complete in en, nb and uk', () => {
   it('declares the queued state exactly where a view draws the Queued component', () => {
     const views = must(all.find((f) => f.rel === 'router/views.ts')).text
     const file = new Map([...views.matchAll(/'?([\w-]+)'?:\s*\(\) => import\('@\/views\/([^']+)'\)/g)].map((m) => [m[1], m[2]]))
-    const drawsQueued = (name: string): boolean => /<Queued\b/.test(all.find((f) => f.rel === `views/${file.get(name)}`)?.text ?? '')
+    const drawsQueued = (name: string): boolean => {
+      const root = all.find((f) => f.rel === `views/${file.get(name)}`)?.text ?? ''
+      if (/<Queued\b/.test(root)) return true
+      const parts = [...root.matchAll(/from '@\/components\/([^']+)'/g)].map((m) => m[1] as string)
+      return parts.some((c) => /<Queued\b/.test(all.find((f) => f.rel === `components/${c}`)?.text ?? ''))
+    }
     expect(pages.filter((r) => drawsQueued(r.name)).map((r) => r.name).sort()).toEqual(pages.filter((r) => r.states.includes('queued')).map((r) => r.name).sort())
   })
 })

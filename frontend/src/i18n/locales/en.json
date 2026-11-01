@@ -265,7 +265,8 @@
     "sources": "approve the waiting sources",
     "fix": "fix the held blocks",
     "addSources": "add and approve a source",
-    "unread": "wait for the blocks to be read, or generate again"
+    "unread": "wait for the blocks to be read, or generate again",
+    "planStopped": "The plan build stopped: {reason}"
   },
   "course": {
     "status": {
@@ -424,6 +425,10 @@
     "queries": "What to look for in the sources",
     "queriesHint": "One search per line. Example: hand hygiene steps",
     "buildButton": "Build plan",
+    "buildAgain": "Build again",
+    "stoppedTitle": "The plan build stopped",
+    "stoppedHelp": "The last plan build stopped before writing a plan. Build again, or answer the open questions below first.",
+    "buildStopped": "The last plan build stopped before writing a plan.",
     "treeToggle": "Show or hide the topics of {name}",
     "alreadyFirst": "Already first.",
     "alreadyLast": "Already last.",
@@ -963,6 +968,7 @@
     "doneTitle": "Everything is written",
     "goFixHeld": "What to fix ({held} held)",
     "goPublish": "Publish",
-    "generateAgain": "Generate again"
+    "generateAgain": "Generate again",
+    "approveSources": "Approve at least one source first"
   }
 }

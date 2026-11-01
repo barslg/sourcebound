@@ -6,7 +6,7 @@ export interface CourseFacts {
   published: boolean
 }
 
-export interface Action { key: string; to: string | null }
+export interface Action { key: string; to: string | null; params?: Record<string, unknown> }
 
 export interface StageFacts extends CourseFacts {
   courseId: string
@@ -18,6 +18,7 @@ export interface StageFacts extends CourseFacts {
   firstHeldId: string | null
   draft: number
   generated: boolean
+  planStopped?: string | null
 }
 
 export interface CourseCounters {
@@ -54,6 +55,7 @@ export function factsOfRow(c: CourseCounters): StageFacts {
 export function nextAction(c: StageFacts): Action {
   const base = `/courses/${c.courseId}`
   if (c.published) return { key: 'needs.nothing', to: null }
+  if (c.planStopped && !c.plan) return { key: 'needs.planStopped', to: `${base}/plan#build-plan`, params: { reason: c.planStopped } }
   if (c.sourceCount === 0) return { key: 'needs.addSources', to: `${base}/sources#source-add` }
   if (c.pendingSources > 0 && !c.generated) return { key: 'needs.sources', to: `${base}/sources#${c.firstPendingId ? `source-${c.firstPendingId}` : 'sources-list'}` }
   if (!c.profile || !c.plan) return { key: c.profile ? 'needs.plan' : 'needs.profile', to: `${base}/plan#build-plan` }

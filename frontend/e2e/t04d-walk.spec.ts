@@ -32,6 +32,7 @@ const CONTROLS: Array<[RegExp, Call]> = [
   [/^Generate course$/, 'POST /api/v1/courses/{}/generate/submit'],
   [/^Generate again$/, 'POST /api/v1/courses/{}/generate/submit'],
   [/^Build plan$/, 'POST /api/v1/courses/{}/plan/submit'],
+  [/^Build again$/, 'POST /api/v1/courses/{}/plan/submit'],
   [/^Add module$/, 'PATCH /api/v1/courses/{}/plan'],
   [/^Show or hide the blocks of /, 'ui'],
   [/^Rewrite all held blocks/, 'POST /api/v1/courses/{}/held/rewrite'],

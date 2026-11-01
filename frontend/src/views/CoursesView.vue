@@ -67,8 +67,8 @@ async function create(): Promise<void> {
         </div>
         <span class="muted course-row-next" data-testid="needs-now">
           {{ t('course.needsNowLabel') }}
-          <router-link v-if="action(c).to" class="link-button" :to="action(c).to as string" data-testid="needs-link">{{ t(action(c).key) }}</router-link>
-          <template v-else>{{ t(action(c).key) }}</template>
+          <router-link v-if="action(c).to" class="link-button" :to="action(c).to as string" data-testid="needs-link">{{ t(action(c).key, action(c).params ?? {}) }}</router-link>
+          <template v-else>{{ t(action(c).key, action(c).params ?? {}) }}</template>
         </span>
       </li>
     </ul>

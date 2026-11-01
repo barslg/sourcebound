@@ -3,8 +3,8 @@ import { computed, onBeforeUnmount, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { request } from '@/api/client'
-import { courseHeld, courseItem, coursePlan, coursePlanValidate, courseSources } from '@/api/endpoints'
-import type { CourseDoc, HeldDoc, SourceRow, Validation } from '@/api/types'
+import { courseHeld, courseItem, coursePlan, coursePlanValidate, courseRuns, courseSources } from '@/api/endpoints'
+import type { CourseDoc, HeldDoc, RunListItem, SourceRow, Validation } from '@/api/types'
 import ActionButton from '@/components/ActionButton.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import StatusChip from '@/components/StatusChip.vue'
@@ -30,6 +30,7 @@ const validation = useResource<Validation>(`validate:${id}`, (signal) => request
 const sources = useResource<SourceRow[]>(`sources:${id}`, (signal) => request<SourceRow[]>(courseSources(id), { signal }))
 const held = useResource<HeldDoc>(`held:${id}`, (signal) => request<HeldDoc>(courseHeld(id), { signal }))
 const plan = useResource<PlanTree>(`plan:${id}`, (signal) => request<PlanTree>(coursePlan(id), { signal }))
+const runs = useResource<RunListItem[]>(`runs:${id}`, (signal) => request<RunListItem[]>(courseRuns(id), { signal }))
 
 const facts = computed(() => {
   const c = course.data.value
@@ -38,11 +39,13 @@ const facts = computed(() => {
   const heldList = held.data.value?.blocks ?? []
   const blocks = (plan.data.value?.modules ?? []).flatMap((m) => m.topics.flatMap((x) => x.blocks))
   const questions = validation.data.value?.blocking_questions ?? []
+  const stoppedPlan = (runs.data.value ?? []).find((r) => r.kind === 'plan' && r.status === 'stopped') ?? null
   return {
     ...factsOfRow({ ...c, has_profile: c.profile !== null, has_plan: blocks.length > 0, open_questions: questions.length }),
     firstQuestionKey: questions[0]?.key ?? null,
     firstPendingId: pending[0]?.id ?? null,
     firstHeldId: heldList[0]?.id ?? null,
+    planStopped: stoppedPlan?.stop_marker ?? null,
   }
 })
 const action = computed(() => (facts.value ? nextAction(facts.value) : null))
@@ -59,7 +62,7 @@ const context = useCourseContext()
 watchEffect(() => { if (course.data.value) context.set(id, course.data.value.title, strip.value) })
 onBeforeUnmount(() => context.clear())
 async function reload(): Promise<void> {
-  await Promise.all([course.reload(true), validation.reload(true), sources.reload(true), held.reload(true), plan.reload(true)])
+  await Promise.all([course.reload(true), validation.reload(true), sources.reload(true), held.reload(true), plan.reload(true), runs.reload(true)])
 }
 defineExpose({ reload })
 </script>
@@ -92,8 +95,8 @@ defineExpose({ reload })
       </ol>
       <div v-if="action" class="next-action" data-testid="needs-now">
         <span class="muted">{{ t('course.needsNowLabel') }}</span>
-        <router-link v-if="action.to" :to="action.to" data-testid="needs-link"><strong>{{ t(action.key) }}</strong></router-link>
-        <strong v-else>{{ t(action.key) }}</strong>
+        <router-link v-if="action.to" :to="action.to" data-testid="needs-link"><strong>{{ t(action.key, action.params ?? {}) }}</strong></router-link>
+        <strong v-else>{{ t(action.key, action.params ?? {}) }}</strong>
       </div>
     </div>
     <slot :course="course.data.value" :validation="validation.data.value" :reload="course.reload" :reload-validation="validation.reload" :held-count="held.data.value?.blocks.length ?? 0" :draft-count="course.data.value?.draft_count ?? 0" />

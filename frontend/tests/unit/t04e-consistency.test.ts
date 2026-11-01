@@ -46,7 +46,7 @@ describe('one component per job', () => {
     expect(offenders(/data-testid="queued-line"/, ['components/Queued.vue'])).toEqual([])
     expect(offenders(/<StatusChip[^>]*op\.queuedToast|<p[^>]*class="chip"[^>]*>\{\{ t\('op\.queuedToast/, [])).toEqual([])
     const users = all.filter((f) => /<Queued\b/.test(f.text)).map((f) => f.rel).sort()
-    expect(users).toEqual(['components/BellMenu.vue', 'views/course/FixView.vue', 'views/course/GenerateView.vue', 'views/course/PlanView.vue', 'views/course/PublishView.vue'])
+    expect(users).toEqual(['components/BellMenu.vue', 'components/PlanBuildForm.vue', 'views/course/FixView.vue', 'views/course/GenerateView.vue', 'views/course/PublishView.vue'])
   })
   it('lets only ScopePicker choose scope: no free-text tags input', () => {
     expect(offenders(/parseTags\(|scopeText|queriesText.*tag/, [])).toEqual([])
