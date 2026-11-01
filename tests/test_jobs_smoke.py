@@ -1399,6 +1399,35 @@ async def test_generation_reader_reply_without_coverage_item_is_rejected(
     )
 
 
+async def test_generation_holds_an_unquoted_key_and_a_glued_teach_block_through_the_executor(
+    t03_session: AsyncSession,
+) -> None:
+    """T11b wiring: the taught and adjacency checks run on every generated block."""
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-rules")
+    sources = demo_t05.demo_sources(demo["passages"])
+    second = sorted(sources, key=lambda s: s["address"])[1]
+
+    def violate(prompt: str, reply: dict[str, Any]) -> dict[str, Any]:
+        skeleton = prompt.rsplit("## Block skeleton", 1)[-1]
+        if '"plan_node_id": "b2"' in skeleton and "options" in reply:
+            reply["options"] = [{"text": "An invented rule nobody taught", "correct": True}]
+        if '"plan_node_id": "b1"' in skeleton and "citations" in reply:
+            first_quote = str(reply["citations"][0]["quote"])
+            other = str(second["text"])[:40]
+            reply["text"] = f"{first_quote} {other}"
+            reply["citations"] = [reply["citations"][0], {"passage_id": "P2", "quote": other}]
+        return reply
+
+    final = await _smoke_run(t03_session, demo, dag, _edited(demo_t05.mock_demo_handler(), violate))
+    assert final["status"] == "done", final["stop_marker"]
+    blocks = await _smoke_blocks(t03_session, demo["course_id"])
+    assert (
+        blocks["b2"][0] == "held"
+        and "not taught: the key claim 'An invented rule" in blocks["b2"][1]
+    )
+    assert blocks["b1"][0] == "held" and "false adjacency" in blocks["b1"][1], blocks["b1"]
+
+
 async def test_generation_run_never_ends_done_with_a_block_no_reader_covered(
     t03_session: AsyncSession,
 ) -> None:

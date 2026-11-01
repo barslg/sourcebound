@@ -15,6 +15,11 @@ from typing import Any
 HANDLE_MARKER_RE = re.compile(r"⟦(P[1-9][0-9]*)⟧")
 _BULLET_RE = re.compile(r"^\s*(?:[-•*]|\d+[.)])\s+(.*\S)\s*$")
 _TOKEN_RE = re.compile(r"[^\W\d_]+(?:[-'][^\W\d_]+)*|\d+(?:[.,]\d+)?", re.UNICODE)
+# Words as a learner reads them: slashes and dashes stay inside commands
+# ("/new", "--yolo"), surrounding punctuation and quotes drop.
+_WORD_RE = re.compile(r"[^\s]+")
+_EDGE_PUNCT = ".,;:!?()[]{}\"'“”‘’«»…"
+QUOTED_SPAN_WORDS = 4
 
 _STOPWORDS = frozenset(
     {
@@ -131,9 +136,21 @@ def has_list(passage_text: str) -> bool:
     return bool(list_items(passage_text))
 
 
+_QUANTITY_RE = re.compile(
+    r"(?<![\w.-])(?:[$€£]\s?\d[\d.,]*|\d[\d.,]*\s?(?:%|percent|ms|s|m|h|km|kg|g|mb|gb|kb|tokens?|"
+    r"seconds?|minutes?|hours?|days?|weeks?|months?|years?|times|steps?|users?|people|cases?|items?)"
+    r"(?![\w-])|(?:19|20)\d\d(?![\w.-]))",
+    re.IGNORECASE,
+)
+_FIGURE_REF_RE = re.compile(r"\b(?:figure|fig\.|table|chart|diagram)\s*\d", re.IGNORECASE)
+
+
 def has_numbers(passage_text: str) -> bool:
-    """True when the passage carries a numeric value worth drawing."""
-    return bool(re.search(r"\d", str(passage_text)))
+    """True when the passage carries a quantity worth drawing: a number with a unit, a
+    percentage, a currency amount, a year, or a figure/table reference — never a bare
+    label digit ("stage 3 of 3") or a version number ("muse-spark-1.2")."""
+    text = str(passage_text)
+    return bool(_QUANTITY_RE.search(text) or _FIGURE_REF_RE.search(text))
 
 
 def passage_kind(passage_text: str) -> str:
@@ -160,20 +177,37 @@ def allowed_block_types(passage_text: str) -> tuple[str, ...]:
     )
 
 
-def _item_carried(item: str, block_norm: str) -> bool:
-    if normalize(item) in block_norm:
-        return True
+def item_label(item: str) -> tuple[str, str]:
+    """(label, rest) of one list item: the words before a colon, else two content terms."""
+    head, colon, rest = item.partition(":")
+    if colon and len(head.split()) <= 6:
+        return head.strip(), rest.strip()
     terms = content_terms(item)
-    return bool(terms) and all(term in block_norm for term in terms)
+    return " ".join(terms[:2]), item
+
+
+def _item_carried(item: str, block_norm: str) -> bool:
+    """The item's label is named and, when it has one, its first content term too."""
+    label, rest = item_label(item)
+    if not label:
+        return True
+    if normalize(label) not in block_norm:
+        terms = content_terms(label)
+        if not terms or not all(term in block_norm for term in terms):
+            return False
+    rest_terms = content_terms(rest)
+    return not rest_terms or rest_terms[0] in block_norm
 
 
 def coverage_holds(block_text: str, cited: dict[str, str]) -> list[str]:
-    """Hold a teach/example block that drops a cited passage's list.
+    """Hold a teach/example block that drops an item of a cited passage's list.
 
-    `cited` maps handle to stored passage text. Every numbered or
-    bulleted item of a cited passage must be carried by the block text
-    (verbatim item or all its content terms). No word quotas: a prose
-    passage imposes no requirement beyond its citations.
+    `cited` maps handle to passage text (list units already joined).
+    Every item of a cited list must be named in the block: its label
+    (the words before the colon, or the item's first two content terms)
+    and the first content term of its text. A paraphrase that names
+    every option passes; a block that stops at the colon holds. No word
+    quotas: a prose passage imposes no requirement beyond its citations.
     """
     holds: list[str] = []
     block_norm = normalize(block_text)
@@ -181,39 +215,47 @@ def coverage_holds(block_text: str, cited: dict[str, str]) -> list[str]:
         for item in list_items(passage_text):
             if not _item_carried(item, block_norm):
                 holds.append(
-                    f"coverage: cited passage {handle} list item {item!r} "
-                    "is missing from the block text"
+                    f"coverage: cited passage {handle} list item {item_label(item)[0]!r} "
+                    "is not named in the block text"
                 )
     return holds
 
 
-def adjacency_holds(block_text: str, cited_handles: list[str]) -> list[str]:
-    """Hold a teach block that joins passages without handle markers.
+def adjacency_holds(block_text: str, citations: list[dict[str, Any]]) -> list[str]:
+    """Hold a teach block whose text moves from one passage to another without a marker.
 
-    With two or more cited passages the text must carry one
-    ⟦P<n>⟧ marker per cited passage, in citation order, never
-    interleaved: sentences from two passages may not sit in one
-    paragraph without the marker between them.
+    Each citation's quote is located in the block text; where two
+    located quotes from different passages follow each other, a
+    ⟦P<n>⟧ marker naming the second passage must stand between them.
+    Citation order is irrelevant; a marker parked at the end covers no
+    boundary; a quote that is not in the text (a paraphrase) locates
+    nothing and the reader judges it.
     """
-    handles = list(dict.fromkeys(cited_handles))
-    if len(handles) < 2:
-        return []
-    found = HANDLE_MARKER_RE.findall(block_text)
+    spans: list[tuple[int, str]] = []
+    lowered = block_text.lower()
+    for citation in citations:
+        handle = str(citation.get("handle", ""))
+        quote = str(citation.get("quote", "")).strip().lower()
+        if not handle or not quote:
+            continue
+        at = lowered.find(quote)
+        if at < 0 and len(quote) > 40:
+            at = lowered.find(quote[:40])
+        if at >= 0:
+            spans.append((at, handle))
+    spans.sort()
+    markers = [(m.start(), m.group(1)) for m in HANDLE_MARKER_RE.finditer(block_text)]
     holds: list[str] = []
-    for first, second in zip(handles, handles[1:], strict=False):
-        if first not in found or second not in found:
+    for (start, first), (end, second) in zip(spans, spans[1:], strict=False):
+        if first == second:
+            continue
+        between = [h for at, h in markers if start < at <= end]
+        if second not in between:
             holds.append(
-                f"false adjacency: passages {first} and {second} are joined "
-                "without a handle marker between them"
+                f"false adjacency: text from {first} runs into text from {second} "
+                f"without a ⟦{second}⟧ marker between them"
             )
-    if found and [h for h in found if h in handles] != handles:
-        # a repeated or out-of-order marker means passages interleave
-        if not holds:
-            holds.append(
-                "false adjacency: cited passages appear interleaved "
-                "without markers in citation order"
-            )
-    return holds
+    return list(dict.fromkeys(holds))
 
 
 def taught_handles_for(plan: dict[str, Any], node_id: str) -> tuple[list[str], str] | None:
@@ -249,48 +291,88 @@ def taught_handles_for(plan: dict[str, Any], node_id: str) -> tuple[list[str], s
     return None
 
 
-def answer_key_terms(output: dict[str, Any]) -> list[str]:
-    """Content terms an exercise asks with: options, blanks, pairs, key.
+_CORRECT_TIERS = frozenset({"correct", "right", "true"})
+_CLAUSE_SPLIT_RE = re.compile(r"\s*(?:;|—|–| - |\.\s+|\n)\s*")
 
-    Every option (not only the correct one), every blank, every pair
-    side, every scenario item, and the free `answer` key. A scenario
-    item's tier is the exercise's own label vocabulary (high/low), never
-    a claim of a passage, so it is not asked of the taught text.
+
+def answer_key_claims(output: dict[str, Any], block_type: str = "") -> list[str]:
+    """The claims an exercise's key asserts.
+
+    Choice: the correct options. Cloze: the blanks. Matching: the right
+    sides. Scenario practice: the items labelled correct and every
+    clause of the free `answer` (that is where its key lives). Never a
+    distractor (the exercise's own invention), a question item or a
+    label: those assert nothing about the sources.
     """
-    texts: list[str] = [str(output.get("answer", ""))]
+    claims: list[str] = []
     for option in output.get("options", []) if isinstance(output.get("options"), list) else []:
-        texts.append(str(option.get("text", "")) if isinstance(option, dict) else str(option))
+        if isinstance(option, dict) and option.get("correct"):
+            claims.append(str(option.get("text", "")))
     for blank in output.get("blanks", []) if isinstance(output.get("blanks"), list) else []:
-        texts.append(str(blank))
+        claims.append(str(blank))
     for pair in output.get("pairs", []) if isinstance(output.get("pairs"), list) else []:
         if isinstance(pair, dict):
-            texts.append(str(pair.get("left", "")))
-            texts.append(str(pair.get("right", "")))
-    for item in output.get("items", []) if isinstance(output.get("items"), list) else []:
-        if isinstance(item, dict):
-            texts.append(str(item.get("text", "")))
-    terms: list[str] = []
-    for text in texts:
-        for term in content_terms(text):
-            if term not in terms:
-                terms.append(term)
-    return terms
+            claims.append(str(pair.get("right", "")))
+    if block_type == "scenario_practice":
+        for item in output.get("items", []) if isinstance(output.get("items"), list) else []:
+            if isinstance(item, dict) and str(item.get("tier", "")).lower() in _CORRECT_TIERS:
+                claims.append(str(item.get("text", "")))
+        claims += _CLAUSE_SPLIT_RE.split(str(output.get("answer", "")))
+    return [claim.strip() for claim in claims if claim.strip()]
 
 
-def taught_holds(output: dict[str, Any], taught_texts: list[str]) -> list[str]:
-    """Hold a check/practice/test block that asks untaught material.
+def words_of(text: str) -> list[str]:
+    """Lowercased words with their edge punctuation dropped; commands keep their slashes."""
+    out: list[str] = []
+    for raw in _WORD_RE.findall(str(text).lower()):
+        word = raw.strip(_EDGE_PUNCT)
+        if word:
+            out.append(word)
+    return out
 
-    No claim may sit in an answer key that is not in a passage cited
-    by a teach/example block of the same topic (module tests: of the
-    module). A term with a trailing plural or hyphen variant in the
-    taught text counts as taught.
+
+def _contiguous(needle: list[str], haystack: list[str]) -> bool:
+    size = len(needle)
+    if size == 0 or size > len(haystack):
+        return False
+    return any(haystack[i : i + size] == needle for i in range(len(haystack) - size + 1))
+
+
+def quoted_from(claim: str, taught_words: list[str]) -> bool:
+    """True when the claim carries a run of QUOTED_SPAN_WORDS words from the taught text.
+
+    A claim shorter than the span must appear whole. This establishes
+    provenance (the wording comes from a taught passage); meaning is
+    the reader's rubric.
     """
-    taught = normalize(" \n ".join(taught_texts))
+    words = words_of(claim)
+    if not words:
+        return True
+    if len(words) < QUOTED_SPAN_WORDS:
+        return _contiguous(words, taught_words)
+    return any(
+        _contiguous(words[i : i + QUOTED_SPAN_WORDS], taught_words)
+        for i in range(len(words) - QUOTED_SPAN_WORDS + 1)
+    )
+
+
+def taught_holds(
+    output: dict[str, Any], taught_texts: list[str], block_type: str = ""
+) -> list[str]:
+    """Hold a check/practice/test block whose key asserts what no taught passage says.
+
+    Every claim of the answer key (answer_key_claims) must be quoted
+    from a passage cited by a teach/example block of the same topic
+    (module tests: of the module): a run of four consecutive words, or
+    the whole claim when shorter. The generator prompts state the same
+    rule, so a hold is a broken contract, not a style call.
+    """
+    taught_words = words_of(" \n ".join(taught_texts))
     holds: list[str] = []
-    for term in answer_key_terms(output):
-        variants = {term, term.rstrip("s"), f"{term}s"}
-        if not any(variant and variant in taught for variant in variants):
+    for claim in answer_key_claims(output, block_type):
+        if not quoted_from(claim, taught_words):
             holds.append(
-                f"not taught: answer-key term {term!r} is not in a passage taught by this topic"
+                f"not taught: the key claim {claim[:80]!r} is not quoted from a passage"
+                " this topic taught"
             )
     return holds

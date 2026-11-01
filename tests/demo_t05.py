@@ -338,12 +338,13 @@ def mock_demo_handler() -> Any:
                 "block_type": wanted_type,
                 "text": "Staff apply the cited passage at work.",
                 "citations": [{"passage_id": str(first.get("handle", "P1")), "quote": quote}],
-                "answer": "key",
-                "options": [{"text": "Yes", "correct": True}, {"text": "No", "correct": False}],
-                "pairs": [{"left": "a", "right": "b"}],
+                # keys are quoted from the passage: the taught check asks provenance
+                "answer": quote,
+                "options": [{"text": quote, "correct": True}, {"text": "No", "correct": False}],
+                "pairs": [{"left": "a", "right": quote}],
                 "numbers": [15, 35],
-                "blanks": ["x"],
-                "items": [{"text": "i", "passage_id": "P1", "tier": "high"}],
+                "blanks": [quote.split()[0]],
+                "items": [{"text": quote, "passage_id": "P1", "tier": "correct"}],
                 "sentences": ["Alpha shall apply.", "Beta shall apply."],
             }
         return httpx2.Response(200, json=_completed(json.dumps(reply)))

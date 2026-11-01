@@ -49,20 +49,20 @@ def build_dynamic(
         for entry in METHODOLOGIES
         if str(entry["code"]) in codes
     }
-    from app.course.grounding import allowed_block_types
+    from app.course.grounding import allowed_block_types, passage_kind
 
     ordered = {
         "course_language": course_language,
         "source_languages": sorted(set(source_languages or [])),
-        # R6: the block types code allows per passage (a figure only where
-        # the passage has numbers or a structure to draw) travel with it.
+        # R6: each passage carries its kind; the block types code allows per
+        # kind (a figure only where a passage has something to draw) once.
         "passages": [
-            {
-                **passage,
-                "allowed_block_types": list(allowed_block_types(str(passage.get("text", "")))),
-            }
-            for passage in passages
+            {**passage, "kind": passage_kind(str(passage.get("text", "")))} for passage in passages
         ],
+        "block_types_by_passage_kind": {
+            kind: list(allowed_block_types(sample))
+            for kind, sample in (("has_numbers", "1"), ("has_list", "- a"), ("prose", "a"))
+        },
         "profile": profile,
         "constraints": constraints,
         "prescription": prescription,
@@ -156,9 +156,12 @@ def _handoff_errors(output: Any) -> list[str]:
 
 
 def _coverage_errors(output: Any, passages: list[dict[str, Any]]) -> list[str]:
-    """Topic-title and whole-plan passage coverage, checked in code."""
-    from app.course.grounding import content_terms, normalize
+    """Whole-plan passage coverage and figure gating, checked in code.
 
+    A topic title naming something the sources lack is the author's
+    call (a Plan-page warning), never a stop: the word-level rejection
+    stopped 6 of 6 real plans on 'test' and 'staged' (T11 review H3).
+    """
     errors: list[str] = []
     by_handle = {str(p.get("handle", "")): str(p.get("text", "")) for p in passages}
     content_handles = {
@@ -169,15 +172,9 @@ def _coverage_errors(output: Any, passages: list[dict[str, Any]]) -> list[str]:
     cited: set[str] = set()
     for module in output.modules:
         for topic in module.topics:
-            assigned: set[str] = set()
             for block in topic.blocks:
                 for ref in block.source_refs:
-                    assigned.add(ref.handle)
                     cited.add(ref.handle)
-            assigned_text = normalize(" ".join(by_handle.get(h, "") for h in assigned))
-            elsewhere = normalize(
-                " ".join(text for h, text in by_handle.items() if h not in assigned)
-            )
             for block in topic.blocks:
                 if block.block_type != "figure":
                     continue
@@ -188,15 +185,6 @@ def _coverage_errors(output: Any, passages: list[dict[str, Any]]) -> list[str]:
                     errors.append(
                         f"figure: block {block.plan_node_id} cites only prose passages; "
                         "a figure needs numbers or a structure to draw"
-                    )
-            for term in content_terms(topic.title):
-                variants = (term, term.rstrip("s"), f"{term}s")
-                if not any(v in assigned_text for v in variants) and any(
-                    v in elsewhere for v in variants
-                ):
-                    errors.append(
-                        f"topic {topic.plan_node_id}: title concept {term!r} "
-                        "has no assigned passage"
                     )
     if content_handles:
         share = len(cited & content_handles) / len(content_handles)
