@@ -53,8 +53,9 @@ async function signOut(): Promise<void> {
       <BellMenu />
       <ActionButton action="signout" :label="t('shell.signOut')" data-testid="signout" @click="signOut" />
     </header>
+    <div class="shell-side">
+    <router-link class="brand" to="/">{{ t('app.name') }}</router-link>
     <nav class="shell-nav" :aria-label="t('nav.label')">
-      <router-link class="brand" to="/">{{ t('app.name') }}</router-link>
       <ul>
         <li v-for="item in nav" :key="item.path">
           <router-link class="nav-link" :to="item.path"><component :is="item.icon" :size="20" :stroke-width="2" aria-hidden="true" />{{ item.label }}</router-link>
@@ -70,6 +71,7 @@ async function signOut(): Promise<void> {
         </ul>
       </template>
     </nav>
+    </div>
     <main id="main" class="shell-main"><slot /></main>
     <footer class="shell-foot">
       <span>{{ t('shortcuts.footer') }}</span>

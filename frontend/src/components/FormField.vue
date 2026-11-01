@@ -10,7 +10,7 @@ const shown = computed(() => touched.value && Boolean(props.error))
 </script>
 
 <template>
-  <component :is="group ? 'fieldset' : 'div'" class="field" :class="{ 'field-invalid': shown }" @focusout="touched = true">
+  <component :is="group ? 'fieldset' : 'div'" class="field" :class="{ 'field-invalid': shown, 'field-slot': required }" @focusout="touched = true">
     <legend v-if="group" class="field-label">{{ label }}<span v-if="required" class="field-required">({{ t('form.required') }})</span></legend>
     <div v-else class="field-label">
       <label :for="id">{{ label }}</label><span v-if="required" class="field-required">({{ t('form.required') }})</span>
