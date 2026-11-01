@@ -110,11 +110,10 @@ def check_output(
                             errors.append(
                                 f"block {block.plan_node_id}: unknown handle {ref.handle!r}"
                             )
+    # The estimate is derived from the tree by code; a model-written count is never a reason
+    # to reject a plan that passed every structural check.
     block_count = sum(len(topic.blocks) for module in output.modules for topic in module.topics)
-    if output.estimate_inputs.blocks != block_count:
-        errors.append(
-            f"estimate blocks {output.estimate_inputs.blocks} != tree blocks {block_count}"
-        )
+    output.estimate_inputs.blocks = block_count
     return errors
 
 
