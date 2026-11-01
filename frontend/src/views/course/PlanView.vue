@@ -266,7 +266,7 @@ watch(() => route.hash, (hash) => {
                         <span>{{ b.brief }}</span>
                       </li>
                     </ul>
-                    <p v-if="x.blocks.length === 0" class="muted">{{ t('plan.noBlocks') }}</p>
+                    <p v-if="x.blocks.length === 0" class="muted" data-testid="topic-tree-error">{{ t('plan.emptyTopic') }}</p>
                   </div>
                 </li>
               </ul>
@@ -286,8 +286,9 @@ watch(() => route.hash, (hash) => {
 
         <section class="next-card" data-testid="next-step">
           <Section :title="t('plan.nextTitle')" :help="t('plan.nextHelp')" />
-          <router-link v-if="(validation?.blocking_questions ?? []).length === 0" class="link-button" :to="`/courses/${courseId}/generate`" data-testid="next-generate">{{ t('plan.nextOpen') }}</router-link>
-          <p v-else class="hint" data-testid="next-reason">{{ t('plan.questionsOpen') }}</p>
+          <router-link v-if="(validation?.blocking_questions ?? []).length === 0 && (validation?.tree_errors ?? []).length === 0" class="link-button" :to="`/courses/${courseId}/generate`" data-testid="next-generate">{{ t('plan.nextOpen') }}</router-link>
+          <p v-else-if="(validation?.blocking_questions ?? []).length > 0" class="hint" data-testid="next-reason">{{ t('plan.questionsOpen') }}</p>
+          <p v-else class="hint" data-testid="next-reason">{{ t('plan.treeInvalid') }}</p>
         </section>
       </ResourceState>
 

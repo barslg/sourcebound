@@ -116,8 +116,8 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
 
           <div id="generate" class="stack generate-box">
             <div class="row">
-              <ActionButton action="generate" :label="alreadyGenerated ? t('generate.generateAgain') : t('plan.generate')" :loading="generating" :reason="firstReason(lacking('run.start'), validation && !validation.can_generate && t('plan.questionsOpen'), genQueue.queued.value && t('plan.alreadyQueued'))" data-testid="generate" @click="alreadyGenerated ? (confirmRegenerate = true) : generate()" />
-              <router-link v-if="validation && !validation.can_generate" :to="`/courses/${courseId}/plan#questions`" data-testid="go-questions">{{ t('generate.goQuestions') }}</router-link>
+              <ActionButton action="generate" :label="alreadyGenerated ? t('generate.generateAgain') : t('plan.generate')" :loading="generating" :reason="firstReason(lacking('run.start'), validation && (validation.blocking_questions ?? []).length > 0 && t('plan.questionsOpen'), validation && (validation.tree_errors ?? []).length > 0 && t('plan.treeInvalid'), genQueue.queued.value && t('plan.alreadyQueued'))" data-testid="generate" @click="alreadyGenerated ? (confirmRegenerate = true) : generate()" />
+              <router-link v-if="validation && (validation.blocking_questions ?? []).length > 0" :to="`/courses/${courseId}/plan#questions`" data-testid="go-questions">{{ t('generate.goQuestions') }}</router-link>
             </div>
             <Queued v-if="genQueue.queued.value" />
             <router-link v-if="runId && runId !== latest?.id" :to="`/runs/${runId}`" data-testid="open-run">{{ t('plan.openRun') }}</router-link>

@@ -480,6 +480,8 @@
     "titleOf": "Title of {name}",
     "topicToggle": "Show or hide the blocks of {name}",
     "noBlocks": "No blocks yet. They are written when the course is generated.",
+    "emptyTopic": "This topic has no blocks yet. Write a brief or delete it.",
+    "treeInvalid": "The plan has errors. Fix or delete the marked topics first.",
     "conflictTitle": "The plan changed",
     "conflictBody": "Someone changed this plan while you were editing. Reload their version, or keep yours and overwrite it."
   },

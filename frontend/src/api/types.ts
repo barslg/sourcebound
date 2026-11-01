@@ -77,7 +77,7 @@ export interface CourseDoc {
   constraints: Constraint[]
 }
 export interface CourseRow { id: string; title: string; language: string; status: string; scope_tags: string[]; has_profile: boolean; has_plan: boolean; open_questions: number; held_count: number; draft_count: number; pending_sources: number; source_count: number }
-export interface Validation { blocking_questions: Array<{ key: string; kind: string; question: string | null }>; can_generate: boolean }
+export interface Validation { blocking_questions: Array<{ key: string; kind: string; question: string | null }>; tree_errors: string[]; can_generate: boolean }
 export interface SourceRow { id: string; title: string; media: string; licence: string; as_of: string | null; approval: string; progress: number; ingest_status?: string; ingest_message?: string | null }
 export interface HeldBlock { id: string; topic_title: string; brief: string; hold_reason: string; passage: string; address: string }
 export interface HeldDoc { blocks: HeldBlock[]; batch_quote_usd: string | null }

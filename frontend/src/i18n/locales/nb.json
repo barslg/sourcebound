@@ -480,6 +480,8 @@
     "titleOf": "Tittel på {name}",
     "topicToggle": "Vis eller skjul blokkene til {name}",
     "noBlocks": "Ingen blokker ennå. De skrives når kurset genereres.",
+    "emptyTopic": "Dette emnet har ingen blokker ennå. Skriv et sammendrag eller slett det.",
+    "treeInvalid": "Planen har feil. Fiks eller slett de markerte emnene først.",
     "conflictTitle": "Planen ble endret",
     "conflictBody": "Noen endret denne planen mens du redigerte. Last inn deres versjon, eller behold din og overskriv."
   },

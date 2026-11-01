@@ -151,6 +151,27 @@ async def _approved_passage_count(session: AsyncSession, *, course_id: UUID) -> 
     return int(row or 0)
 
 
+async def _invalid_tree_errors(session: AsyncSession, *, course_id: UUID) -> list[str]:
+    """Blocking tree errors, or [] when there is no plan tree yet to judge.
+
+    An empty course (no modules) has nothing invalid: building the plan
+    is exactly how it gains one. A course WITH a plan whose topics fail
+    the contract (empty topics, wrong roles, bad refs) must not reach
+    generation until the author fixes or deletes them.
+    """
+    from app.services.courses import validate_course_tree
+
+    modules = (
+        await session.execute(
+            sa.text("SELECT count(*) FROM modules WHERE course_id = :c"),
+            {"c": str(course_id)},
+        )
+    ).scalar()
+    if not int(modules or 0):
+        return []
+    return await validate_course_tree(session, course_id=course_id)
+
+
 async def submit_plan(
     session: AsyncSession,
     *,
@@ -167,6 +188,9 @@ async def submit_plan(
         raise ValidationError("queries must be a non-empty list of non-empty strings")
     if await _approved_passage_count(session, course_id=course_id) == 0:
         raise UnprocessableError("Add and approve at least one source before building a plan.")
+    tree_errors = await _invalid_tree_errors(session, course_id=course_id)
+    if tree_errors:
+        raise UnprocessableError("the plan is invalid: " + "; ".join(tree_errors))
     return await _submit(
         session,
         actor=actor,
@@ -210,6 +234,9 @@ async def submit_generate(
         raise UnprocessableError("Build a plan before generating blocks.")
     if await _approved_passage_count(session, course_id=course_id) == 0:
         raise UnprocessableError("Add and approve at least one source before generating blocks.")
+    tree_errors = await _invalid_tree_errors(session, course_id=course_id)
+    if tree_errors:
+        raise UnprocessableError("the plan is invalid: " + "; ".join(tree_errors))
     return await _submit(
         session,
         actor=actor,
@@ -529,6 +556,88 @@ async def _close_factory(provider_factory: Any) -> None:
         await aclose()
 
 
+async def _drop_orphan_steps(session: AsyncSession, *, run_id: UUID) -> int:
+    """Rebuild a resumed run's pending steps against the current plan.
+
+    Steps whose topic/block no longer exists (the author deleted them
+    while the run was stopped) are dropped from the compiled DAG and
+    recorded done with a skipped output: they are never re-run, never
+    repaid, and their dependents proceed. Returns the dropped count.
+    """
+    from app.services import courses as course_service
+
+    row = (
+        await session.execute(
+            sa.text("SELECT kind, course_id, compiled_dag FROM runs WHERE id = :run"),
+            {"run": str(run_id)},
+        )
+    ).first()
+    if row is None or row[0] not in ("generation", "rewrite") or row[1] is None:
+        return 0
+    course_id = UUID(str(row[1]))
+    dag = [e for e in (row[2] or []) if isinstance(e, dict)]
+    if not dag:
+        return 0
+    tree = await course_service.read_tree(session, course_id=course_id)
+    topics = {
+        str(t.get("plan_node_id", "")) for m in tree.get("modules", []) for t in m.get("topics", [])
+    }
+    blocks = {
+        str(b.get("plan_node_id", ""))
+        for m in tree.get("modules", [])
+        for t in m.get("topics", [])
+        for b in t.get("blocks", [])
+    }
+    done_keys = {
+        str(r[0])
+        for r in (
+            await session.execute(
+                sa.text("SELECT step_key FROM run_steps WHERE run_id = :run AND status = 'done'"),
+                {"run": str(run_id)},
+            )
+        ).all()
+    }
+    orphans: list[dict[str, Any]] = []
+    for entry in dag:
+        key = str(entry.get("step_key", ""))
+        if key in done_keys:
+            continue
+        handler = str(entry.get("handler", ""))
+        node = key.partition(":")[2]
+        if handler == "read_topic" and node not in topics:
+            orphans.append(entry)
+        elif handler in ("generate_block", "saboteur") and node not in blocks:
+            orphans.append(entry)
+    for entry in orphans:
+        key = str(entry.get("step_key", ""))
+        dag = [e for e in dag if str(e.get("step_key", "")) != key]
+        digest = entry.get("input_digest")
+        skipped = json.dumps({"skipped": True, "reason": "topic or block no longer in the plan"})
+        await session.execute(
+            sa.text(
+                "INSERT INTO run_steps (run_id, name, status, step_key, depends_on,"
+                " input_digest, output, attempt, finished_at)"
+                " VALUES (:run, CAST(:name AS varchar), 'done', CAST(:key AS text), '[]',"
+                " :digest, CAST(:output AS jsonb), 1, now())"
+                " ON CONFLICT (run_id, step_key) DO UPDATE SET"
+                " status = 'done', output = EXCLUDED.output, finished_at = now()"
+            ),
+            {
+                "run": str(run_id),
+                "name": key,
+                "key": key,
+                "digest": str(digest) if digest is not None else None,
+                "output": skipped,
+            },
+        )
+    if orphans:
+        await session.execute(
+            sa.text("UPDATE runs SET compiled_dag = CAST(:dag AS jsonb) WHERE id = :run"),
+            {"dag": json.dumps(dag), "run": str(run_id)},
+        )
+    return len(orphans)
+
+
 async def resume_run(
     session: AsyncSession,
     *,
@@ -563,6 +672,7 @@ async def resume_run(
         sa.text("UPDATE runs SET status = 'running', stop_marker = NULL WHERE id = :run"),
         {"run": str(run_id)},
     )
+    await _drop_orphan_steps(session, run_id=run_id)
     op_row = (
         await session.execute(
             sa.text(

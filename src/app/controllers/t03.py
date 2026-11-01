@@ -368,7 +368,7 @@ async def validate_plan(ctx: RequestContext, *, course_id: str) -> dict[str, Any
     return {
         "blocking_questions": questions,
         "tree_errors": tree_errors,
-        "can_generate": not questions,
+        "can_generate": not questions and not tree_errors,
     }
 
 
