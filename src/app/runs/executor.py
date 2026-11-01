@@ -1011,6 +1011,7 @@ async def _persist_block(
     status: str = "draft",
     hold_reason: str | None = None,
 ) -> tuple[str, str, bool] | None:
+    force_new: bool = False,
     """Write one block version; content never carries the answer key.
 
     Returns (block_id, version_id, created) of the course-scoped block
@@ -1019,7 +1020,10 @@ async def _persist_block(
     A write equal to the block's current version (content and key) is
     not persisted: created is False, the version, its status and its
     citations stay as they are, so an identical re-run neither
-    re-versions every block nor resets an author's accept.
+    re-versions every block nor resets an author's accept. A rewrite
+    (`force_new`) never skips: the author asked for a new answer, so an
+    identical reply still becomes a new draft version that the reader
+    then judges, and the block leaves `held` through that verdict.
     """
     brow = (
         await session.execute(
@@ -1050,7 +1054,7 @@ async def _persist_block(
                 },
             )
         ).one()
-        if current[0] and current[1] and status == "draft":
+        if current[0] and current[1] and status == "draft" and not force_new:
             return block_id, str(brow[1]), False
     nxt = (
         await session.execute(
@@ -1168,6 +1172,7 @@ async def _plant_spot_block(
     run_id: UUID | None = None,
     variant: int = 0,
 ) -> None:
+    force_new: bool = False,
     """Code-planted spot-the-error from the ONE picker's pick.
 
     `pick` is the saboteur step's pick ({sentence, kind, passage});
@@ -1233,6 +1238,7 @@ async def _plant_spot_block(
         step_id=step_id,
         status="draft",
     )
+        force_new=force_new,
     if (
         persisted is not None
         and persisted[2]
@@ -1451,6 +1457,7 @@ async def generate_block_step(
             run_id=run_id,
             variant=int(entry.get("variant_offset", 0)),
             mutated=str(sab["mutated"]) if sab.get("mutated") else None,
+            force_new=bool(entry.get("rewrite")),
             kind=str(sab["kind"]) if sab.get("kind") else None,
             pick=(
                 {
@@ -1535,6 +1542,7 @@ async def generate_block_step(
             step_id=claim["step_id"],
             status="draft",
         )
+            force_new=bool(entry.get("rewrite")),
         # citation rows on THE version just written, in THIS course
         if persisted is not None and persisted[2]:
             version_id = persisted[1]
@@ -1664,6 +1672,12 @@ async def read_topic_step(
             block["reread_after_rework"] = True
     node_ids = {b["plan_node_id"] for b in blocks if b.get("plan_node_id")}
     prompt = reader.build_reader_prompt(
+    run_dag = (
+        await session.execute(
+            sa.text("SELECT compiled_dag FROM runs WHERE id = :run"), {"run": str(run_id)}
+        )
+    ).scalar()
+    own_nodes = set(dag_block_nodes([e for e in (run_dag or []) if isinstance(e, dict)]))
         topic_plan_node_id=topic_id,
         course_language=str(entry.get("course_language", "en")),
         sources=list(entry.get("sources", [])),
@@ -1691,7 +1705,7 @@ async def read_topic_step(
             variant=int(claim["attempt"]) - 1,
             check=lambda reply: reader.check_reader_output(reply, node_ids=node_ids),
         )
-        undecided = _undecided_nodes(output)
+        undecided = _undecided_nodes(output) & own_nodes if own_nodes else _undecided_nodes(output)
         if undecided:
             # `unknown` is not a verdict: ask once more with variant+1, then hold.
             second = await provider.generate_json(
@@ -1708,6 +1722,8 @@ async def read_topic_step(
         for verdict in output.get("verdicts", []):
             node = str(verdict.get("plan_node_id", ""))
             items = verdict.get("items", {}) if isinstance(verdict.get("items"), dict) else {}
+            if own_nodes and node not in own_nodes:
+                continue
             reasons = [
                 f"{k}: {v.get('evidence', '')}"
                 for k, v in items.items()
@@ -1949,7 +1965,7 @@ async def rework_blocks_step(
             original = originals.get(node)
             if original is None:
                 continue
-            gen_entry = dict(original)
+            gen_entry = {**original, "rewrite": True}
             skeleton = dict(gen_entry.get("skeleton", {"plan_node_id": node}))
             skeleton["hold_reason"] = reasons.get(node, "")
             skeleton["brief"] = f"{skeleton.get('brief', '')} Rewrite: {reasons.get(node, '')}"
@@ -1969,6 +1985,7 @@ async def rework_blocks_step(
                         entry={
                             **saboteurs[node],
                             "variant_offset": versions,
+                            "rewrite": True,
                             "hold_reason": reasons.get(node, ""),
                         },
                         provider_factory=provider_factory,

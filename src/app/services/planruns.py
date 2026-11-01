@@ -722,8 +722,10 @@ async def run_rewrite_operation(
 ) -> dict[str, Any]:
     """Worker body for rewrite_block / rewrite_held_batch.
 
-    Regenerates ONLY the named blocks: variant = the block's existing
-    version count (a fresh draft, never the reply store's old one),
+    Regenerates ONLY the named blocks: variant = how many generation
+    runs already touched the block (a counter that grows on every
+    rewrite, so an unchanged reply can never freeze it; a fresh draft,
+    never the reply store's old one), the block is always re-versioned,
     the hold reason rides in the skeleton prompt, and the affected
     topics are read again. Other blocks keep their versions.
     """
@@ -750,7 +752,10 @@ async def run_rewrite_operation(
             sa.text(
                 "SELECT b.id, b.plan_node_id, b.block_type, b.role, b.brief,"
                 " b.hold_reason, t.plan_node_id,"
-                " (SELECT count(*) FROM block_versions bv WHERE bv.block_id = b.id)"
+                " (SELECT count(*) FROM run_steps rs JOIN runs r ON r.id = rs.run_id"
+                " WHERE r.course_id = m.course_id"
+                " AND split_part(rs.step_key, ':', 2) = b.plan_node_id"
+                " AND split_part(rs.step_key, ':', 1) LIKE 'block\\_%')"
                 " FROM blocks b JOIN topics t ON t.id = b.topic_id"
                 " JOIN modules m ON m.id = t.module_id"
                 " WHERE m.course_id = :c AND b.id::text = ANY(:ids)"
@@ -786,7 +791,7 @@ async def run_rewrite_operation(
         depends: list[str] = []
         if str(btype) == "spot_the_error":
             # the planted exercise needs its picker + saboteur step, with a seed
-            # that advances with the version count: a rewrite is a NEW exercise
+            # that advances with the rewrite counter: a rewrite is a NEW exercise
             saboteur_key = f"saboteur:{node}"
             depends.append(saboteur_key)
             dag.append(
@@ -802,6 +807,7 @@ async def run_rewrite_operation(
                 }
             )
         dag.append(
+                    "rewrite": True,
             {
                 "step_key": key,
                 "handler": "generate_block",
@@ -817,6 +823,7 @@ async def run_rewrite_operation(
                     "plan_node_id": str(node),
                     "brief": f"{brief} Rewrite: {reason}" if reason else str(brief),
                     "role": str(role),
+                "rewrite": True,
                     "block_type": str(btype),
                     "hold_reason": reason,
                 },

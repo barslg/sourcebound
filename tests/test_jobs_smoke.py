@@ -1163,6 +1163,122 @@ async def test_mock_product_path_runs_the_live_acceptance_checks(
     assert len(rows) == 4 and cited >= 4 and readers
 
 
+async def _rewrite_block(
+    session: AsyncSession, demo: dict[str, Any], node: str, handler: Any
+) -> dict[str, Any]:
+    """Run the product rewrite operation for one block with a mock transport."""
+    from app.db import create_session_factory
+
+    settings = _gen_settings()
+    block_id = (
+        await session.execute(
+            sa.text(
+                "SELECT b.id FROM blocks b JOIN topics t ON t.id = b.topic_id"
+                " JOIN modules m ON m.id = t.module_id"
+                " WHERE m.course_id = :c AND b.plan_node_id = :n"
+            ),
+            {"c": str(demo["course_id"]), "n": node},
+        )
+    ).scalar_one()
+    operation_id = (
+        await session.execute(
+            sa.text(
+                "INSERT INTO operations (kind, status, params, progress, actor_id)"
+                " VALUES ('rewrite_block', 'queued', CAST(:p AS jsonb), 0, :a) RETURNING id"
+            ),
+            {
+                "p": json.dumps({"course_id": str(demo["course_id"]), "block_id": str(block_id)}),
+                "a": str(demo["user_id"]),
+            },
+        )
+    ).scalar_one()
+    await session.commit()
+    ledger = create_session_factory(_db_url())
+    http = guarded_client(settings, inner=httpx2.MockTransport(handler))
+    return await planruns.run_rewrite_operation(
+        session,
+        UUID(str(operation_id)),
+        provider_factory=_gen_provider_factory(http, ledger, settings),
+        session_factory=create_session_factory(_db_url()),
+    )
+
+
+async def _paid_block_calls(session: AsyncSession, course_id: UUID) -> int:
+    return int(
+        (
+            await session.execute(
+                sa.text(
+                    "SELECT count(*) FROM llm_calls l JOIN runs r ON r.id = l.run_id"
+                    " WHERE r.course_id = :c AND l.agent LIKE 'block\\_%' AND l.cost_usd > 0"
+                ),
+                {"c": str(course_id)},
+            )
+        ).scalar_one()
+    )
+
+
+async def _version_total(session: AsyncSession, course_id: UUID, node: str) -> int:
+    return int(
+        (
+            await session.execute(
+                sa.text(
+                    "SELECT count(*) FROM block_versions bv JOIN blocks b ON b.id = bv.block_id"
+                    " JOIN topics t ON t.id = b.topic_id JOIN modules m ON m.id = t.module_id"
+                    " WHERE m.course_id = :c AND b.plan_node_id = :n"
+                ),
+                {"c": str(course_id), "n": node},
+            )
+        ).scalar_one()
+    )
+
+
+async def test_a_rewrite_that_returns_the_same_content_still_posts_and_releases_the_hold(
+    t03_session: AsyncSession,
+) -> None:
+    """Guards the author's way out: a held block's rewrite is never a silent no-op.
+
+    The model answers with the content the block already holds, twice. Each
+    rewrite must reach the model (the variant grows), leave a new version,
+    and the block leaves `held` when the reader passes it; the reader may
+    see the topic's other block but cannot change its status.
+    """
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-rewrite")
+    final = await _smoke_run(t03_session, demo, dag, demo_t05.mock_demo_handler())
+    assert final["status"] == "done", final["stop_marker"]
+    before = await _smoke_blocks(t03_session, demo["course_id"])
+    assert before["b1"][0] == "accepted" and before["b2"][0] == "accepted", before
+    base = await _version_total(t03_session, demo["course_id"], "b1")
+
+    def hold_sibling(prompt: str, reply: dict[str, Any]) -> dict[str, Any]:
+        for verdict in reply.get("verdicts", []):
+            if verdict["plan_node_id"] == "b2":
+                verdict["verdict"] = "hold"
+                verdict["hold_reason"] = "sibling judged outside the rewrite"
+        return reply
+
+    paid = await _paid_block_calls(t03_session, demo["course_id"])
+    for round_no in (1, 2):
+        await t03_session.execute(
+            sa.text(
+                "UPDATE blocks SET status = 'held', hold_reason = 'needs a rewrite' WHERE id IN"
+                " (SELECT b.id FROM blocks b JOIN topics t ON t.id = b.topic_id"
+                " JOIN modules m ON m.id = t.module_id"
+                " WHERE m.course_id = :c AND b.plan_node_id = 'b1')"
+            ),
+            {"c": str(demo["course_id"])},
+        )
+        await t03_session.commit()
+        handler = _edited(demo_t05.mock_demo_handler(), hold_sibling)
+        await _rewrite_block(t03_session, demo, "b1", handler)
+        blocks = await _smoke_blocks(t03_session, demo["course_id"])
+        assert blocks["b1"][0] == "accepted", (round_no, blocks)
+        assert blocks["b2"][0] == "accepted", (round_no, "sibling re-judged", blocks)
+        now = await _paid_block_calls(t03_session, demo["course_id"])
+        assert now > paid, (round_no, "the rewrite was served from the reply store", now, paid)
+        paid = now
+    assert await _version_total(t03_session, demo["course_id"], "b1") == base + 2
+
+
 async def test_generation_reader_unknown_holds_the_block_and_the_author_has_a_way_out(
     t03_session: AsyncSession,
 ) -> None:
