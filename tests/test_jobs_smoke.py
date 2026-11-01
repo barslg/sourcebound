@@ -1535,3 +1535,101 @@ async def test_tutor_threshold_keeps_off_topic_questions_away_from_the_model(wor
         calls, reply = await reaches_model(question)
         assert calls == 0 and reply["mode"] == NOT_IN_MATERIALS, ("paid for off-topic", question)
         assert reply["quotes"] == [] and "hint" in reply
+
+
+async def _gen_course(session: AsyncSession, title: str) -> UUID:
+    user_id = UUID(
+        str(
+            (
+                await session.execute(
+                    sa.text(
+                        "INSERT INTO users (email, display_name) VALUES (:e, 'N') RETURNING id"
+                    ),
+                    {"e": f"replay-{uuid.uuid4().hex[:12]}@example.com"},
+                )
+            ).one()[0]
+        )
+    )
+    course_id = await course_service.create_course(
+        session, owner_id=user_id, title=title, language="en"
+    )
+    await session.commit()
+    return course_id
+
+
+async def _step_output(session: AsyncSession, run_id: UUID, step_key: str) -> Any:
+    return (
+        await session.execute(
+            sa.text("SELECT output FROM run_steps WHERE run_id = :r AND step_key = :k"),
+            {"r": str(run_id), "k": step_key},
+        )
+    ).scalar_one()
+
+
+async def test_replay_ledger_serves_a_recorded_run_free_and_a_new_request_misses_loudly(
+    t03_session: AsyncSession, tmp_path: Any
+) -> None:
+    """Record a run through the mock model, replay it on another course with no model reachable."""
+    from app.runs import executor
+
+    session = t03_session
+    recorded_course = await _gen_course(session, "Replay recorded")
+    recorded = await executor.new_run(
+        session, course_id=recorded_course, kind="generation", dag=_gen_dag(recorded_course)
+    )
+    await session.commit()
+    assert (await _gen_drive(session, recorded, _gen_mock_handler(), _gen_settings()))[
+        "status"
+    ] == "done"
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT agent, model, request, response FROM llm_calls"
+                " WHERE run_id = :r AND cost_usd > 0 ORDER BY created_at"
+            ),
+            {"r": str(recorded)},
+        )
+    ).all()
+    assert {row[0] for row in rows} == {"block_teach", "reader"}
+    ledger = tmp_path / "ledger.json"
+    ledger.write_text(
+        json.dumps(
+            [{"agent": r[0], "model": r[1], "request": r[2], "response": r[3]} for r in rows]
+        ),
+        encoding="utf-8",
+    )
+    # A reply store holding the recorded replies would hide the ledger: start it empty.
+    await session.execute(sa.text("DELETE FROM llm_replies"))
+    await session.commit()
+
+    settings = _gen_settings(model_replay_ledger=str(ledger))
+    replay_course = await _gen_course(session, "Replay played")
+    played = await executor.new_run(
+        session, course_id=replay_course, kind="generation", dag=_gen_dag(replay_course)
+    )
+    await session.commit()
+    unreachable = _gen_mock_handler()
+    unreachable.seen.append("sentinel")
+    assert (await _gen_drive(session, played, unreachable, settings))["status"] == "done"
+    assert unreachable.seen == ["sentinel"], "replay mode never reaches the model"
+    assert await _gen_paid_calls(session, played) == 0
+    assert await _step_output(session, played, "block_teach:b1") == await _step_output(
+        session, recorded, "block_teach:b1"
+    )
+
+    other_course = await _gen_course(session, "Replay missed")
+    unrecorded_dag = _gen_dag(other_course)
+    unrecorded_dag[0]["skeleton"] = {"plan_node_id": "never-recorded"}
+    missed = await executor.new_run(
+        session, course_id=other_course, kind="generation", dag=unrecorded_dag
+    )
+    await session.commit()
+    stopped = await _gen_drive(session, missed, _gen_mock_handler(), settings)
+    assert stopped["status"] == "stopped"
+    error = (
+        await session.execute(
+            sa.text("SELECT error FROM run_steps WHERE run_id = :r AND status = 'failed'"),
+            {"r": str(missed)},
+        )
+    ).scalar_one()
+    assert "ReplayMissError" in error and "no recorded reply" in error

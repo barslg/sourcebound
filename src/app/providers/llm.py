@@ -10,6 +10,10 @@ short-lived session that commits immediately after the API returns, so
 a later rollback of the caller's flow can never erase a paid call or
 under-report total spend.
 
+Replay mode: with MODEL_REPLAY_LEDGER set the network client is swapped for
+clients/replay.py, so every other step (reply store, checks, ledger rows)
+is the live path and a request the ledger never recorded fails loudly.
+
 Background calls: start_background() POSTs once and stores a pending
 row holding the response id; resume_pending() polls that id, so a crash
 between create and retrieve never re-posts a possibly paid request.
@@ -25,6 +29,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.clients.meta import MetaClient, build_request_body
+from app.clients.replay import ReplayClient
 from app.config import Settings, get_settings
 from app.db import create_session_factory
 from app.errors import (
@@ -72,11 +77,17 @@ class MetaProvider:
         self._settings = settings or get_settings()
         self._http_client = http_client
         self._ledger_factory = ledger_factory or create_session_factory(self._settings.database_url)
-        self._client: MetaClient | None = None
+        self._client: MetaClient | ReplayClient | None = None
 
-    def _get_client(self) -> MetaClient:
+    def _get_client(self) -> MetaClient | ReplayClient:
+        """The Meta client, or the free replay client when MODEL_REPLAY_LEDGER is set."""
         if self._client is None:
-            self._client = MetaClient(self._settings, self._http_client)
+            if self._settings.model_replay_ledger:
+                self._client = ReplayClient(
+                    self._settings.model_replay_ledger, loose=self._settings.model_replay_loose
+                )
+            else:
+                self._client = MetaClient(self._settings, self._http_client)
         return self._client
 
     @staticmethod

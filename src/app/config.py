@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     llm_default_model: str = "muse-spark-1.3"
     llm_dev_mode: bool = False
     llm_spend_ceiling_usd: float = 5.0
+    model_replay_ledger: str = ""
+    model_replay_loose: bool = False
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     llm_connect_timeout_s: float = 10.0

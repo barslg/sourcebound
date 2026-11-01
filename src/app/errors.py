@@ -67,6 +67,10 @@ class LLMError(AppError):
     error_code = "llm_unavailable"
 
 
+class ReplayMissError(LLMError):
+    """Replay mode was asked for a request its ledger never recorded."""
+
+
 class UnparseableReplyError(LLMError):
     """A paid reply that is not a strict JSON object: kept for the ledger.
 
