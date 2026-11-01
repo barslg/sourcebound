@@ -946,15 +946,8 @@ async def _plan_output(
             uncovered.append({"handle": handle, "reason": str(item.get("reason", ""))})
     # the 60 % rule and figure gating were enforced per module over that module's
     # passages; what no module cites after that is the planner's declared leftover
-    cited = {
-        str(ref.get("handle", ""))
-        for m in merged_modules
-        for t in m.get("topics", [])
-        for b in t.get("blocks", [])
-        for ref in b.get("source_refs", [])
-        if isinstance(ref, dict)
-    }
-    declared = {str(item.get("handle", "")) for item in uncovered if isinstance(item, dict)}
+    cited = _cited_handles(merged_modules)
+    declared = _declared_handles(uncovered)
     for passage in passages:
         handle = str(passage["handle"])
         if passage.get("is_content", True) and handle not in cited and handle not in declared:
@@ -1009,6 +1002,23 @@ def _fill_handoffs_from_notes(reply: dict[str, Any], module_scope: dict[str, Any
             note = f"The case continues in the next module: {nxt}." if nxt else ""
         if note:
             handoffs.append({"topic_plan_node_id": node, "note": note})
+
+
+def _declared_handles(uncovered: list[dict[str, Any]]) -> set[str]:
+    """Every handle an uncovered list names."""
+    return {str(item.get("handle", "")) for item in uncovered if isinstance(item, dict)}
+
+
+def _cited_handles(modules: list[dict[str, Any]]) -> set[str]:
+    """Every source handle the module trees cite."""
+    return {
+        str(ref.get("handle", ""))
+        for module in modules
+        for topic in module.get("topics", [])
+        for block in topic.get("blocks", [])
+        for ref in block.get("source_refs", [])
+        if isinstance(ref, dict)
+    }
 
 
 def _uncovered_with_addresses(parsed: Any, passages: list[dict[str, Any]]) -> list[dict[str, Any]]:
