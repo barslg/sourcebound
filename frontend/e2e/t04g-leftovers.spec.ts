@@ -1,4 +1,4 @@
-import type { Page, Route } from '@playwright/test'
+import type { FileChooser, Page, Route } from '@playwright/test'
 import { expect, ids, signInAs, test } from './fixtures'
 
 const json = (route: Route, status: number, body: unknown): Promise<void> =>
@@ -12,6 +12,9 @@ async function openDrawer(page: Page, query = ''): Promise<void> {
 }
 
 test('file input: a styled control in the app language, no native text, keyboard reachable, with Remove', async ({ page }) => {
+  // the chooser interception is armed by the first listener; arming it only just before the key press raced it (a native dialog opened instead)
+  let chooser: FileChooser | null = null
+  page.on('filechooser', (c) => { chooser = c })
   await openDrawer(page)
   const native = page.getByTestId('source-file')
   expect(await native.evaluate((el: HTMLInputElement) => ({ tab: el.tabIndex, hidden: el.getBoundingClientRect().width <= 1 }))).toEqual({ tab: -1, hidden: true })
@@ -20,9 +23,9 @@ test('file input: a styled control in the app language, no native text, keyboard
   await expect(page.getByTestId('file-name')).toHaveCount(0)
   await page.getByTestId('file-choose').focus()
   await expect(page.getByTestId('file-choose')).toBeFocused()
-  const chooser = page.waitForEvent('filechooser', { timeout: 10_000 })
   await page.keyboard.press('Enter')
-  await (await chooser).setFiles({ name: 'hand-hygiene.md', mimeType: 'text/markdown', buffer: Buffer.from('# Hands\n\nWash.') })
+  await expect.poll(() => chooser !== null).toBe(true)
+  await (chooser as FileChooser | null)?.setFiles({ name: 'hand-hygiene.md', mimeType: 'text/markdown', buffer: Buffer.from('# Hands\n\nWash.') })
   await expect(page.getByTestId('file-name')).toHaveText('hand-hygiene.md')
   await expect(page.getByRole('dialog')).not.toContainText(/No file chosen/i)
   const remove = page.getByTestId('file-remove')
