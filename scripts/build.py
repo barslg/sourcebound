@@ -9,6 +9,7 @@ current working tree instead of starting over.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tomllib
@@ -109,14 +110,57 @@ def run_muse(task: dict, prompt: str) -> int:
     return proc.returncode
 
 
+E2E_ENV = {
+    "E2E_DB_NAME": "muse_e2e",
+    "E2E_BACKEND_PORT": "8011",
+    "E2E_PREVIEW_PORT": "4174",
+    "E2E_OIDC_PORT": "9020",
+    "E2E_MODEL_PORT": "9030",
+}
+
+
 def gate() -> tuple[bool, str]:
+    """make check, then the frontend checks and the e2e suite outside the Muse sandbox.
+
+    Muse's sandbox cannot launch Chromium, so the runner (which runs on the host)
+    owns the e2e job; a frontend task is green only when the whole suite is.
+    """
     proc = sh("make", "check", check=False)
-    return proc.returncode == 0, proc.stdout + proc.stderr
+    out = proc.stdout + proc.stderr
+    if proc.returncode != 0:
+        return False, out
+    if not (ROOT / "frontend" / "package.json").exists():
+        return True, out
+    env = {**os.environ, **E2E_ENV}
+    for cmd in (["npm", "run", "check"], ["npm", "run", "e2e"]):
+        fe = subprocess.run(
+            cmd, cwd=ROOT / "frontend", env=env, capture_output=True, text=True, check=False
+        )
+        out += f"\n$ (frontend) {' '.join(cmd)}\n" + fe.stdout[-20000:] + fe.stderr[-6000:]
+        if fe.returncode != 0:
+            return False, out
+    return True, out
+
+
+def restart_stand() -> None:
+    """The stand on 8010/4173 serves the committed tree; Muse's sandbox cannot restart it."""
+    script = ROOT / "tmp" / "stand.sh"
+    if not script.exists():
+        return
+    subprocess.run(["bash", str(script), "stop"], cwd=ROOT, check=False, capture_output=True)
+    subprocess.Popen(
+        ["bash", str(script), "start"],
+        cwd=ROOT,
+        stdout=open(ROOT / "tmp" / "stand-start.log", "w"),
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
 
 
 def commit(task: dict) -> None:
     sh("git", "add", "-A")
-    sh("git", "commit", "-q", "-m", f"build({task['id']}): {task['title']}")
+    # Muse may have committed its own work already; the marker commit still records the task.
+    sh("git", "commit", "-q", "--allow-empty", "-m", f"build({task['id']}): {task['title']}")
 
 
 def main() -> int:
@@ -147,6 +191,7 @@ def main() -> int:
         commit(task)
         state.pop("in_progress", None)
         save_state(state)
+        restart_stand()
         print(f"{task['id']}: done and committed")
         return 0
     state["in_progress"]["gate_output"] = out
