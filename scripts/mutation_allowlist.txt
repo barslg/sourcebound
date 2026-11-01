@@ -17,3 +17,4 @@ src/app/clients/anthropic.py:140:int+1 test-only provider; usage arithmetic cove
 src/app/llm/registry.py:119:int+1 context window of the test-provider entry; informational, never read by the product path
 src/app/llm/registry.py:129:int+1 context window of the second test-provider entry; informational, never read by the product path
 src/app/providers/llm.py:228:arith:Sub duration of a rejected call; informational, the cost row is what the smoke guards
+src/app/providers/llm.py:228:int+1 duration of a rejected call; informational, the cost row is what the smoke guards

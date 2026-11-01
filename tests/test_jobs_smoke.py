@@ -1683,3 +1683,33 @@ async def test_truncated_empty_reply_is_paid_logged_never_stored_and_re_asked_on
     ).scalar()
     stored = (await t03_session.execute(sa.text("SELECT count(*) FROM llm_replies"))).scalar()
     assert stored == completed
+
+
+async def test_garbage_reply_is_rejected_once_and_never_re_asked(t03_session: AsyncSession) -> None:
+    """Money guard: a non-empty reply that is not JSON is paid once and not asked again."""
+    user_id, course_id = await _plan_course_with_source(t03_session)
+    actor = _plan_actor(
+        user_id, frozenset({"run.start", "operation.run", "course.edit", "course.plan"})
+    )
+    operation_id = await planruns.submit_plan(
+        t03_session, actor=actor, course_id=course_id, queries=["literacy duty"], defer=None
+    )
+    await t03_session.commit()
+    detail = await planruns.run_plan_operation(t03_session, operation_id)
+    run_id = UUID(str(detail["run_id"]))
+    base = _plan_mock_handler()
+    architect_posts = 0
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        nonlocal architect_posts
+        body = json.loads(request.content.decode("utf-8"))
+        if str(body.get("input", "")).startswith("# Architect"):
+            architect_posts += 1
+            garbage = _plan_completed("this is not json")
+            garbage["usage"]["output_tokens"] = int(body["max_output_tokens"])
+            return httpx2.Response(200, json=garbage)
+        return base(request)
+
+    final = await _plan_drive(t03_session, run_id, handler, _plan_settings())
+    assert final["status"] == "stopped"
+    assert architect_posts == 1
