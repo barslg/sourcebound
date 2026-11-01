@@ -1200,29 +1200,54 @@ async def _plant_spot_block(
     run_id: UUID | None = None,
     variant: int = 0,
     force_new: bool = False,
+    allow_fully_correct: bool = True,
 ) -> None:
     """Code-planted spot-the-error from the ONE picker's pick.
 
     `pick` is the saboteur step's pick ({sentence, kind, passage});
     the key's true_sentence and passage are that pick's, by construction.
     Without a saboteur pick the planter seeds fully_correct itself.
+    A planting failure or a forbidden fully_correct (the only task of
+    a module test) is regenerated with a new seed inside the run,
+    never left held as the module test's only task.
     """
     from app.course.errorspot import plant_error as _plant
 
     stored_all = await _stored_passage_texts(session, passage_ids=list(handle_to_passage.values()))
     verified = await _verified_sentences(session, handle_to_passage=handle_to_passage)
-    seed = _spot_seed(node_id, variant)
-    try:
-        exercise = _plant(
-            verified=verified,
-            reader_holds=[],
-            seed=seed,
-            mutated=mutated,
-            kind=kind,
-            pick=pick,
-            fully_correct=bool(pick.get("fully_correct")) if pick is not None else None,
-        )
-    except ValueError as exc:
+    exercise: dict[str, Any] | None = None
+    last_exc: ValueError | None = None
+    for attempt in range(4):
+        seed = _spot_seed(node_id, variant + attempt)
+        use_pick = pick if attempt == 0 else None
+        try:
+            candidate = _plant(
+                verified=verified,
+                reader_holds=[],
+                seed=seed,
+                mutated=mutated if attempt == 0 else None,
+                kind=kind if attempt == 0 else None,
+                pick=use_pick,
+                fully_correct=(
+                    bool(use_pick.get("fully_correct"))
+                    if use_pick is not None
+                    else (None if allow_fully_correct else False)
+                ),
+            )
+        except ValueError as exc:
+            last_exc = exc
+            continue
+        if candidate.get("fully_correct") and not allow_fully_correct:
+            last_exc = ValueError("module test needs a planted error, not fully_correct")
+            pick = None
+            mutated = None
+            kind = None
+            continue
+        exercise = candidate
+        break
+    if exercise is None:
+        exc = last_exc or ValueError("no content sentence available to plant")
+        reason = f"spot_the_error: the exercise could not be planted: {exc}"[:500]
         reason = f"the exercise could not be planted: {exc}"[:500]
         await _persist_block(
             session,
@@ -1497,6 +1522,9 @@ async def generate_block_step(
     )
     claim = await claim_step(session, run_id=run_id, step_key=step_key, input_digest=digest)
     if block_type == "spot_the_error" and claim["reused_output"] is None:
+        cited_ids = {str(pid) for pid in entry.get("cited_passage_ids", [])}
+        if cited_ids:
+            handle_to_passage = {h: p for h, p in handle_to_passage.items() if p in cited_ids}
         sab: dict[str, Any] = next(
             (u["output"] for u in upstream if u["step_key"].startswith("saboteur:")), {}
         )
@@ -1509,6 +1537,7 @@ async def generate_block_step(
             run_id=run_id,
             variant=int(entry.get("variant_offset", 0)),
             force_new=bool(entry.get("rewrite")),
+            allow_fully_correct=bool(entry.get("allow_fully_correct", True)),
             mutated=str(sab["mutated"]) if sab.get("mutated") else None,
             kind=str(sab["kind"]) if sab.get("kind") else None,
             pick=(
@@ -1896,6 +1925,9 @@ async def saboteur_step(
         pid = str(item.get("passage_id", ""))
         if pid:
             handle_to_passage[f"P{index}"] = pid
+    cited_ids = {str(pid) for pid in entry.get("cited_passage_ids", [])}
+    if cited_ids:
+        handle_to_passage = {h: p for h, p in handle_to_passage.items() if p in cited_ids}
     verified = await _verified_sentences(session, handle_to_passage=handle_to_passage)
     if entry.get("sentence"):
         pick = {
@@ -1904,9 +1936,21 @@ async def saboteur_step(
             "passage": str(entry.get("passage", "P1")),
         }
     else:
-        pick = pick_sentence(
-            verified, seed=_spot_seed(node_id, int(entry.get("variant_offset", 0)))
+        from app.course.grounding import content_terms
+
+        topic_terms = content_terms(
+            f"{entry.get('topic_title', '')} {entry.get('topic_purpose', '')}"
         )
+        base_seed = _spot_seed(node_id, int(entry.get("variant_offset", 0)))
+        pick = pick_sentence(verified, seed=base_seed, topic_terms=topic_terms or None)
+        if pick.get("fully_correct") and not bool(entry.get("allow_fully_correct", True)):
+            for offset in range(1, 9):
+                repick = pick_sentence(
+                    verified, seed=base_seed + offset, topic_terms=topic_terms or None
+                )
+                if not repick.get("fully_correct"):
+                    pick = repick
+                    break
     sentence = str(pick["sentence"])
     kind = str(pick["kind"])
     digest = step_digest(

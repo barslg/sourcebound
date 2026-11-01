@@ -886,7 +886,29 @@ async def run_generate_operation(
             session_factory=session_factory,
         )
     course = await course_service.get_course(session, course_id=course_id)
-    tree = frozen_plan(await course_service.read_tree(session, course_id=course_id))
+    raw_tree = await course_service.read_tree(session, course_id=course_id)
+    tree = frozen_plan(raw_tree)
+    # Topic cited set (passage ids) for the spot picker: a sentence may
+    # only come from a passage the topic itself cites. Read-time rejoin
+    # repairs split list passages before they reach any generator.
+    from app.services.library import rejoin_list_passages
+
+    cited_by_topic: dict[str, list[str]] = {}
+    topic_meta: dict[str, dict[str, str]] = {}
+    for module in raw_tree.get("modules", []):
+        for topic in module.get("topics", []):
+            ids: list[str] = []
+            for block in topic.get("blocks", []):
+                for ref in block.get("source_refs", []):
+                    pid = ref.get("passage_id") if isinstance(ref, dict) else None
+                    if pid and str(pid) not in ids:
+                        ids.append(str(pid))
+            cited_by_topic[str(topic.get("plan_node_id", ""))] = ids
+            topic_meta[str(topic.get("plan_node_id", ""))] = {
+                "title": str(topic.get("title", "")),
+                "purpose": " ".join(str(o) for o in topic.get("objectives", [])),
+                "kind": str(topic.get("kind", "")),
+            }
     profile = course.get("profile") or {}
     rows = (
         await session.execute(
@@ -899,10 +921,19 @@ async def run_generate_operation(
             {"c": str(course_id)},
         )
     ).all()
-    sources = [
-        {"passage_id": str(r[0]), "source_id": str(r[1]), "address": str(r[2]), "text": str(r[3])}
-        for r in rows
-    ]
+    sources = rejoin_list_passages(
+        [
+            {
+                "passage_id": str(r[0]),
+                "source_id": str(r[1]),
+                "address": str(r[2]),
+                "text": str(r[3]),
+            }
+            for r in rows
+        ]
+    )
+    for item in sources:
+        item["passage_id"] = str(item.get("passage_id", item.get("id", "")))
     raw = compile_generation_dag(
         profile={
             "methodology_codes": list(profile.get("methodology_codes", [])),
@@ -960,8 +991,33 @@ async def run_generate_operation(
                 "role": str(skel.get("role", "")),
                 "block_type": e["block_type"],
             }
+            if e["block_type"] == "spot_the_error":
+                owner = next(
+                    (
+                        str(tp.get("plan_node_id", ""))
+                        for m in raw_tree.get("modules", [])
+                        for tp in m.get("topics", [])
+                        if any(str(b.get("plan_node_id", "")) == node for b in tp.get("blocks", []))
+                    ),
+                    "",
+                )
+                e["cited_passage_ids"] = cited_by_topic.get(owner, [])
         elif handler == "saboteur":
             e["sources"] = sources
+            node = str(entry["step_key"]).partition(":")[2]
+            owner_topic = next(
+                (
+                    str(tp.get("plan_node_id", ""))
+                    for m in raw_tree.get("modules", [])
+                    for tp in m.get("topics", [])
+                    if any(str(b.get("plan_node_id", "")) == node for b in tp.get("blocks", []))
+                ),
+                "",
+            )
+            e["cited_passage_ids"] = cited_by_topic.get(owner_topic, [])
+            meta = topic_meta.get(owner_topic, {})
+            e.setdefault("topic_title", meta.get("title", ""))
+            e.setdefault("topic_purpose", meta.get("purpose", ""))
         elif handler == "read_topic":
             topic = str(entry["step_key"]).partition(":")[2]
             e["sources"] = sources

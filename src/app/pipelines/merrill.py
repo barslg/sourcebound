@@ -130,15 +130,28 @@ def compile_generation_dag(
                         ),
                     }
                 )
+            spot_count = sum(
+                1
+                for b in topic.get("blocks", [])
+                if str(b.get("block_type", "")) == "spot_the_error"
+            )
             for block in topic.get("blocks", []):
                 if str(block.get("block_type", "")) != "spot_the_error":
                     continue
                 node_id = str(block.get("plan_node_id", "block"))
                 sab_key = f"saboteur:{node_id}"
+                # A module test whose only task is this exercise must get
+                # a planted error; fully_correct is allowed only beside
+                # another planted spot block of the same topic.
+                allow_fully = not (str(topic.get("kind", "")) == "module_test" and spot_count < 2)
                 sab_entry = {
                     "step_key": sab_key,
                     "handler": "saboteur",
                     "depends_on": ["plan:plan"],
+                    "topic_kind": str(topic.get("kind", "")),
+                    "topic_title": str(topic.get("title", "")),
+                    "topic_purpose": " ".join(str(o) for o in topic.get("objectives", [])),
+                    "allow_fully_correct": allow_fully,
                     "input_digest": input_digest_of(
                         {"kind": "saboteur", "node": node_id, "course": course_id}
                     ),
@@ -147,6 +160,8 @@ def compile_generation_dag(
                     is_gen = step["handler"] == "generate_block"
                     if is_gen and step["step_key"].endswith(f":{node_id}"):
                         step["depends_on"] = [*step["depends_on"], sab_key]
+                        step["topic_kind"] = str(topic.get("kind", ""))
+                        step["allow_fully_correct"] = allow_fully
                         dag.insert(index, sab_entry)
                         break
                 else:

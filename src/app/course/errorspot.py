@@ -125,14 +125,23 @@ def _mutate_number_date(sentence: str) -> str:
     raise ValueError("no mutable numeric value outside citation references")
 
 
-def pick_sentence(verified: list[dict[str, Any]], *, seed: int = 0) -> dict[str, Any]:
+def pick_sentence(
+    verified: list[dict[str, Any]],
+    *,
+    seed: int = 0,
+    topic_terms: list[str] | None = None,
+) -> dict[str, Any]:
     """THE picker: one sentence + one kind, chosen by seed from content only.
 
     The saboteur receives exactly this sentence and kind, and the
     answer key is built from this same pick — there is no second path.
     Kinds the code cannot plant deterministically on this sentence
     (model kinds) stay eligible; number_date only when a mutable
-    number exists outside every reference.
+    number exists outside every reference. The caller passes only the
+    topic's cited passages as `verified`; among them the picker
+    prefers sentences whose terms overlap the topic title/purpose
+    (`topic_terms`), so an off-topic sentence never becomes the
+    exercise when an on-topic one exists.
     """
     pool = [
         item
@@ -143,6 +152,15 @@ def pick_sentence(verified: list[dict[str, Any]], *, seed: int = 0) -> dict[str,
     ]
     if not pool:
         raise ValueError("no content sentence available to plant")
+    if topic_terms:
+        wanted = {term.lower() for term in topic_terms if len(term) >= 4}
+        preferred = [
+            item
+            for item in pool
+            if wanted & set(re.findall(r"[^\W\d_]+", str(item["sentence"]).lower()))
+        ]
+        if preferred:
+            pool = preferred
     item = pool[seed % len(pool)]
     sentence = str(item["sentence"])
     number_ok = True
