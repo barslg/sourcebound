@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from typing import Any
 
+BLOOM_LEVELS: tuple[str, ...] = ("remember", "understand", "apply", "analyze", "evaluate")
+
 METHODOLOGIES: tuple[dict[str, Any], ...] = (
     {
         "code": "direct_instruction",

@@ -151,8 +151,10 @@ async def set_profile(
     constraints: list[dict[str, Any]] | None = None,
 ) -> None:
     """Replace the course profile with typed constraint rows."""
-    from app.course.methodologies import METHODOLOGIES
+    from app.course.methodologies import BLOOM_LEVELS, METHODOLOGIES
 
+    if bloom_level not in BLOOM_LEVELS:
+        raise ValidationError(f"unknown bloom level: {bloom_level!r}; use one of {BLOOM_LEVELS}")
     known = {entry["code"] for entry in METHODOLOGIES}
     unknown = [code for code in methodology_codes if code not in known]
     if unknown:

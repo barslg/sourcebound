@@ -27,14 +27,10 @@ BLOCK_TYPES: dict[str, tuple[str, ...]] = {
     "lesson": (
         "reading",
         "figure",
-        "worked_example",
-        "definition",
         "choice",
         "matching",
         "cloze",
         "scenario_practice",
-        "numeric",
-        "ordering",
     ),
     "module_test": (
         "choice",
@@ -42,8 +38,6 @@ BLOCK_TYPES: dict[str, tuple[str, ...]] = {
         "cloze",
         "scenario_practice",
         "spot_the_error",
-        "numeric",
-        "ordering",
     ),
 }
 KNOWN_BLOCK_TYPES = frozenset(

@@ -27,6 +27,7 @@ GATES = (
     "check_callers",
     "check_scoped_sql",
     "check_contract",
+    "check_schema_enums",
 )
 
 SUMMARY_RE = re.compile(r"^(?P<name>\w+): (?P<count>\d+) (?P<unit>[\w ]+?) checked$")
