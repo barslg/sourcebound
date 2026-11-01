@@ -200,12 +200,9 @@ for (const width of [1280, 1024]) {
     await page.screenshot({ path: join(SHOTS, `signin-${width}.png`), fullPage: true })
     expect(problems).toEqual([])
     if (width === 1024) {
-      await open(page, `/courses/${ids().course}/plan`)
-      await expect(page.getByTestId('plan-outline')).toBeVisible()
-      // An earlier spec in the same run may already have answered the open
-      // questions, which removes the card; its content is covered by screens.
-      const card = page.getByTestId('before-card')
-      if ((await card.count()) > 0) await expect(card).toBeVisible()
+      // The seeded empty plan always offers the build card (no conditions).
+      await open(page, `/courses/${ids().empty}/plan`)
+      await expect(page.getByTestId('build-card')).toBeVisible()
     }
   })
 }

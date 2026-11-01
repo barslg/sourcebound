@@ -23,13 +23,13 @@ async function api<T>(context: BrowserContext, method: 'GET' | 'POST' | 'PATCH',
   return (await res.json()) as T
 }
 
-async function until<T>(read: () => Promise<T>, done: (v: T) => boolean, what: string, ms = 180_000): Promise<T> {
+async function until<T>(read: () => Promise<T>, done: (v: T) => boolean, what: string, ms = 180_000, step = 2000): Promise<T> {
   const end = Date.now() + ms
   for (;;) {
     const v = await read()
     if (done(v)) return v
     if (Date.now() > end) throw new Error(`timed out: ${what}`)
-    await new Promise((r) => setTimeout(r, 2000))
+    await new Promise((r) => setTimeout(r, step))
   }
 }
 
@@ -71,12 +71,40 @@ test('author path: create, source, plan, generate, fix one block, translate, pre
 
   await page.goto(`/courses/${courseId}/generate`)
   await page.getByTestId('generate').click()
-  const run = await until(() => api<Array<{ id: string; status: string; kind: string | null }>>(admin, 'GET', `/courses/${courseId}/runs`), (r) => r.some((x) => x.kind === 'generation' && x.status === 'done'), 'generation run done')
+  type RunRow = { id: string; status: string; kind: string | null }
+  const runsOf = (): Promise<RunRow[]> => api<RunRow[]>(admin, 'GET', `/courses/${courseId}/runs`)
+  // Stop the run mid-flight from the API (tight poll: the mock model is
+  // fast), then resume it from the page: the run section must name its
+  // steps, offer Resume, and end in the done card.
+  const going = await until(runsOf, (r) => r.some((x) => x.kind === 'generation' && (x.status === 'running' || x.status === 'queued')), 'generation run active', 180_000, 500)
+  const goingId = going.find((x) => x.kind === 'generation')?.id ?? ''
+  expect(goingId).not.toBe('')
+  type RunDocApi = { status: string; steps: Array<{ status: string }> }
+  await until(() => api<RunDocApi>(admin, 'GET', `/runs/${goingId}`), (d) => d.status === 'running' && d.steps.length >= 2, 'generation run underway', 180_000, 500)
+  await api<{ ok: boolean }>(admin, 'POST', `/runs/${goingId}/cancel`)
+  await until(runsOf, (r) => r.some((x) => x.kind === 'generation' && x.status === 'stopped'), 'generation run stopped')
+  await expect(page.getByTestId('run-stopped')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByTestId('run-step').first()).toContainText('Step ')
+  const resume = page.getByTestId('run-resume')
+  await expect(resume).toBeEnabled({ timeout: 60_000 })
+  await resume.click()
+  await expect(page.getByText('Run resumed.')).toBeVisible()
+  const run = await until(runsOf, (r) => r.some((x) => x.kind === 'generation' && x.status === 'done'), 'generation run done')
   const gen = run.find((x) => x.kind === 'generation')
   const generated = await api<CourseApi>(admin, 'GET', `/courses/${courseId}`)
   expect(generated.held_count).toBeGreaterThan(0)
   expect(generated.draft_count).toBe(0)
   console.log(`FLOW generation run ${gen?.id} status ${gen?.status} held ${generated.held_count} draft ${generated.draft_count}`)
+
+  await page.reload()
+  const steps = page.getByTestId('run-step')
+  await expect(steps.first()).toBeVisible({ timeout: 60_000 })
+  expect(await steps.count()).toBeGreaterThan(3)
+  await expect(steps.first()).toContainText('Step 1:')
+  await expect(steps.filter({ hasText: 'Reader check' }).first()).toContainText('When to wash')
+  await expect(page.getByTestId('generate-done')).toBeVisible()
+  await expect(page.getByTestId('go-fix')).toBeVisible()
+  await expect(page.getByTestId('go-publish')).toBeVisible()
 
   const squash = (v: string): string => v.replace(/\s+/g, ' ').trim()
   await page.goto('/courses')
