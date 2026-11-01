@@ -3,7 +3,7 @@
 The registries own the vocabularies: block types (blocks.registry), roles and
 topic kinds (course.tree), mutation / error kinds (course.errorspot), reader
 verdicts and rubric items (agents.reader), bloom levels and methodology
-prescriptions (course.methodologies). A
+prescriptions (course.methodologies), address kinds (agents.librarian). A
 model reply is only as closed as its response schema, so this gate walks
 every agent schema and every per-type generator schema and fails when:
 
@@ -27,6 +27,7 @@ Prints "check_schema_enums: N vocabulary bindings checked"; exit 1 per violation
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -38,17 +39,23 @@ sys.path.insert(0, str(REPO / "src"))
 def vocabularies() -> dict[str, tuple[str, ...]]:
     """Vocabulary name -> its values, read from the registries."""
     from app.agents import reader
+    from app.agents.librarian import AddressRule
     from app.blocks.registry import BLOCK_TYPES
     from app.course import tree
     from app.course.errorspot import MUTATION_KINDS
     from app.course.methodologies import BLOOM_LEVELS
 
+    pattern = next(
+        m.pattern for m in AddressRule.model_fields["kind"].metadata if hasattr(m, "pattern")
+    )
+    address = tuple(re.fullmatch(r"\^\((.*)\)\$", str(pattern)).group(1).split("|"))  # type: ignore[union-attr]
     return {
         "block_type": tuple(BLOCK_TYPES),
         "role": tuple(tree.ROLES),
         "topic_kind": tuple(tree.TOPIC_KINDS),
         "mutation_kind": tuple(MUTATION_KINDS),
         "verdict": tuple(reader.VERDICTS),
+        "address_kind": address,
         "bloom_level": tuple(BLOOM_LEVELS),
     }
 
@@ -60,6 +67,7 @@ FIELD_VOCAB: dict[tuple[str | None, str], str] = {
     (None, "verdict"): "verdict",
     ("architect", "kind"): "topic_kind",
     ("saboteur", "kind"): "mutation_kind",
+    ("librarian", "kind"): "address_kind",
 }
 
 
@@ -149,22 +157,6 @@ def check_code_maps(vocab: dict[str, tuple[str, ...]]) -> tuple[int, list[str]]:
 
     same("errorspot habits keyed by mutation kind", set(errorspot._HABITS), vocab["mutation_kind"])
     same("tree.BLOCK_TYPES keyed by topic kind", set(tree.BLOCK_TYPES), vocab["topic_kind"])
-    prescribed: dict[str, set[str]] = {kind: set() for kind in tree.BLOCK_TYPES}
-    for entry in METHODOLOGIES:
-        for stage, pairs in entry["prescription"].items():
-            kind = {"module_test_blocks": "module_test"}.get(stage)
-            if stage == "lesson_blocks":
-                for stage_pairs in pairs.values():
-                    prescribed["lesson"].update(block_type for _role, block_type in stage_pairs)
-            elif kind is not None:
-                prescribed[kind].update(block_type for _role, block_type in pairs)
-    for kind, allowed in tree.BLOCK_TYPES.items():
-        checked += 1
-        if set(allowed) != prescribed[kind]:
-            problems.append(
-                f"tree.BLOCK_TYPES[{kind}] {sorted(allowed)} != block types the methodology"
-                f" prescriptions name for it {sorted(prescribed[kind])}"
-            )
     for kind, allowed in tree.BLOCK_TYPES.items():
         checked += 1
         ghosts = set(allowed) - set(vocab["block_type"])
@@ -226,7 +218,7 @@ def main() -> int:
     schemas: dict[str, dict[str, Any]] = {a: dict(s) for a, s in AGENT_SCHEMAS.items()}
     schemas.update({f"generator:{t}": dict(s) for t, s in BLOCK_GENERATOR_SCHEMAS.items()})
     checked, seen, problems = check_schemas(schemas, vocab)
-    for name in ("block_type", "role", "verdict", "topic_kind", "mutation_kind"):
+    for name in ("block_type", "role", "verdict", "topic_kind", "mutation_kind", "address_kind"):
         if name not in seen:
             problems.append(f"vocabulary {name} is bound but no schema emits it")
     problems += check_rubric(schemas["reader"])

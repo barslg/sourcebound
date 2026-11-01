@@ -33,6 +33,7 @@ PROMPT_ROOT = _default_prompt_root()
 AGENT_SCHEMAS: dict[str, dict[str, object]] = {
     "researcher": tree.RESEARCHER_SCHEMA,
     "architect": tree.ARCHITECT_SCHEMA,
+    "librarian": tree.LIBRARIAN_SCHEMA,
     "block_teach": tree.GENERATOR_SCHEMA,
     "block_example": tree.GENERATOR_SCHEMA,
     "block_check": tree.GENERATOR_SCHEMA,
@@ -68,6 +69,7 @@ def assemble(system: str, dynamic: str) -> str:
 CODE_REQUIRED: dict[str, set[str]] = {
     "researcher": {"query", "rephrased", "ranked", "web_candidates"},
     "architect": {"modules", "estimate_inputs", "through_line"},
+    "librarian": {"container", "fields", "address_rule", "pagination"},
     "block_teach": {"block_type", "text", "citations", "answer"},
     "block_example": {"block_type", "text", "citations", "answer"},
     "block_check": {"block_type", "text", "citations", "answer"},

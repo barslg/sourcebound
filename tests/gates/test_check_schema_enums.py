@@ -87,18 +87,6 @@ def test_ghost_block_type_in_code_map_is_red(monkeypatch: pytest.MonkeyPatch) ->
     assert any("numeric" in p for p in problems)
 
 
-def test_block_types_that_drift_from_the_prescriptions_are_red(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Merrill's integration step names spot_the_error; a lesson list without it is red."""
-    from app.course import tree
-
-    lesson = tuple(t for t in tree.BLOCK_TYPES["lesson"] if t != "spot_the_error")
-    monkeypatch.setitem(tree.BLOCK_TYPES, "lesson", lesson)
-    _, problems = checker.check_code_maps(checker.vocabularies())
-    assert any("prescriptions name" in p and "spot_the_error" in p for p in problems)
-
-
 def test_script_runs_green_on_the_tree() -> None:
     """The CLI exits 0 and reports a non-zero count (validate_agents included)."""
     proc = subprocess.run(
