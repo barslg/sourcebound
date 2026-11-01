@@ -766,7 +766,14 @@ async def edit_plan(
         sa.text("UPDATE courses SET row_version = row_version + 1 WHERE id = :course"),
         {"course": str(course_id)},
     )
-    return await read_tree(session, course_id=course_id)
+    current = (
+        await session.execute(
+            sa.text("SELECT row_version FROM courses WHERE id = :course"),
+            {"course": str(course_id)},
+        )
+    ).scalar_one()
+    tree = await read_tree(session, course_id=course_id)
+    return {**tree, "row_version": int(current)}
 
 
 async def _add_module(session: AsyncSession, course_id: UUID, operation: dict[str, Any]) -> None:

@@ -44,14 +44,14 @@ const saveMessage = ref('')
 const conflict = ref(false)
 const pendingOps = ref<PlanOp[]>([])
 
-async function apply(ops: PlanOp[], keepMine = false): Promise<PlanTree | null> {
+async function apply(ops: PlanOp[], base: number | null = null): Promise<PlanTree | null> {
   status.value = 'saving'
   saveMessage.value = ''
   try {
-    const next = await request<PlanTree>(coursePlan(courseId.value), { method: 'PATCH', body: { operations: ops, base_version: keepMine ? undefined : (version.value ?? undefined) } })
+    const next = await request<PlanTree>(coursePlan(courseId.value), { method: 'PATCH', body: { operations: ops, base_version: base ?? version.value ?? undefined } })
     plan.data.value = next
     plan.error.value = null
-    if (version.value !== null) version.value += 1
+    if (typeof next.row_version === 'number') version.value = next.row_version
     status.value = 'saved'
     conflict.value = false
     pendingOps.value = []
@@ -70,6 +70,11 @@ async function reloadTheirs(): Promise<void> {
   pendingOps.value = []
   status.value = 'idle'
   await Promise.all([plan.reload(true), courseRes.reload(true), header.value?.reload()])
+}
+async function keepMine(): Promise<void> {
+  await courseRes.reload(true)
+  const current = courseRes.data.value?.row_version
+  await apply(pendingOps.value, typeof current === 'number' ? current : null)
 }
 
 /* Inline title editing: the draft lives beside the tree and is sent on blur. */
@@ -297,7 +302,7 @@ watch(() => route.hash, (hash) => {
           <p>{{ t('plan.conflictBody') }}</p>
           <div class="row">
             <ActionButton action="reload-theirs" :label="t('plan.reloadTheirs')" data-testid="reload-theirs" @click="reloadTheirs" />
-            <ActionButton action="keep-mine" :label="t('plan.keepMine')" data-testid="keep-mine" @click="apply(pendingOps, true)" />
+            <ActionButton action="keep-mine" :label="t('plan.keepMine')" data-testid="keep-mine" @click="keepMine" />
           </div>
         </div>
       </AppDialog>
