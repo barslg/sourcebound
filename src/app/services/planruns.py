@@ -369,9 +369,12 @@ async def learner_course_view(
     their translation, everything else serves the source with a
     localised notice (none when the chosen language is the source).
     The answer key learner_block returns for the grader is dropped
-    here: the preview never carries a key. Citation chips carry the
+    here, and the content goes through the type's learner serializer
+    (shuffled matching, gapped cloze text): the owner previews exactly
+    what a learner is served and never a key. Citation chips carry the
     address formatted for the locale.
     """
+    from app.blocks.registry import learner_serializers
     from app.i18n.citations import format_citation_address
     from app.translation.variants import available_languages, learner_block
 
@@ -387,10 +390,11 @@ async def learner_course_view(
             block=block,
             source_language=source_language,
         )
-        content = dict(resolved["content"])
+        raw_content = dict(resolved["content"])
         citations = await _citation_chips(
-            session, content=content, locale=language, fmt=format_citation_address
+            session, content=raw_content, locale=language, fmt=format_citation_address
         )
+        content = dict(learner_serializers()["card"](str(block["block_type"]), raw_content, {}))
         out_blocks.append(
             {
                 "plan_node_id": str(block["plan_node_id"]),
@@ -803,11 +807,11 @@ async def run_rewrite_operation(
                     "course_language": str(course.get("language", "en")),
                     "sources": sources,
                     "variant_offset": int(versions or 0),
+                    "rewrite": True,
                     "hold_reason": reason,
                 }
             )
         dag.append(
-                    "rewrite": True,
             {
                 "step_key": key,
                 "handler": "generate_block",
@@ -819,11 +823,11 @@ async def run_rewrite_operation(
                 "block_type": str(btype),
                 "sources": sources,
                 "variant_offset": int(versions or 0),
+                "rewrite": True,
                 "skeleton": {
                     "plan_node_id": str(node),
                     "brief": f"{brief} Rewrite: {reason}" if reason else str(brief),
                     "role": str(role),
-                "rewrite": True,
                     "block_type": str(btype),
                     "hold_reason": reason,
                 },

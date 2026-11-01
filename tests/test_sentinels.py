@@ -15,7 +15,7 @@ from typing import Any
 import demo_t05
 import httpx2
 import sqlalchemy as sa
-from conftest import test_database_url
+from conftest import test_database_url as _db_url
 from sqlalchemy.ext.asyncio import AsyncSession
 from t06_helpers import (
     CLOZE_BLANKS,
@@ -205,7 +205,7 @@ async def test_reader_request_of_one_course_carries_none_of_another_courses_text
         prompts.append(str(json.loads(request.content.decode("utf-8")).get("input", "")))
         return inner(request)
 
-    ledger = create_session_factory(test_database_url())
+    ledger = create_session_factory(_db_url())
     http_client = guarded_client(settings, inner=httpx2.MockTransport(handler))
 
     def make(db: AsyncSession) -> MetaProvider:

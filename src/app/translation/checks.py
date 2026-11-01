@@ -15,7 +15,7 @@ from typing import Any
 
 from app.course.errorspot import MUTATION_KINDS
 
-_GAP = "___"
+_GAP = re.compile(r"_{3,}")
 _MARKER = re.compile(r"\[P\d+\]|\[[A-Z][A-Za-z]*[ .]\d+\]")
 _NUMBER = re.compile(r"\d{1,3}(?:[ \u00a0,.]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?")
 _MAGNITUDE = re.compile(
@@ -128,8 +128,9 @@ def check_segment_pair(source: str, translated: str) -> list[str]:
     if not translated.strip():
         errors.append("translated segment is empty")
         return errors
-    if source.count(_GAP) != translated.count(_GAP):
-        errors.append(f"gap markers changed: {source.count(_GAP)} vs {translated.count(_GAP)}")
+    gaps_in, gaps_out = len(_GAP.findall(source)), len(_GAP.findall(translated))
+    if gaps_in != gaps_out:
+        errors.append(f"gap markers changed: {gaps_in} vs {gaps_out}")
     if markers_of(source) != markers_of(translated):
         errors.append(f"markers changed: {markers_of(source)} vs {markers_of(translated)}")
     if number_values(source) != number_values(translated):

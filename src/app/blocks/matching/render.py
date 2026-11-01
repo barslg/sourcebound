@@ -9,14 +9,17 @@ from typing import Any
 def displayed_order(rights: list[str]) -> list[int]:
     """Authored indices in the order the learner sees the right column.
 
-    Deterministic and never the authored order (n > 1). Caller: this
+    Deterministic and never the authored order when there are three or
+    more pairs. With two pairs the only other order is the swap, which
+    would make every 2-pair block "the answer is the crossing", so the
+    hash decides and the authored order is allowed. Caller: this
     module's renderer and services/grading.py, which translates the
     displayed right ids back to authored indices before grading.
     """
     ordered = sorted(
         range(len(rights)), key=lambda i: hashlib.sha256(f"{i}:{rights[i]}".encode()).hexdigest()
     )
-    if len(rights) > 1 and ordered == list(range(len(rights))):
+    if len(rights) > 2 and ordered == list(range(len(rights))):
         ordered = ordered[1:] + ordered[:1]
     return ordered
 

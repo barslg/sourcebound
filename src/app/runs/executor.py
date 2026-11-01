@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Callable
 from typing import Any
 from uuid import UUID
@@ -1010,8 +1011,8 @@ async def _persist_block(
     step_id: UUID,
     status: str = "draft",
     hold_reason: str | None = None,
-) -> tuple[str, str, bool] | None:
     force_new: bool = False,
+) -> tuple[str, str, bool] | None:
     """Write one block version; content never carries the answer key.
 
     Returns (block_id, version_id, created) of the course-scoped block
@@ -1171,8 +1172,8 @@ async def _plant_spot_block(
     pick: dict[str, Any] | None = None,
     run_id: UUID | None = None,
     variant: int = 0,
-) -> None:
     force_new: bool = False,
+) -> None:
     """Code-planted spot-the-error from the ONE picker's pick.
 
     `pick` is the saboteur step's pick ({sentence, kind, passage});
@@ -1237,8 +1238,8 @@ async def _plant_spot_block(
         answer_key=key,
         step_id=step_id,
         status="draft",
-    )
         force_new=force_new,
+    )
     if (
         persisted is not None
         and persisted[2]
@@ -1385,7 +1386,7 @@ def _key_errors(block_type: str, content: dict[str, Any], key: dict[str, Any]) -
         if len(set(rights)) != len(rights) or len(set(lefts)) != len(lefts):
             return ["matching key: each left and each right item must be unique"]
     elif block_type == "cloze":
-        gaps = str(content.get("text", "")).count("___")
+        gaps = len(re.findall(r"_{3,}", str(content.get("text", ""))))
         blanks = key.get("blanks")
         if (
             not isinstance(blanks, list)
@@ -1456,8 +1457,8 @@ async def generate_block_step(
             step_id=claim["step_id"],
             run_id=run_id,
             variant=int(entry.get("variant_offset", 0)),
-            mutated=str(sab["mutated"]) if sab.get("mutated") else None,
             force_new=bool(entry.get("rewrite")),
+            mutated=str(sab["mutated"]) if sab.get("mutated") else None,
             kind=str(sab["kind"]) if sab.get("kind") else None,
             pick=(
                 {
@@ -1541,8 +1542,8 @@ async def generate_block_step(
             answer_key=key,
             step_id=claim["step_id"],
             status="draft",
-        )
             force_new=bool(entry.get("rewrite")),
+        )
         # citation rows on THE version just written, in THIS course
         if persisted is not None and persisted[2]:
             version_id = persisted[1]
@@ -1671,13 +1672,13 @@ async def read_topic_step(
         for block in blocks:
             block["reread_after_rework"] = True
     node_ids = {b["plan_node_id"] for b in blocks if b.get("plan_node_id")}
-    prompt = reader.build_reader_prompt(
     run_dag = (
         await session.execute(
             sa.text("SELECT compiled_dag FROM runs WHERE id = :run"), {"run": str(run_id)}
         )
     ).scalar()
     own_nodes = set(dag_block_nodes([e for e in (run_dag or []) if isinstance(e, dict)]))
+    prompt = reader.build_reader_prompt(
         topic_plan_node_id=topic_id,
         course_language=str(entry.get("course_language", "en")),
         sources=list(entry.get("sources", [])),
@@ -1721,9 +1722,9 @@ async def read_topic_step(
             output = _merge_undecided(output, second, undecided)
         for verdict in output.get("verdicts", []):
             node = str(verdict.get("plan_node_id", ""))
-            items = verdict.get("items", {}) if isinstance(verdict.get("items"), dict) else {}
             if own_nodes and node not in own_nodes:
                 continue
+            items = verdict.get("items", {}) if isinstance(verdict.get("items"), dict) else {}
             reasons = [
                 f"{k}: {v.get('evidence', '')}"
                 for k, v in items.items()
@@ -1984,8 +1985,8 @@ async def rework_blocks_step(
                         run_id=run_id,
                         entry={
                             **saboteurs[node],
-                            "variant_offset": versions,
                             "rewrite": True,
+                            "variant_offset": versions,
                             "hold_reason": reasons.get(node, ""),
                         },
                         provider_factory=provider_factory,
