@@ -38,11 +38,13 @@ LEDGER_PATH = pathlib.Path("tests/fixtures/t07_live_ledger.json")
 
 
 def _live_settings(key: str) -> Any:
+    from transport_guard import live_key_settings
+
     from app.config import Settings
 
     return Settings(
         _env_file=None,
-        model_api_key=key,
+        **live_key_settings(key),
         source_store_path="/tmp/muse-t07-live-sources",
         llm_spend_ceiling_usd=25.0,
     )
@@ -257,15 +259,16 @@ async def test_live_translation_acceptance(t03_session: AsyncSession, capfd: Any
 
     from conftest import test_database_url as _db_url
     from t07_parity import english_submissions, raw_segments, translated_submissions
+    from transport_guard import live_key_name
 
     from app.db import create_session_factory
     from app.rbac.principal import Principal
     from app.services import planruns
     from app.services.library import detect_language
 
-    key = os.environ.get("MODEL_API_KEY")
+    key = os.environ.get(live_key_name())
     if not key:
-        pytest.skip("MODEL_API_KEY is not set")
+        pytest.skip(f"{live_key_name()} is not set")
     settings = _live_settings(key)
     course_id, version_id, _user_id = await _build_demo_course(t03_session, settings)
     factory = create_session_factory(_db_url())

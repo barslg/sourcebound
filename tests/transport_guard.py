@@ -68,17 +68,43 @@ def _cached_from_usage(usage: object) -> int:
     return 0
 
 
+def _allowed_hosts(settings: Settings) -> set[str]:
+    """The Model API host, plus the Anthropic host only when that provider is selected."""
+    hosts = {urlparse(settings.model_api_base_url).hostname or ""}
+    if settings.model_provider == "anthropic":
+        hosts.add(urlparse(settings.anthropic_api_base_url).hostname or "")
+    return hosts
+
+
+def live_key_name() -> str:
+    """The environment variable that holds the key of the provider the live run selected."""
+    return (
+        "ANTHROPIC_API_KEY" if os.environ.get("MODEL_PROVIDER") == "anthropic" else "MODEL_API_KEY"
+    )
+
+
+def live_key_settings(key: str) -> dict[str, str]:
+    """Settings kwargs that carry `key` for the selected provider."""
+    if live_key_name() == "ANTHROPIC_API_KEY":
+        return {"anthropic_api_key": key}
+    return {"model_api_key": key}
+
+
 def _usage_cost_usd(model: str, content: bytes) -> Decimal:
-    """Cost of one Responses payload, or zero when usage is absent/unpriced."""
+    """Cost of one Responses or Messages payload, or zero when usage is absent/unpriced.
+
+    A Messages usage keeps cache reads and writes apart from input_tokens;
+    they are added back so the registry bills them like the provider does.
+    """
     try:
         payload = json.loads(content.decode("utf-8"))
         usage = payload.get("usage") or {}
-        return compute_cost_usd(
-            model,
-            int(usage.get("input_tokens", 0)),
-            _cached_from_usage(usage),
-            int(usage.get("output_tokens", 0)),
-        )
+        cached = _cached_from_usage(usage)
+        total_input = int(usage.get("input_tokens", 0))
+        if "cache_read_input_tokens" in usage or "cache_creation_input_tokens" in usage:
+            cached = int(usage.get("cache_read_input_tokens") or 0)
+            total_input += cached + int(usage.get("cache_creation_input_tokens") or 0)
+        return compute_cost_usd(model, total_input, cached, int(usage.get("output_tokens", 0)))
     except (ValueError, UnicodeDecodeError, TypeError, KeyError, AttributeError):
         return Decimal("0")
 
@@ -99,11 +125,11 @@ class GuardedTransport(httpx2.AsyncHTTPTransport):
         self.spent_usd = Decimal("0")
         self._last_model: str | None = None
 
-    def _allowed_host(self) -> str:
-        return urlparse(self._settings.model_api_base_url).hostname or ""
+    def _allowed_hosts(self) -> set[str]:
+        return _allowed_hosts(self._settings)
 
     def _check_request(self, request: httpx2.Request) -> str | None:
-        if request.url.host != self._allowed_host():
+        if request.url.host not in self._allowed_hosts():
             raise GuardViolation(f"host not allowlisted: {request.url.host}")
         if request.method.upper() != "POST":
             return None
@@ -200,8 +226,7 @@ def install_session_guard(
         if isinstance(self, GuardedTransport):
             return await original(self, request)
         active = _active()
-        allowed = urlparse(active.model_api_base_url).hostname or ""
-        if request.url.host != allowed:
+        if request.url.host not in _allowed_hosts(active):
             raise GuardViolation(f"host not allowlisted: {request.url.host}")
         model: str | None = None
         if request.method.upper() == "POST":

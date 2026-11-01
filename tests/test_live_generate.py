@@ -38,11 +38,13 @@ LEDGER_PATH = pathlib.Path("tests/fixtures/t05_live_ledger.json")
 
 
 def _live_settings(key: str) -> Any:
+    from transport_guard import live_key_settings
+
     from app.config import Settings
 
     return Settings(
         _env_file=None,
-        model_api_key=key,
+        **live_key_settings(key),
         source_store_path="/tmp/muse-t05-live-sources",
         llm_spend_ceiling_usd=25.0,
     )
@@ -377,9 +379,11 @@ async def check_generated_course(
 async def test_live_acceptance_product_path(
     t03_session: AsyncSession, capfd: pytest.CaptureFixture[str]
 ) -> None:
-    key = os.environ.get("MODEL_API_KEY")
+    from transport_guard import live_key_name
+
+    key = os.environ.get(live_key_name())
     if not key:
-        pytest.skip("MODEL_API_KEY is not set")
+        pytest.skip(f"{live_key_name()} is not set")
     settings = _live_settings(key)
     session = t03_session
 

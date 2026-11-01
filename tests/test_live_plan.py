@@ -29,7 +29,9 @@ LIVE_TEXT = (
 
 
 async def _maybe_key() -> str | None:
-    return os.environ.get("MODEL_API_KEY")
+    from transport_guard import live_key_name
+
+    return os.environ.get(live_key_name())
 
 
 async def test_live_plan_on_synthetic_source(t03_session) -> None:  # type: ignore[no-untyped-def]
@@ -44,9 +46,11 @@ async def test_live_plan_on_synthetic_source(t03_session) -> None:  # type: igno
 
     key = await _maybe_key()
     if not key:
-        pytest.skip("MODEL_API_KEY is not set; live plan test skipped")
+        pytest.skip("the live provider key is not set; live plan test skipped")
+    from transport_guard import live_key_settings
+
     settings = Settings(
-        _env_file=None, model_api_key=key, source_store_path="/tmp/muse-t03-sources"
+        _env_file=None, **live_key_settings(key), source_store_path="/tmp/muse-t03-sources"
     )
     user_id = UUID(
         str(
