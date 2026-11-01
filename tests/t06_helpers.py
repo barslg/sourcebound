@@ -158,7 +158,7 @@ def block_specs(passages: list[dict[str, str]], prefix: str) -> list[dict[str, A
     ]
 
     def fx(name: str) -> tuple[dict[str, Any], dict[str, Any]]:
-        return import_module(f"app.blocks.{name}.fixture").fixture()  # type: ignore[no-any-return]
+        return import_module(f"block_fixtures.{name}").fixture()  # type: ignore[no-any-return]
 
     def public(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return [{k: v for k, v in c.items() if not k.startswith("_")} for c in items]

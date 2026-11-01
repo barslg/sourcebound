@@ -6,7 +6,6 @@ opaque values through here before they reach logs, errors, or responses.
 
 from __future__ import annotations
 
-import hmac
 import re
 from collections.abc import Iterable
 
@@ -33,11 +32,6 @@ def redact(text: str, secrets: Iterable[str] = ()) -> str:
             redacted,
         )
     return redacted
-
-
-def constant_time_equal(left: str, right: str) -> bool:
-    """Compare secrets without leaking length/prefix timing."""
-    return hmac.compare_digest(left.encode(), right.encode())
 
 
 def settings_secrets(settings: object) -> list[str]:

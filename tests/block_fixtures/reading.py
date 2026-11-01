@@ -15,13 +15,3 @@ def fixture() -> tuple[dict[str, Any], dict[str, Any]]:
     }
     answer_key = {"note": SENTINEL}
     return content, answer_key
-
-
-def correct_submission() -> dict[str, Any]:
-    """An acknowledging submission scores full marks."""
-    return {"acknowledged": True}
-
-
-def wrong_submission() -> dict[str, Any]:
-    """A refused acknowledgement scores zero."""
-    return {"acknowledged": False}

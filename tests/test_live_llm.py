@@ -8,6 +8,7 @@ it is never printed or logged.
 from __future__ import annotations
 
 import uuid as uuid_lib
+from decimal import Decimal
 
 import httpx2
 import pytest
@@ -17,7 +18,6 @@ from transport_guard import GuardedTransport
 
 from app.config import get_settings
 from app.db import create_session_factory
-from app.llm import calls
 from app.models.llm import llm_calls, llm_replies
 from app.providers.llm import MetaProvider
 
@@ -78,7 +78,14 @@ async def test_live_structured_grounded_and_cached() -> None:
 
             rows_before = await count(llm_calls)
             stored_before = await count(llm_replies)
-            spend_before = await calls.total_spend_usd(session)
+
+            async def spend_total() -> Decimal:
+                result = await session.execute(
+                    sa.select(sa.func.coalesce(sa.func.sum(llm_calls.c.cost_usd), 0))
+                )
+                return Decimal(str(result.scalar()))
+
+            spend_before = await spend_total()
 
             # (a) One text block as strict JSON by a small schema.
             block_schema = _strict_object(
@@ -175,7 +182,7 @@ async def test_live_structured_grounded_and_cached() -> None:
             assert transport.calls == 4
             assert await count(llm_calls) - rows_before == 5
             assert await count(llm_replies) - stored_before == 4
-            assert await calls.total_spend_usd(session) - spend_before > 0
+            assert await spend_total() - spend_before > 0
     finally:
         await engine.dispose()
         await http_client.aclose()

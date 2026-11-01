@@ -71,9 +71,7 @@ jobs:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
       - run: uv run pytest -m "not live" tests/gates/
-      - run: uv run python scripts/check_layers.py
-      - run: uv run python scripts/check_public_tree.py
-      - run: uv run python scripts/check_routes.py
+      - run: uv run python scripts/run_gates.py
 
   secrets:
     name: gitleaks

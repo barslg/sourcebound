@@ -15,13 +15,3 @@ def fixture() -> tuple[dict[str, Any], dict[str, Any]]:
     }
     answer_key = {"correct": 0, "passage": "P1", "note": SENTINEL}
     return content, answer_key
-
-
-def correct_submission() -> dict[str, Any]:
-    """The keyed option scores full marks."""
-    return {"picked": 0}
-
-
-def wrong_submission() -> dict[str, Any]:
-    """Any other option scores zero."""
-    return {"picked": 2}

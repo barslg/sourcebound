@@ -12,7 +12,7 @@ import json
 import re
 from typing import Any
 
-from app.agents.base import AGENT_SCHEMAS, assemble, system_prompt
+from app.agents.base import assemble, system_prompt
 from app.course.tree import BLOCK_GENERATOR_SCHEMAS
 from app.llm.prompts import cache_key as prompt_cache_key
 
@@ -104,8 +104,3 @@ def check_block_output(payload: dict[str, Any], block_type: str = "reading") -> 
 def schema_for(block_type: str) -> dict[str, Any]:
     """Strict per-type generator response schema."""
     return dict(BLOCK_GENERATOR_SCHEMAS.get(block_type, BLOCK_GENERATOR_SCHEMAS["reading"]))
-
-
-def schema() -> dict[str, Any]:
-    """Default generator schema (reading); callers prefer schema_for."""
-    return dict(AGENT_SCHEMAS["block_teach"])

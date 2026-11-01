@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import structlog
 from structlog.types import EventDict, WrappedLogger
 
@@ -48,8 +46,3 @@ def configure_logging(level: str = "INFO", secrets: tuple[str, ...] = ()) -> Non
         ),
         cache_logger_on_first_use=True,
     )
-
-
-def get_logger(name: str) -> Any:
-    """Return a bound logger for the calling module."""
-    return structlog.get_logger(name)

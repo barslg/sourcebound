@@ -56,9 +56,7 @@ uv run pytest -m "not live"
 
 step "job mechanical gates"
 uv run pytest -m "not live" tests/gates/
-uv run python scripts/check_layers.py
-uv run python scripts/check_public_tree.py
-uv run python scripts/check_routes.py
+uv run python scripts/run_gates.py
 
 step "job gitleaks (history of the clone, then the tree)"
 if command -v gitleaks >/dev/null 2>&1; then

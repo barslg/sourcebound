@@ -72,15 +72,6 @@ def compile_translation_dag(
     return dag
 
 
-def block_input_digest(block: dict[str, Any], target_language: str) -> str:
-    """Stable idempotency key: block content plus target language."""
-    from app.runs.executor import input_digest_of
-
-    return input_digest_of(
-        {"block": block["content"], "type": block["block_type"], "lang": target_language}
-    )
-
-
 async def translate_course(
     session: AsyncSession,
     settings: Any,

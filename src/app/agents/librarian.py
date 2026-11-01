@@ -8,15 +8,12 @@ HTML parser. The spec is stored with the source so re-crawls reuse it.
 
 from __future__ import annotations
 
-import json
 import re
 from html.parser import HTMLParser
 from typing import Any
 
 from pydantic import BaseModel, Field
 from pydantic import ValidationError as PydanticValidationError
-
-from app.agents.base import AGENT_SCHEMAS, assemble, system_prompt
 
 _SELECTOR_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9]*(?:[.#][a-zA-Z0-9_-]+)?$")
 _MAX_PAGES = 20
@@ -177,18 +174,3 @@ def derive_parser_spec(html: str) -> dict[str, Any] | None:
         "pagination": {"next_selector": None, "max_pages": 1},
     }
     return spec if validate_parser_spec(spec) == [] else None
-
-
-def build_prompt(page_sample: str, course_language: str = "en") -> str:
-    """Full librarian prompt: stable system prefix plus a page sample."""
-    dynamic = json.dumps(
-        {"course_language": course_language, "page_sample": page_sample[:4000]},
-        ensure_ascii=False,
-        sort_keys=True,
-    )
-    return assemble(system_prompt("librarian"), dynamic)
-
-
-def schema() -> dict[str, Any]:
-    """The librarian parser-spec schema (strict subset, startup-checked)."""
-    return dict(AGENT_SCHEMAS["librarian"])

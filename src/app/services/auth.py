@@ -334,13 +334,3 @@ async def finish_login(
     return _record(row), LoginOutcome(
         is_new=is_new, applied_invite_scopes=applied, next_url=next_url
     )
-
-
-async def user_created_at(session: AsyncSession, user_id: UUID) -> datetime | None:
-    """Creation timestamp of an account (audit support)."""
-    row = (
-        await session.execute(
-            sa.text("SELECT created_at FROM users WHERE id = :user"), {"user": str(user_id)}
-        )
-    ).first()
-    return row[0] if row else None

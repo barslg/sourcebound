@@ -51,19 +51,3 @@ def check_language(text: str, *, course_language: str) -> list[str]:
     if best != wanted:
         return [f"block reads as {best}, course language is {wanted}"]
     return []
-
-
-def course_glossary(course_language: str, terms: dict[str, str]) -> dict[str, str]:
-    """Glossary entries for one course language (term links travel with it)."""
-    _ = course_language
-    return dict(terms)
-
-
-def format_value(value: str | int | float, *, course_language: str, kind: str) -> str:
-    """One i18n entry point for numbers, dates, and addresses."""
-    if kind == "number" and isinstance(value, (int, float)):
-        tag = course_language.strip().lower().split("-")[0]
-        if tag in ("nb", "uk", "de"):
-            return f"{value:,}".replace(",", " ")
-        return f"{value:,}"
-    return str(value)

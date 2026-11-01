@@ -104,11 +104,6 @@ def _norm_number(raw: str) -> float:
     return float(text)
 
 
-def numbers_of(text: str) -> list[str]:
-    """Number tokens of one string (legacy string form)."""
-    return _NUMBER.findall(text)
-
-
 def number_values(text: str) -> list[float]:
     """Normalised numeric values of one string, as a sortable multiset."""
     return sorted(_norm_number(m) for m in _NUMBER.findall(text))

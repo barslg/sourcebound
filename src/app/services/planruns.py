@@ -514,10 +514,6 @@ class _RealProviderFactory:
 
         return MetaProvider(session, self._settings, None, self._ledger)
 
-    def ledger(self) -> Any:
-        """Borrow the shared ledger factory's session (context manager)."""
-        return self._ledger()
-
     async def aclose(self) -> None:
         """Dispose the shared engine; the drive is done paying."""
         await self._engine.dispose()

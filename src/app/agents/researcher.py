@@ -15,7 +15,6 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.base import AGENT_SCHEMAS, assemble, system_prompt
-from app.course.tree import SourceRef
 
 
 def rephrase_queries(query: str) -> list[str]:
@@ -167,8 +166,3 @@ async def record_pairs(
 def schema() -> dict[str, Any]:
     """The researcher response schema (strict subset, startup-checked)."""
     return dict(AGENT_SCHEMAS["researcher"])
-
-
-def handles_for_refs(refs: list[SourceRef]) -> list[str]:
-    """Passage handles cited by block skeletons (kept beside the agent)."""
-    return [ref.handle for ref in refs]

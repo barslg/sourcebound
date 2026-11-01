@@ -243,8 +243,10 @@ def main(argv: list[str] | None = None) -> int:
     if violations:
         print(f"{len(violations)} layer violation(s)", file=sys.stderr)
         return 1
+    checked = len(list(iter_py_files(repo / "src" / "app")))
     print("layers OK")
-    return 0
+    print(f"check_layers: {checked} files checked")
+    return 0 if checked else 1
 
 
 if __name__ == "__main__":

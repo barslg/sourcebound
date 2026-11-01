@@ -138,11 +138,9 @@ def demo_sources(passages: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def demo_dossier() -> dict[str, Any]:
     """Frozen dossier: thesis, per-language glossary, sibling handoffs."""
-    from app.helpers.language import course_glossary
-
     return {
         "thesis": "Every claim about the AI Act at work traces to its article.",
-        "glossary": course_glossary("en", {"deployer": "deployer", "literacy": "literacy"}),
+        "glossary": {"deployer": "deployer", "literacy": "literacy"},
         "handoffs": [
             {"topic_plan_node_id": "t1", "note": "Case: a municipal team adopts AI tools."},
             {"topic_plan_node_id": "t2", "note": "Same team sorts its tools into risk tiers."},

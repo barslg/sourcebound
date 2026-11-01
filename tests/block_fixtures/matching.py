@@ -21,13 +21,3 @@ def fixture() -> tuple[dict[str, Any], dict[str, Any]]:
         "note": SENTINEL,
     }
     return content, answer_key
-
-
-def correct_submission() -> dict[str, Any]:
-    """The full mapping scores full marks."""
-    return {"mapping": {"Provider": "train staff", "Deployer": "oversee use"}}
-
-
-def wrong_submission() -> dict[str, Any]:
-    """A swapped mapping scores below full marks."""
-    return {"mapping": {"Provider": "oversee use", "Deployer": "train staff"}}

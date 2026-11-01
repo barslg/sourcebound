@@ -25,7 +25,19 @@ from urllib.parse import urlparse
 import httpx2
 
 from app.config import Settings, get_settings
-from app.llm.registry import compute_cost_usd, get_model, is_allowed, is_priced
+from app.llm.registry import compute_cost_usd, get_model, is_allowed
+
+
+def _is_priced(model_id: str) -> bool:
+    """True when the model has a dated price in its own billing unit."""
+    spec = get_model(model_id)
+    if spec.unit == "token":
+        return (
+            spec.input_per_1m_usd is not None
+            and spec.cached_per_1m_usd is not None
+            and spec.output_per_1m_usd is not None
+        )
+    return spec.unit_price_usd is not None
 
 
 class GuardViolation(ValueError):
@@ -105,7 +117,7 @@ class GuardedTransport(httpx2.AsyncHTTPTransport):
         get_model(model)  # UnknownModelError propagates as a loud failure.
         if not is_allowed(model, self._settings.llm_dev_mode):
             raise GuardViolation(f"model needs LLM_DEV_MODE=1: {model}")
-        if not is_priced(model):
+        if not _is_priced(model):
             raise GuardViolation(f"model has no dated price: {model}")
         ceiling = Decimal(str(self._settings.llm_spend_ceiling_usd))
         if self.spent_usd >= ceiling:
@@ -203,7 +215,7 @@ def install_session_guard(
             get_model(candidate)
             if not is_allowed(candidate, active.llm_dev_mode):
                 raise GuardViolation(f"model needs LLM_DEV_MODE=1: {candidate}")
-            if not is_priced(candidate):
+            if not _is_priced(candidate):
                 raise GuardViolation(f"model has no dated price: {candidate}")
             ceiling = Decimal(str(active.llm_spend_ceiling_usd))
             if _session_spent_usd >= ceiling:

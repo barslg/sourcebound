@@ -24,18 +24,3 @@ def fixture() -> tuple[dict[str, Any], dict[str, Any]]:
         "note": SENTINEL,
     }
     return content, answer_key
-
-
-def correct_submission() -> dict[str, Any]:
-    """Naming the sentence, kind, passage, and fix scores full marks."""
-    return {
-        "sentence": "The GDPR never applies to AI at work.",
-        "kind": "scope",
-        "passage": "P1",
-        "correct_value": "The GDPR may apply alongside the AI Act.",
-    }
-
-
-def wrong_submission() -> dict[str, Any]:
-    """Missing the sentence scores zero."""
-    return {"sentence": "Deployers must train staff.", "kind": "scope"}

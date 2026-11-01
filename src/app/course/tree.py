@@ -189,51 +189,6 @@ def validate_tree(tree: CourseTree, prescription: dict[str, list[str]]) -> list[
     return errors
 
 
-def _answer_strings(answer_key: Any) -> list[str]:
-    """Every string leaf of an answer key (server-side, any shape)."""
-    found: list[str] = []
-    if isinstance(answer_key, str):
-        found.append(answer_key)
-    elif isinstance(answer_key, dict):
-        for value in answer_key.values():
-            found.extend(_answer_strings(value))
-    elif isinstance(answer_key, list):
-        for value in answer_key:
-            found.extend(_answer_strings(value))
-    return found
-
-
-def _normalize(text: str) -> str:
-    import re as _re
-    import unicodedata as _ud
-
-    folded = _ud.normalize("NFKC", text.lower())
-    return " ".join(_re.sub(r"[^0-9a-zа-яёіїєґæøå]+", " ", folded).split())
-
-
-def brief_contains_answer(brief: str, answer_key: Any) -> bool:
-    """True when a block brief leaks its answer key (generation-time check).
-
-    A brief must be a topic, never the answer: any substantial answer
-    string appearing verbatim in the brief — or all of its content
-    words showing up there — fails the block. Short fragments (under
-    4 chars, fewer than 3 content words) never count, so ordinary
-    vocabulary overlap does not false-positive.
-    """
-    haystack = _normalize(brief)
-    hay_words = set(haystack.split())
-    for raw in _answer_strings(answer_key):
-        needle = _normalize(raw)
-        if len(needle) < 4:
-            continue
-        if needle in haystack:
-            return True
-        content = [word for word in needle.split() if len(word) > 3]
-        if len(content) >= 3 and all(word in hay_words for word in content):
-            return True
-    return False
-
-
 def _strict_object(properties: dict[str, Any]) -> dict[str, Any]:
     return {
         "type": "object",

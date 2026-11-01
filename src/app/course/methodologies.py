@@ -80,11 +80,6 @@ METHODOLOGIES: tuple[dict[str, Any], ...] = (
 )
 
 
-def methodology_codes() -> list[str]:
-    """Every registered methodology code."""
-    return [str(entry["code"]) for entry in METHODOLOGIES]
-
-
 def _is_role_list(value: Any) -> bool:
     return isinstance(value, list) and all(isinstance(item, str) for item in value)
 

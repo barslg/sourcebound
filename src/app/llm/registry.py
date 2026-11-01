@@ -196,18 +196,6 @@ def is_allowed(model_id: str, dev_mode: bool) -> bool:
     return dev_mode or not spec.dev_only
 
 
-def is_priced(model_id: str) -> bool:
-    """True when the model has a dated price in its own billing unit."""
-    spec = get_model(model_id)
-    if spec.unit == "token":
-        return (
-            spec.input_per_1m_usd is not None
-            and spec.cached_per_1m_usd is not None
-            and spec.output_per_1m_usd is not None
-        )
-    return spec.unit_price_usd is not None
-
-
 def compute_cost_usd(
     model_id: str,
     input_tokens: int,
@@ -233,11 +221,3 @@ def compute_cost_usd(
         + Decimal(billed_output) * spec.output_per_1m_usd
     ) / Decimal(1_000_000)
     return cost.quantize(Decimal("0.000001"))
-
-
-def unit_cost_usd(model_id: str, units: int) -> Decimal:
-    """Cost in USD for a count of non-token units (images, searches)."""
-    spec = get_model(model_id)
-    if spec.unit == "token" or spec.unit_price_usd is None:
-        raise UnpricedModelError(f"no dated unit price for model: {model_id}")
-    return (Decimal(units) * spec.unit_price_usd).quantize(Decimal("0.000001"))

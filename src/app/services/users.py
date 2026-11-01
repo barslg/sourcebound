@@ -16,6 +16,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
+from app.llm.calls import wipe_subject_calls
 from app.rbac.principal import Principal, load_principal
 from app.rbac.require import PERMISSION_DENIED_MESSAGE, require, require_scope
 from app.rbac.tags import display_tag, display_tags
@@ -329,11 +330,5 @@ async def delete_user(
         meta={"heir_id": str(heir_id) if heir_id else None},
     )
     # Learner subject rows keep their cost but lose request/response text.
-    await session.execute(
-        sa.text(
-            "UPDATE llm_calls SET request = '{\"wiped\": true}', response = NULL,"
-            " subject_user_id = NULL WHERE subject_user_id = :user"
-        ),
-        {"user": str(user_id)},
-    )
+    await wipe_subject_calls(session, user_id)
     await session.execute(sa.text("DELETE FROM users WHERE id = :user"), {"user": str(user_id)})

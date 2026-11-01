@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import secrets
 from dataclasses import dataclass
-from uuid import UUID
 
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -75,11 +74,6 @@ class RequestContext:
     session_token: str | None
     login_session: SessionRow | None
     principal: Principal | None
-
-    @property
-    def actor_id(self) -> UUID | None:
-        """The audit actor: the signed-in user, if any."""
-        return self.principal.user_id if self.principal else None
 
 
 def _settings_of(request: Request) -> Settings:

@@ -307,7 +307,8 @@ def main() -> int:
 
     app = create_app(sync_on_startup=False)
     src = REPO / "src"
-    for row in inventory(app, src):
+    rows = inventory(app, src)
+    for row in rows:
         print(row)
     violations = check_app(app, src)
     for line in violations:
@@ -316,7 +317,8 @@ def main() -> int:
         print(f"{len(violations)} route violation(s)", file=sys.stderr)
         return 1
     print("routes OK")
-    return 0
+    print(f"check_routes: {len(rows)} routes checked")
+    return 0 if rows else 1
 
 
 if __name__ == "__main__":

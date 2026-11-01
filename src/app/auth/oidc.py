@@ -13,7 +13,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import secrets
-import time
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
 
@@ -188,7 +187,3 @@ class GoogleProvider:
             avatar=str(claims.get("picture", "") or ""),
             email_verified=claims.get("email_verified") is True,
         )
-
-    @staticmethod
-    def _now() -> int:
-        return int(time.time())

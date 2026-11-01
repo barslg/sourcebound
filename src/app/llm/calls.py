@@ -7,11 +7,9 @@ and job flows keep their one-session commit boundaries.
 from __future__ import annotations
 
 import uuid
-from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-import sqlalchemy as sa
 from sqlalchemy.engine.cursor import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -127,13 +125,3 @@ async def wipe_subject_calls(session: AsyncSession, subject_user_id: UUID) -> in
     )
     assert isinstance(result, CursorResult)
     return int(result.rowcount or 0)
-
-
-async def total_spend_usd(session: AsyncSession) -> Decimal:
-    """Sum of recorded call costs; the transport guard reads this ceiling."""
-    result = await session.execute(
-        sa.select(sa.func.coalesce(sa.func.sum(llm_calls.c.cost_usd), 0))
-    )
-    total = result.scalar()
-    assert isinstance(total, Decimal)
-    return total

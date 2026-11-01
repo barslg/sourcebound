@@ -23,19 +23,3 @@ def fixture() -> tuple[dict[str, Any], dict[str, Any]]:
         "note": SENTINEL,
     }
     return content, answer_key
-
-
-def correct_submission() -> dict[str, Any]:
-    """Right tiers with right passages score full marks."""
-    return {
-        "labels": {"CV screening": "high-risk", "Spell check": "minimal"},
-        "passages": {"CV screening": "P1", "Spell check": "P2"},
-    }
-
-
-def wrong_submission() -> dict[str, Any]:
-    """One flipped tier scores below full marks."""
-    return {
-        "labels": {"CV screening": "minimal", "Spell check": "minimal"},
-        "passages": {"CV screening": "P1", "Spell check": "P2"},
-    }

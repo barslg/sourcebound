@@ -44,11 +44,6 @@ def register(entry: PromptEntry) -> PromptEntry:
     return stamped
 
 
-def registered() -> dict[tuple[str, str], PromptEntry]:
-    """Snapshot of every registered prompt version."""
-    return dict(_REGISTRY)
-
-
 def cache_key(agent: str, block_type: str, course_id: str) -> str:
     """Prefix-cache scope for one agent, block type, and course.
 

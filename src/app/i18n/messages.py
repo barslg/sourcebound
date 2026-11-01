@@ -56,11 +56,6 @@ def error_message(code: str, locale: str) -> str:
     return ERROR_MESSAGES["en"].get(code, ERROR_MESSAGES["en"]["internal"])
 
 
-def error_keys() -> set[str]:
-    """Message keys every locale must carry (parity gate)."""
-    return set(ERROR_MESSAGES["en"])
-
-
 LANGUAGE_NAMES: dict[str, dict[str, str]] = {
     "en": {"en": "English", "nb": "Norwegian", "uk": "Ukrainian"},
     "nb": {"en": "engelsk", "nb": "norsk", "uk": "ukrainsk"},

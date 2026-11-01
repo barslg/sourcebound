@@ -162,7 +162,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{len(violations)} public-tree violation(s)", file=sys.stderr)
         return 1
     print("public tree OK")
-    return 0
+    print(f"check_public_tree: {len(names)} files checked")
+    return 0 if names else 1
 
 
 if __name__ == "__main__":

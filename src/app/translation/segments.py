@@ -88,11 +88,6 @@ def key_segments(block_type: str, answer_key: dict[str, Any]) -> list[dict[str, 
     return []
 
 
-def segment_ids(block_type: str, content: dict[str, Any]) -> set[str]:
-    """Stable id set of one block (the translator must return it whole)."""
-    return {segment["id"] for segment in extract_segments(block_type, content)}
-
-
 def planted_segment_id(
     content: dict[str, Any], answer_key: dict[str, Any] | None = None
 ) -> str | None:
