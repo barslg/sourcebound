@@ -73,6 +73,33 @@ jobs:
       - run: uv run pytest -m "not live" tests/gates/
       - run: uv run python scripts/run_gates.py
 
+  mutation:
+    name: mutation (changed lines)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: muse
+          POSTGRES_PASSWORD: muse
+          POSTGRES_DB: muse
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U muse -d muse"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://muse:muse@localhost:5434/muse_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+      - run: uv run python scripts/mutate_changed.py --base origin/dev --budget 540
+
   secrets:
     name: gitleaks
     runs-on: ubuntu-latest

@@ -1,0 +1,1 @@
+# path:line:operator reason - a changed line the permanent suite cannot guard, with the reason

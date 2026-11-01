@@ -58,6 +58,9 @@ step "job mechanical gates"
 uv run pytest -m "not live" tests/gates/
 uv run python scripts/run_gates.py
 
+step "job mutation (changed lines against origin/dev, 9-minute budget)"
+uv run python scripts/mutate_changed.py --base origin/dev --budget 540
+
 step "job gitleaks (history of the clone, then the tree)"
 if command -v gitleaks >/dev/null 2>&1; then
   gitleaks detect --source . --config .gitleaks.toml --redact --no-banner
