@@ -460,6 +460,7 @@
     "outline": "Course outline",
     "outlineHelp": "Titles save when you leave the field. Open a topic to see its blocks.",
     "notUsed": "Not used: {list}",
+    "handoffNext": "Next: {note}",
     "moreFor": "More actions for {name}",
     "kind": {
       "lesson": "Lesson",

@@ -1260,9 +1260,8 @@ async def _plant_spot_block(
         exercise = candidate
         break
     if exercise is None:
-        exc = last_exc or ValueError("no content sentence available to plant")
-        reason = f"spot_the_error: the exercise could not be planted: {exc}"[:500]
-        reason = f"the exercise could not be planted: {exc}"[:500]
+        failure = last_exc or ValueError("no content sentence available to plant")
+        reason = f"the exercise could not be planted: {failure}"[:500]
         await _persist_block(
             session,
             course_id=course_id,
@@ -1587,8 +1586,9 @@ async def generate_block_step(
         text = str(output.get("text", ""))
         stored = await _stored_passage_texts(session, passage_ids=list(handle_to_passage.values()))
         holds: list[str] = []
-        resolved_citations = []
+        resolved_citations: list[dict[str, Any]] = []
         citation_pids: list[str] = []
+        cited_handles: list[str] = []
         for cit in output.get("citations", []):
             handle = str(cit.get("passage_id", ""))
             pid = handle_to_passage.get(handle, handle)
@@ -1608,6 +1608,7 @@ async def generate_block_step(
                     }
                 )
                 citation_pids.append(pid)
+                cited_handles.append(handle)
         # R1/R3: teach/example blocks carry the complete claim of every
         # cited passage (its list items) and never join two passages
         # into one paragraph without a handle marker between them.
@@ -1616,18 +1617,15 @@ async def generate_block_step(
             from app.course.grounding import adjacency_holds, coverage_holds
 
             cited_texts = {
-                cit["handle"]: stored.get(handle_to_passage.get(cit["handle"], cit["handle"]), "")
-                for cit in resolved_citations
+                handle: stored.get(pid, "")
+                for handle, pid in zip(cited_handles, citation_pids, strict=True)
             }
             holds += coverage_holds(text, cited_texts)
-            holds += adjacency_holds(text, [cit["handle"] for cit in resolved_citations])
+            holds += adjacency_holds(text, cited_handles)
         if block_type == "figure":
             from app.course.grounding import passage_kind
 
-            cited_kinds = {
-                passage_kind(stored.get(handle_to_passage.get(c["handle"], c["handle"]), ""))
-                for c in resolved_citations
-            }
+            cited_kinds = {passage_kind(stored.get(pid, "")) for pid in citation_pids}
             if cited_kinds and cited_kinds <= {"prose"}:
                 holds.append("figure: cited passage has no numbers or structure to draw")
         if is_question and block_type != "spot_the_error":

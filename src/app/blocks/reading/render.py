@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
-_MARKER_RE = re.compile(r"⟦(P[1-9][0-9]*)⟧")
+from app.course.grounding import HANDLE_MARKER_RE
 
 
 def render_for_learner(content: dict[str, Any]) -> dict[str, Any]:
@@ -18,7 +17,7 @@ def render_for_learner(content: dict[str, Any]) -> dict[str, Any]:
     body = str(content.get("body", ""))
     segments: list[dict[str, Any]] = []
     pos = 0
-    for match in _MARKER_RE.finditer(body):
+    for match in HANDLE_MARKER_RE.finditer(body):
         if match.start() > pos:
             segments.append({"text": body[pos : match.start()]})
         segments.append({"text": "", "handle": match.group(1)})

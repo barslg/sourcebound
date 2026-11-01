@@ -49,10 +49,20 @@ def build_dynamic(
         for entry in METHODOLOGIES
         if str(entry["code"]) in codes
     }
+    from app.course.grounding import allowed_block_types
+
     ordered = {
         "course_language": course_language,
         "source_languages": sorted(set(source_languages or [])),
-        "passages": passages,
+        # R6: the block types code allows per passage (a figure only where
+        # the passage has numbers or a structure to draw) travel with it.
+        "passages": [
+            {
+                **passage,
+                "allowed_block_types": list(allowed_block_types(str(passage.get("text", "")))),
+            }
+            for passage in passages
+        ],
         "profile": profile,
         "constraints": constraints,
         "prescription": prescription,

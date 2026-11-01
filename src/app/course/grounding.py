@@ -10,6 +10,7 @@ text, never against model-supplied text.
 from __future__ import annotations
 
 import re
+from typing import Any
 
 HANDLE_MARKER_RE = re.compile(r"⟦(P[1-9][0-9]*)⟧")
 _BULLET_RE = re.compile(r"^\s*(?:[-•*]|\d+[.)])\s+(.*\S)\s*$")
@@ -215,7 +216,7 @@ def adjacency_holds(block_text: str, cited_handles: list[str]) -> list[str]:
     return holds
 
 
-def taught_handles_for(plan: dict, node_id: str) -> tuple[list[str], str] | None:
+def taught_handles_for(plan: dict[str, Any], node_id: str) -> tuple[list[str], str] | None:
     """Handles taught by a node's topic, from the frozen plan.
 
     Lessons: teach/example blocks of the same topic. Module tests: any
@@ -248,11 +249,13 @@ def taught_handles_for(plan: dict, node_id: str) -> tuple[list[str], str] | None
     return None
 
 
-def answer_key_terms(output: dict) -> list[str]:
+def answer_key_terms(output: dict[str, Any]) -> list[str]:
     """Content terms an exercise asks with: options, blanks, pairs, key.
 
     Every option (not only the correct one), every blank, every pair
-    side, every scenario item and tier, and the free `answer` key.
+    side, every scenario item, and the free `answer` key. A scenario
+    item's tier is the exercise's own label vocabulary (high/low), never
+    a claim of a passage, so it is not asked of the taught text.
     """
     texts: list[str] = [str(output.get("answer", ""))]
     for option in output.get("options", []) if isinstance(output.get("options"), list) else []:
@@ -266,7 +269,6 @@ def answer_key_terms(output: dict) -> list[str]:
     for item in output.get("items", []) if isinstance(output.get("items"), list) else []:
         if isinstance(item, dict):
             texts.append(str(item.get("text", "")))
-            texts.append(str(item.get("tier", "")))
     terms: list[str] = []
     for text in texts:
         for term in content_terms(text):
@@ -275,7 +277,7 @@ def answer_key_terms(output: dict) -> list[str]:
     return terms
 
 
-def taught_holds(output: dict, taught_texts: list[str]) -> list[str]:
+def taught_holds(output: dict[str, Any], taught_texts: list[str]) -> list[str]:
     """Hold a check/practice/test block that asks untaught material.
 
     No claim may sit in an answer key that is not in a passage cited
@@ -292,8 +294,3 @@ def taught_holds(output: dict, taught_texts: list[str]) -> list[str]:
                 f"not taught: answer-key term {term!r} is not in a passage taught by this topic"
             )
     return holds
-
-
-def marker(handle: str) -> str:
-    """The handle marker shown as a chip at a passage boundary."""
-    return f"⟦{handle}⟧"

@@ -460,6 +460,7 @@
     "outline": "Kursoversikt",
     "outlineHelp": "Titler lagres når du forlater feltet. Åpne et emne for å se blokkene.",
     "notUsed": "Ikke brukt: {list}",
+    "handoffNext": "Neste: {note}",
     "moreFor": "Flere handlinger for {name}",
     "kind": {
       "lesson": "Leksjon",

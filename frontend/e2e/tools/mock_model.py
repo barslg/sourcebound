@@ -76,7 +76,11 @@ def reply_for(prompt, schema):
         return base
     if head.startswith("# Architect"):
         d = last_json(prompt)
-        handle = (re.findall(r'"handle": ?"(P[0-9]+)"', prompt) or ["P1"])[0]
+        # every block cites every passage: the plan covers 100 % of the content
+        # passages (T11 R5 rejects a plan under 60 % with nothing in `uncovered`)
+        handles = sorted(
+            set(re.findall(r'"handle": ?"(P[0-9]+)"', prompt)), key=lambda h: int(h[1:])
+        ) or ["P1"]
         roles = d["prescription"]["lesson"]
         allowed = list(BLOCK_TYPES["lesson"])
 
@@ -107,7 +111,7 @@ def reply_for(prompt, schema):
                             if r in ("check", "practice", "test")
                             else f"What {title.lower()} means"
                         ),
-                        "source_refs": [{"handle": handle}],
+                        "source_refs": [{"handle": h} for h in handles],
                     }
                     for i, r in enumerate(roles)
                 ],
@@ -124,10 +128,20 @@ def reply_for(prompt, schema):
             }
         ]
         n = sum(len(t["blocks"]) for t in mods[0]["topics"])
+        topics = [t for m in mods for t in m["topics"]]
         return {
             "modules": mods,
             "estimate_inputs": {"blocks": n, "calls": n * 2, "tokens": 1000},
-            "through_line": {"case": "A ward nurse", "handoffs": []},
+            "through_line": {
+                "case": "A ward nurse",
+                "handoffs": [
+                    {
+                        "topic_plan_node_id": t["plan_node_id"],
+                        "note": f"The nurse carries {t['title'].lower()} into the next topic.",
+                    }
+                    for t in topics[:-1]
+                ],
+            },
         }
     if head.startswith("# Saboteur"):
         task = json.loads(prompt.split("## Task input (typed, assembled by code)\n", 1)[1])
