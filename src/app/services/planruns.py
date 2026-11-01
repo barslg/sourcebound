@@ -676,7 +676,7 @@ async def resume_run(
 
     row = (
         await session.execute(
-            sa.text("SELECT status FROM runs WHERE id = :run"),
+            sa.text("SELECT status, course_id FROM runs WHERE id = :run"),
             {"run": str(run_id)},
         )
     ).first()
@@ -686,6 +686,15 @@ async def resume_run(
         raise ValidationError(f"run {run_id} is running; only stopped runs resume")
     if row[0] not in ("stopped", "running"):
         raise ValidationError(f"run {run_id} is {row[0]}; only stopped runs resume")
+    if row[1] is not None:
+        from app.services.courses import blocking_questions
+
+        open_questions = await blocking_questions(session, course_id=UUID(str(row[1])))
+        if open_questions:
+            raise ConflictError(
+                "resume refused: answer the open questions first: "
+                + ", ".join(question["key"] for question in open_questions)
+            )
     await session.execute(
         sa.text("UPDATE runs SET status = 'running', stop_marker = NULL WHERE id = :run"),
         {"run": str(run_id)},

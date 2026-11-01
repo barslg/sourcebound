@@ -3,8 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { request } from '@/api/client'
-import { courseEstimate, courseHeld, courseItem, coursePlan, runCancel, runItem, runResume } from '@/api/endpoints'
-import type { CourseDoc, Estimate, HeldDoc } from '@/api/types'
+import { courseEstimate, courseHeld, courseItem, coursePlan, coursePlanValidate, runCancel, runItem, runResume } from '@/api/endpoints'
+import type { CourseDoc, Estimate, HeldDoc, Validation } from '@/api/types'
 import ActionButton from '@/components/ActionButton.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import StatusChip from '@/components/StatusChip.vue'
@@ -29,6 +29,7 @@ const course = ref<CourseDoc | null>(null)
 const held = ref<HeldDoc | null>(null)
 const plan = ref<PlanTree | null>(null)
 const estimate = ref<Estimate | null>(null)
+const validation = ref<Validation | null>(null)
 const working = ref<'resume' | 'cancel' | null>(null)
 const confirmCancel = ref(false)
 let timer: ReturnType<typeof setInterval> | null = null
@@ -50,6 +51,7 @@ async function loadCourse(): Promise<void> {
     held.value = await request<HeldDoc>(courseHeld(courseId.value))
     plan.value = await request<PlanTree>(coursePlan(courseId.value))
     estimate.value = await request<Estimate>(courseEstimate(courseId.value))
+    validation.value = await request<Validation>(coursePlanValidate(courseId.value))
   } catch {
     course.value = course.value ?? null
   }
@@ -115,7 +117,7 @@ async function act(kind: 'resume' | 'cancel'): Promise<void> {
         </li>
       </ul>
       <div class="row">
-        <ActionButton action="resume" :label="t('run.resume')" :loading="working === 'resume'" :reason="firstReason(lacking('run.retry'), doc?.status !== 'stopped' && t('run.resumeOnlyStopped'))" data-testid="run-resume" @click="act('resume')" />
+        <ActionButton action="resume" :label="t('run.resume')" :loading="working === 'resume'" :reason="firstReason(lacking('run.retry'), doc?.status !== 'stopped' && t('run.resumeOnlyStopped'), validation && (validation.blocking_questions ?? []).length > 0 && t('plan.questionsOpen'))" data-testid="run-resume" @click="act('resume')" />
         <ActionButton action="stop-run" :label="t('run.cancel')" :loading="working === 'cancel'" :reason="firstReason(lacking('run.cancel'), doc?.status !== 'running' && t('run.cancelOnlyRunning'))" data-testid="run-cancel" @click="confirmCancel = true" />
       </div>
       <p class="hint">{{ t('run.resumeHint') }}</p>

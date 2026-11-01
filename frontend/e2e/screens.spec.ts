@@ -143,6 +143,7 @@ test('sources: an address the backend cannot fetch waits for a person and adds n
 test('run view: a stopped run says why, shows cost against the forecast, and Resume continues it', async ({ page, context }) => {
   await signInAs(context, 'admin')
   const calls = recordApi(page)
+  await page.route('**/api/v1/courses/*/plan/validate', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ blocking_questions: [], tree_errors: [], can_generate: true }) }))
   await page.goto(`/runs/${ids().run}`)
   await expect(page.getByTestId('run-status')).toHaveText('Stopped')
   await expect(page.getByTestId('run-line')).toContainText('retry policy exhausted at block:t1-a')

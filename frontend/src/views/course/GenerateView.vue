@@ -146,7 +146,7 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
               </li>
             </ul>
             <div v-if="runStatus === 'stopped'" class="row">
-              <ActionButton action="resume" :label="t('run.resume')" :loading="working === 'resume'" :reason="lacking('run.retry')" data-testid="run-resume" @click="act('resume')" />
+              <ActionButton action="resume" :label="t('run.resume')" :loading="working === 'resume'" :reason="firstReason(lacking('run.retry'), validation && (validation.blocking_questions ?? []).length > 0 && t('plan.questionsOpen'))" data-testid="run-resume" @click="act('resume')" />
               <span class="hint">{{ t('run.resumeHint') }}</span>
             </div>
             <div v-if="active" class="row">
