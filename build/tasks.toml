@@ -244,13 +244,22 @@ max_steps = 450
 depends = ["T11"]
 
 [[task]]
+id = "T11b"
+title = "close the T11 review: one handle numbering, taught as provenance not word lists, no title rejection, one DAG entry builder, label-list coverage, adjacency by quote spans, quantity figures, code-aware web reader, translated Next line, replay tool"
+prompt = "build/tasks/T11b.md"
+model = "muse-spark-1.3"
+effort = "high"
+max_steps = 600
+depends = ["T04O"]
+
+[[task]]
 id = "T12"
 title = "richer block tools bound to sources: markdown bodies, code blocks with highlighting, copy and graded predict/fix exercises, tables with cited cells, Mermaid diagrams, figures from passage numbers, architect prescription by passage kind"
 prompt = "build/tasks/T12.md"
 model = "muse-spark-1.3"
 effort = "high"
 max_steps = 600
-depends = ["T04O"]
+depends = ["T11b"]
 
 [[task]]
 id = "T13"
