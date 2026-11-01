@@ -53,9 +53,10 @@ async def _qualified_tags(
 
     A course id must be a course the actor owns (a superadmin: any existing
     course); a group tag must be carried by a course the actor owns, and is
-    stored under the actor's id. A superadmin owns no school's groups: the
-    tag is stored under every owner whose courses carry it (404 when none
-    does), so the invite opens exactly the groups that exist.
+    stored under the actor's id. A superadmin owns no school's groups and
+    names the owner explicitly as `<owner id>:<group>` (404 when that owner
+    has no course carrying the group); a bare group name from a superadmin
+    is refused, never expanded to every owner's group of that name.
     """
     from app.errors import ValidationError
 
@@ -63,7 +64,15 @@ async def _qualified_tags(
     stored: list[str] = []
     for raw in course_tags:
         tag = raw.strip()
-        if not tag or (GROUP_SEP in tag and not is_course_id(tag)):
+        owner_part, _, group_part = tag.partition(GROUP_SEP)
+        explicit = (
+            actor.is_superadmin
+            and not is_course_id(tag)
+            and is_course_id(owner_part)
+            and bool(group_part)
+            and GROUP_SEP not in group_part
+        )
+        if not tag or (GROUP_SEP in tag and not is_course_id(tag) and not explicit):
             raise ValidationError("a tag is a course id or a group name without ':'")
         if is_course_id(tag):
             exists = (
@@ -79,23 +88,25 @@ async def _qualified_tags(
             if not exists:
                 raise NotFoundError("object not found")
             stored.append(tag)
-        else:
-            if actor.is_superadmin:
-                owners = (
-                    await session.execute(
-                        sa.text(
-                            "SELECT DISTINCT owner_id FROM courses WHERE :tag = ANY(scope_tags)"
-                        ),
-                        {"tag": tag},
-                    )
-                ).all()
-                if not owners:
-                    raise NotFoundError("object not found")
-                stored.extend(group_key(row[0], tag) for row in owners)
-            elif tag in owned_tags:
-                stored.append(group_key(actor.user_id, tag))
-            else:
+        elif explicit:
+            carried = (
+                await session.execute(
+                    sa.text(
+                        "SELECT 1 FROM courses WHERE owner_id = :owner"
+                        " AND :tag = ANY(scope_tags) LIMIT 1"
+                    ),
+                    {"owner": owner_part, "tag": group_part},
+                )
+            ).first()
+            if carried is None:
                 raise NotFoundError("object not found")
+            stored.append(group_key(owner_part, group_part))
+        elif actor.is_superadmin:
+            raise ValidationError("name the group's owner as '<owner id>:<group>'")
+        elif tag in owned_tags:
+            stored.append(group_key(actor.user_id, tag))
+        else:
+            raise NotFoundError("object not found")
     return sorted(set(stored))
 
 
