@@ -255,6 +255,7 @@ def reply_for(prompt, schema, instructions=""):
                             "evidence": (
                                 "not applicable" if it == "planted_error" and not spot else span
                             ),
+                            "note": "cite the passage this span rests on" if hold else "",
                         }
                         for it in RUBRIC_ITEMS
                     },

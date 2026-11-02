@@ -1850,3 +1850,54 @@ async def test_garbage_reply_is_rejected_once_and_never_re_asked(t03_session: As
     final = await _plan_drive(t03_session, run_id, handler, _plan_settings())
     assert final["status"] == "stopped"
     assert architect_posts == 1
+
+
+def test_reader_hold_reason_carries_the_note_and_the_block_assignment() -> None:
+    """The 2026-11-02 holds read "coverage: Solve harder problems…" — a span
+    with no instruction; the writer must see what to change and which
+    passages the plan assigned to the block."""
+    from app.runs.executor import _assigned_handles, _hold_line
+
+    assert _hold_line("coverage", {"verdict": "hold", "evidence": "a span", "note": ""}) == (
+        "coverage: a span"
+    )
+    assert (
+        _hold_line(
+            "coverage",
+            {"verdict": "hold", "evidence": "a span", "note": "carry P639  or declare it"},
+        )
+        == "coverage: carry P639 or declare it (evidence: a span)"
+    )
+    plan = {
+        "modules": [
+            {
+                "topics": [
+                    {
+                        "blocks": [
+                            {"plan_node_id": "m1-t1-b1", "source_handles": ["P1", "P2"]},
+                            {"plan_node_id": "m1-t1-b2"},
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+    assert _assigned_handles(plan) == {"m1-t1-b1": ["P1", "P2"], "m1-t1-b2": []}
+
+
+def test_a_bigger_output_budget_does_not_rerun_a_finished_step(monkeypatch: Any) -> None:
+    """2026-11-02 23:41: raising the reader budget mid-run re-read twenty
+    finished topics on resume (≈$2.50). A finished reply is not less valid
+    because the next call may be longer; model and effort still count."""
+    from app.llm import registry
+    from app.runs.executor import step_digest
+
+    before = step_digest(agent="reader", prompt="p", upstream={"a": 1})
+    model, effort, budget = registry.resolve_step("reader", None, None, None)
+    monkeypatch.setattr(registry, "resolve_step", lambda *a, **k: (model, effort, budget * 2))
+    monkeypatch.setattr(
+        "app.runs.executor.resolve_step", lambda *a, **k: (model, effort, budget * 2)
+    )
+    assert step_digest(agent="reader", prompt="p", upstream={"a": 1}) == before
+    monkeypatch.setattr("app.runs.executor.resolve_step", lambda *a, **k: (model, "low", budget))
+    assert step_digest(agent="reader", prompt="p", upstream={"a": 1}) != before

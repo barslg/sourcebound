@@ -551,6 +551,9 @@ def _rubric_item() -> dict[str, Any]:
             "evidence": _string(
                 "A verbatim span of the block text or of a cited passage that decides the item."
             ),
+            "note": _string(
+                "For a hold, one sentence naming what the writer must change; empty for a pass."
+            ),
         }
     )
 
