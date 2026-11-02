@@ -245,10 +245,12 @@ def _coverage_errors(output: Any, passages: list[dict[str, Any]]) -> list[str]:
         share = len(cited & content_handles) / len(content_handles)
         declared = {item.handle for item in output.uncovered if item.reason.strip()}
         missing = content_handles - cited - declared
-        if share < 0.6 and missing:
+        # a thin plan that forgot a handful of leftovers is accepted: the merge declares
+        # them "not cited by any module's plan" (a $0.12 module reply was rejected over one)
+        if share < 0.6 and len(missing) >= 2 and len(missing) > 0.1 * len(content_handles):
             errors.append(
                 f"plan cites {round(share * 100)}% of content passages; "
-                f"uncovered passages must be listed in uncovered: {sorted(missing)}"
+                f"uncovered passages must be listed in uncovered: {sorted(missing)[:20]}"
             )
     return errors
 

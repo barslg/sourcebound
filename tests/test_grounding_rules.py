@@ -201,6 +201,10 @@ def test_architect_check_keeps_the_sixty_percent_rule_and_drops_the_title_word_r
     assert check_output(declared, prescription, passages=passages) == [], (
         "'test' and 'staged' in the title stop nothing"
     )
+    one_forgotten = plan(["P1"], [{"handle": "P2", "reason": "later"}])
+    assert check_output(one_forgotten, prescription, passages=passages) == [], (
+        "one undeclared leftover is declared by the merge, never a rejection"
+    )
     assert check_output(plan(["P1", "P2"], []), prescription, passages=passages) == []
     typed = plan(["P1", "P2"], [])
     typed["modules"][0]["topics"][0]["blocks"][0].update(
