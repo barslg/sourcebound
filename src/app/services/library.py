@@ -796,7 +796,14 @@ def _web_records_to_passages(records: list[dict[str, str]]) -> list[dict[str, An
     passages: list[dict[str, Any]] = []
     for record in records:
         code = bool(record.get("code"))
-        text = record["body"] if code else _clean_block(record["body"])
+        if code:
+            text = record["body"]
+        elif record.get("table"):
+            # a table keeps one row per line
+            rows = [" ".join(line.split()) for line in record["body"].splitlines()]
+            text = "\n".join(row for row in rows if row)
+        else:
+            text = _clean_block(record["body"])
         if not text.strip():
             continue
         path = record["address"] or "body"

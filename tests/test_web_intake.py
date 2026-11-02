@@ -123,3 +123,28 @@ async def test_a_thin_source_cannot_be_approved(t03_session: Any) -> None:
     ).scalar_one()
     with pytest.raises(ValidationError, match="no readable text"):
         await approve_source(t03_session, source_id=UUID(str(source)), approved_by=None)
+
+
+TABLE_PAGE = (
+    "<!DOCTYPE html><html><body><article><h1>Pricing</h1><h2>Muse Spark</h2>"
+    "<table><thead><tr><th>Usage</th><th>Standard</th><th>Contributor</th></tr></thead>"
+    "<tbody><tr><td>Cached input</td><td>$0.15</td><td>$0.002</td></tr>"
+    "<tr><td>Input</td><td>$1.25</td><td>$0.10</td></tr></tbody></table>"
+    "<h2>Recipe</h2><table><tr><td>Model</td><td>muse-spark-1.3</td></tr>"
+    "<tr><td>Language</td><td>Python</td></tr></table>"
+    "<p>After the tables.</p></article></body></html>"
+)
+
+
+def test_a_table_is_one_passage_with_labelled_rows_never_a_passage_per_cell() -> None:
+    """The 2026-11-02 Muse API course: 834 of 2,722 passages were lone cells
+    ('Usage', '$0.20', 'n'), each assigned, each cited with its own marker."""
+    passages, _ = web_passages(_page(TABLE_PAGE), None)
+    texts = [p["text"] for p in passages]
+    assert texts == [
+        "Usage: Cached input | Standard: $0.15 | Contributor: $0.002\n"
+        "Usage: Input | Standard: $1.25 | Contributor: $0.10",
+        "Model: muse-spark-1.3\nLanguage: Python",
+        "After the tables.",
+    ]
+    assert passages[0]["address_key"] == "h:Pricing>Muse Spark/para1"

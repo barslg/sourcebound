@@ -93,8 +93,10 @@ class _SpecParser(HTMLParser):
     Inside the container every block element (the body selector plus
     p/li/pre/blockquote/dd/dt/td/th/figcaption/summary) collects its own
     text, inline tags included; a list (ul/ol) is one record whose items
-    are bullet lines; script/style/nav/header/footer/aside subtrees are
-    never read. Each record carries the heading path (or the nearest
+    are bullet lines; a table is one record whose rows are lines of
+    "header: cell" pairs (a cell per passage gave the 2026-11-02 course
+    834 passages like "Usage" and "$0.20"); script/style/nav/header/
+    footer/aside subtrees are never read. Each record carries the heading path (or the nearest
     ancestor id) current when its block closes.
     """
 
@@ -107,6 +109,8 @@ class _SpecParser(HTMLParser):
         self._skip_depth: int | None = None
         self._blocks: list[tuple[int, str, list[str]]] = []
         self._lists: list[tuple[int, str, list[str]]] = []
+        self._tables: list[tuple[int, list[str] | None, list[str]]] = []
+        self._row: list[tuple[str, str]] | None = None
         self._heading: list[tuple[int, str]] = []
         self._heading_text: list[str] = []
         self._heading_depth: int | None = None
@@ -144,6 +148,13 @@ class _SpecParser(HTMLParser):
         if tag in _LIST_TAGS:
             self._lists.append((depth, tag, []))
             return
+        if tag == "table":
+            self._tables.append((depth, None, []))
+            return
+        if tag == "tr" and self._tables:
+            self._close_row()
+            self._row = []
+            return
         if tag in _BLOCK_TAGS or _matches_here(self._chain, self._spec.fields["body"]):
             self._blocks.append((depth, tag, []))
 
@@ -168,6 +179,8 @@ class _SpecParser(HTMLParser):
             self._close_heading(self._heading_tag)
         else:
             self._flush_deeper(depth)
+            if tag == "tr":
+                self._close_row()
             if self._blocks and self._blocks[-1][1] == "pre" and _line_break_in_pre(tag, attrs):
                 # a code block renders its lines as child elements: keep them lines
                 self._blocks[-1][2].append("\n")
@@ -186,6 +199,8 @@ class _SpecParser(HTMLParser):
                 self._close_block()
             else:
                 self._close_list()
+        while self._tables and self._tables[-1][0] >= depth:
+            self._close_table()
 
     def handle_data(self, data: str) -> None:
         if self._skip_depth is not None:
@@ -213,6 +228,9 @@ class _SpecParser(HTMLParser):
         if tag == "li" and self._lists:
             self._lists[-1][2].append(" ".join(text.split()))
             return
+        if tag in ("td", "th") and self._tables and self._row is not None:
+            self._row.append((tag, " ".join(text.split())))
+            return
         if tag == "pre":
             text = _code_lines(text)
         self._emit(text, code=tag == "pre")
@@ -232,7 +250,35 @@ class _SpecParser(HTMLParser):
             return
         self._emit(text)
 
-    def _emit(self, text: str, code: bool = False) -> None:
+    def _close_row(self) -> None:
+        """One table row becomes one line: header pairs, a label pair, or bare cells."""
+        if self._row is None or not self._tables:
+            self._row = None
+            return
+        cells = [(tag, text) for tag, text in self._row if text]
+        self._row = None
+        if not cells:
+            return
+        depth, header, rows = self._tables[-1]
+        texts = [text for _, text in cells]
+        if header is None and not rows and all(tag == "th" for tag, _ in cells):
+            self._tables[-1] = (depth, texts, rows)
+            return
+        if header and len(header) == len(texts):
+            line = " | ".join(f"{name}: {text}" for name, text in zip(header, texts, strict=True))
+        elif len(texts) == 2:
+            line = f"{texts[0]}: {texts[1]}"
+        else:
+            line = " | ".join(texts)
+        rows.append(line)
+
+    def _close_table(self) -> None:
+        self._close_row()
+        _, _, rows = self._tables.pop()
+        if rows:
+            self._emit("\n".join(rows), table=True)
+
+    def _emit(self, text: str, code: bool = False, table: bool = False) -> None:
         if not text.strip():
             return
         rule = self._spec.address_rule
@@ -249,6 +295,7 @@ class _SpecParser(HTMLParser):
                 "body": text,
                 "address": address,
                 "code": "1" if code else "",
+                "table": "1" if table else "",
             }
         )
 
@@ -342,6 +389,7 @@ def execute_parser_spec(html: str, spec: dict[str, Any]) -> list[dict[str, str]]
             "body": record["body"].strip("\n") if record.get("code") else record["body"].strip(),
             "address": record["address"],
             "code": record.get("code", ""),
+            "table": record.get("table", ""),
         }
         for record in parser._records
         if record["body"].strip()
