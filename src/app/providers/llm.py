@@ -50,7 +50,7 @@ from app.errors import (
     ValidationError,
 )
 from app.llm import calls, prompts, replies
-from app.llm.registry import is_allowed, resolve_step, serving_model
+from app.llm.registry import is_allowed, resolve_step, serving_model, unit_cost_usd
 from app.llm.schema import validate_strict_subset
 from app.models.llm import llm_calls
 
@@ -295,6 +295,49 @@ class MetaProvider:
         if errors:
             raise ValidationError(f"{agent} output rejected: {errors[0]}")
         return answered.data
+
+    async def search_web(
+        self,
+        *,
+        agent: str,
+        query: str,
+        run_id: UUID | None = None,
+        step_id: UUID | None = None,
+    ) -> list[dict[str, str]]:
+        """One grounded web search; every URL returned came from the search, never the model.
+
+        Logged as a paid call of the step's model with the per-search
+        charge added; never served from the reply store (a search is
+        fresh by nature; the step claim keeps a resume from repeating it).
+        """
+        resolved_model, resolved_effort, resolved_tokens = resolve_step(agent, None, None, None)
+        resolved_model = serving_model(resolved_model, self._settings.model_provider)
+        started = time.monotonic()
+        answered = await self._get_client().search_web(
+            model=resolved_model,
+            query=query,
+            effort=resolved_effort,
+            max_output_tokens=resolved_tokens,
+        )
+        async with self._ledger_factory() as ledger:
+            await calls.log_call(
+                ledger,
+                agent=agent,
+                model=resolved_model,
+                prompt_version=prompts.version_of(f"{agent}:web_search"),
+                input_tokens=answered.input_tokens,
+                cached_tokens=answered.cached_tokens,
+                output_tokens=answered.output_tokens,
+                reasoning_tokens=answered.reasoning_tokens,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                request={"query": query, "tool": "web_search", "searches": answered.searches},
+                response={"results": answered.results},
+                run_id=run_id,
+                step_id=step_id,
+                extra_cost_usd=unit_cost_usd("web_search", answered.searches),
+            )
+            await ledger.commit()
+        return answered.results
 
     async def start_background(
         self,

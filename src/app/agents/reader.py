@@ -32,10 +32,10 @@ def build_reader_prompt(
     course_language: str = "en",
     sources: list[dict[str, Any]] | None = None,
     plan: dict[str, Any] | None = None,
-    dossier: dict[str, Any] | None = None,
+    previously: list[dict[str, Any]] | None = None,
     blocks: list[dict[str, Any]] | None = None,
 ) -> str:
-    """Full reader prompt with the binding prefix order."""
+    """Full reader prompt with the binding input order."""
     from app.agents.generate_block import public_sources
 
     dynamic = "\n\n## Approved sources\n" + json.dumps(
@@ -43,8 +43,9 @@ def build_reader_prompt(
         ensure_ascii=False,
         sort_keys=True,
     )
-    dynamic += "\n\n## Frozen plan + dossier\n" + json.dumps(
-        {"plan": plan or {}, "dossier": dossier or {}}, ensure_ascii=False, sort_keys=True
+    dynamic += "\n\n## Scenario\n" + json.dumps(plan or {}, ensure_ascii=False, sort_keys=True)
+    dynamic += "\n\n## Previously\n" + json.dumps(
+        {"previously": previously or []}, ensure_ascii=False, sort_keys=True
     )
     dynamic += "\n\n## Block skeleton\n" + json.dumps(
         {"topic_plan_node_id": topic_plan_node_id, "blocks": blocks or []},
@@ -52,6 +53,74 @@ def build_reader_prompt(
         sort_keys=True,
     )
     return assemble(dynamic)
+
+
+NOT_APPLICABLE = "not applicable"
+
+
+def _strings_of(value: Any) -> list[str]:
+    """Every string anywhere in a stored block's content or key."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for v in value.values() for s in _strings_of(v)]
+    if isinstance(value, list):
+        return [s for v in value for s in _strings_of(v)]
+    return []
+
+
+def _normal(text: str) -> str:
+    return " ".join(str(text).lower().split())
+
+
+def verify_evidence(
+    reply: dict[str, Any],
+    *,
+    blocks: list[dict[str, Any]],
+    passages: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Turn every rubric item whose evidence is not a verbatim span into `unknown`.
+
+    A verdict is an opinion until its evidence exists: the span must be
+    found (case and whitespace folded) in the block's content or key or
+    in one of the topic's passages. `not applicable` is accepted only
+    for planted_error on a block that is not a spot_the_error exercise.
+    The caller treats unknown as undecided (ask once more, then hold),
+    so a reader that asserts without quoting never passes a block.
+    """
+    haystack_passages = [_normal(str(p.get("text", ""))) for p in passages]
+    by_node = {str(b.get("plan_node_id", "")): b for b in blocks}
+    out: dict[str, Any] = json.loads(json.dumps(reply))
+    for verdict in out.get("verdicts", []):
+        if not isinstance(verdict, dict):
+            continue
+        block = by_node.get(str(verdict.get("plan_node_id", "")), {})
+        strings = _strings_of(block.get("content", {})) + _strings_of(block.get("answer_key", {}))
+        strings += _strings_of(block.get("text", ""))
+        own = [_normal(s) for s in strings]
+        spot = str(block.get("block_type", "")) == "spot_the_error"
+        items = verdict.get("items", {})
+        if not isinstance(items, dict):
+            continue
+        for item_id, item in items.items():
+            if not isinstance(item, dict):
+                continue
+            evidence = _normal(str(item.get("evidence", "")))
+            if item_id == "planted_error" and not spot and evidence == NOT_APPLICABLE:
+                continue
+            found = bool(evidence) and (
+                any(evidence in text for text in own)
+                or any(evidence in text for text in haystack_passages)
+            )
+            if not found:
+                item["verdict"] = "unknown"
+                item["evidence"] = f"evidence not found verbatim: {item.get('evidence', '')}"[:500]
+        if (
+            any(isinstance(i, dict) and i.get("verdict") == "unknown" for i in items.values())
+            and verdict.get("verdict") == "pass"
+        ):
+            verdict["verdict"] = "unknown"
+    return out
 
 
 def check_reader_output(payload: dict[str, Any], *, node_ids: set[str]) -> list[str]:

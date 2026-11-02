@@ -1,11 +1,13 @@
 """Generation pipelines: one compiler per methodology.
 
 The Merrill compiler expands a profile plus an approved plan tree into
-the stored DAG: research, plan, per-topic wave A teach/example, wave B
-check/practice/test reading wave A text, reader per topic, continuity
-reader per module, then rework for named blocks only. Backward Design
-and Kolb reuse the same wave shape with their own role mix so the
-compiler can expand them; the demo runs Merrill.
+the stored DAG: research, plan, per-topic wave A (teach, then example
+reading the teach text), wave B exercises reading wave A text, reader
+per topic, then rework for named blocks only. Teach blocks are chained
+topic after topic inside a module, so each one reads the handoffs of
+the topics before it ("previously"); modules run side by side.
+Backward Design and Kolb reuse the same wave shape with their own role
+mix so the compiler can expand them; the demo runs Merrill.
 """
 
 from __future__ import annotations
@@ -18,14 +20,14 @@ _WAVE_A_ROLES = ("teach", "example")
 _ROLE_TO_AGENT = {
     "teach": "block_teach",
     "example": "block_example",
-    "check": "block_check",
-    "practice": "block_practice",
-    "test": "block_test",
+    "check": "block_exercise",
+    "practice": "block_exercise",
+    "test": "block_exercise",
 }
 
 
 def _role_agent(role: str) -> str:
-    return _ROLE_TO_AGENT.get(role, "block_practice")
+    return _ROLE_TO_AGENT.get(role, "block_exercise")
 
 
 def compile_generation_dag(
@@ -65,10 +67,12 @@ def compile_generation_dag(
     method = methodology
     for module in tree.get("modules", []):
         module_id = str(module.get("plan_node_id", "module"))
+        previous_teach: list[str] = []
         for topic in module.get("topics", []):
             topic_id = str(topic.get("plan_node_id", "topic"))
             wave_a: list[str] = []
             wave_b: list[str] = []
+            teach_keys: list[str] = []
             for block in topic.get("blocks", []):
                 node_id = str(block.get("plan_node_id", "block"))
                 role = str(block.get("role", "practice"))
@@ -76,11 +80,16 @@ def compile_generation_dag(
                 key = f"{agent}:{node_id}"
                 if role in _WAVE_A_ROLES:
                     wave_a.append(key)
+                    # an example reads the teach text of its topic; a teach block reads
+                    # the handoffs of every earlier topic of the module
+                    upstream = list(previous_teach) if role == "teach" else list(teach_keys)
+                    if role == "teach":
+                        teach_keys.append(key)
                     dag.append(
                         {
                             "step_key": key,
                             "handler": "generate_block",
-                            "depends_on": ["plan:plan"],
+                            "depends_on": ["plan:plan", *upstream],
                             "input_digest": input_digest_of(
                                 {
                                     "kind": "block",
@@ -94,6 +103,7 @@ def compile_generation_dag(
                     )
                 else:
                     wave_b.append(key)
+            previous_teach = [*previous_teach, *teach_keys]
             for block in topic.get("blocks", []):
                 node_id = str(block.get("plan_node_id", "block"))
                 role = str(block.get("role", "practice"))
@@ -116,17 +126,6 @@ def compile_generation_dag(
                                 "profile": profile,
                                 "block": block,
                             }
-                        ),
-                    }
-                )
-            if method == "kolb_experiential":
-                dag.append(
-                    {
-                        "step_key": f"reflection:{topic_id}",
-                        "handler": "read_continuity",
-                        "depends_on": [*wave_a, *wave_b],
-                        "input_digest": input_digest_of(
-                            {"kind": "reflection", "node": topic_id, "course": course_id}
                         ),
                     }
                 )
@@ -177,27 +176,13 @@ def compile_generation_dag(
                     ),
                 }
             )
-        continuity_key = f"continuity:{module_id}"
-        dag.append(
-            {
-                "step_key": continuity_key,
-                "handler": "read_continuity",
-                "depends_on": [
-                    step["step_key"] for step in dag if step["step_key"].startswith("reader:")
-                ],
-                "input_digest": input_digest_of(
-                    {"kind": "continuity", "node": module_id, "course": course_id}
-                ),
-            }
-        )
+        _ = module_id
     dag.append(
         {
             "step_key": "rework:named-blocks",
             "handler": "rework_blocks",
             "depends_on": [
-                step["step_key"]
-                for step in dag
-                if step["step_key"].startswith(("reader:", "continuity:"))
+                step["step_key"] for step in dag if step["step_key"].startswith("reader:")
             ],
             "input_digest": input_digest_of({"kind": "rework", "course": course_id}),
         }

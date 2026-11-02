@@ -1,8 +1,7 @@
 """Methodology registry: declared in code, synced to the DB at startup.
 
 Merrill's First Principles is the demo path: Activation (one choice
-pre-question on the case), Demonstration (reading, figure only when the
-passage holds data), Application by Bloom target (cloze/matching for
+pre-question on the case), Demonstration (reading), Application by Bloom target (cloze/matching for
 remember-understand, scenario_practice for apply-analyze), Integration
 (spot_the_error). The module final test is choice + matching + one
 spot_the_error. Backward Design and Kolb are registered so the compiler
@@ -41,7 +40,6 @@ METHODOLOGIES: tuple[dict[str, Any], ...] = (
             "lesson_blocks": {
                 "activation": [["teach", "choice"]],
                 "demonstration": [["teach", "reading"]],
-                "demonstration_data": [["teach", "reading"], ["teach", "figure"]],
                 "application_low": [["practice", "cloze"], ["practice", "matching"]],
                 "application_high": [
                     ["practice", "scenario_practice"],

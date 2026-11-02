@@ -38,10 +38,17 @@ def test_sections_follow_headings_and_pages_in_document_order() -> None:
     assert module_handles(sections, ["S3", "S1"]) == ["P1", "P2", "P3", "P5", "P6"]
 
 
-def test_outline_check_wants_every_section_placed_once_or_declared() -> None:
-    def outline(sections: list[str], uncovered: list[dict[str, str]]) -> dict[str, object]:
+def test_outline_check_wants_every_section_in_one_topic_or_declared() -> None:
+    def outline(
+        sections: list[str],
+        uncovered: list[dict[str, str]],
+        topic_sections: list[list[str]] | None = None,
+        requires: list[str] | None = None,
+    ) -> dict[str, object]:
+        per_topic = topic_sections if topic_sections is not None else [sections]
         return {
-            "case": "c",
+            "learner": "a case worker",
+            "case": "a triage tool with its owner named",
             "modules": [
                 {
                     "plan_node_id": "m1",
@@ -50,9 +57,22 @@ def test_outline_check_wants_every_section_placed_once_or_declared() -> None:
                     "entry_knowledge": "e",
                     "exit_knowledge": "x",
                     "sections": sections,
+                    "topics": [
+                        {
+                            "plan_node_id": f"m1-t{i + 1}",
+                            "title": f"topic {i + 1}",
+                            "annotation": "What it teaches and how the case advances.",
+                            "introduces_terms": [],
+                            "prepares_for": "",
+                            "requires": requires or [],
+                            "sections": own,
+                        }
+                        for i, own in enumerate(per_topic)
+                    ],
                 }
             ],
             "uncovered": uncovered,
+            "questions": [],
         }
 
     assert check_output(outline(["S1", "S2"], []), ["S1", "S2"]) == []
@@ -65,6 +85,20 @@ def test_outline_check_wants_every_section_placed_once_or_declared() -> None:
     ]
     assert "unknown section 'S9'" in check_output(outline(["S1", "S9"], []), ["S1"])[0]
     assert "already placed" in check_output(outline(["S1", "S1"], []), ["S1"])[0]
+    # inside a module every section belongs to exactly one topic
+    assert check_output(outline(["S1", "S2"], [], [["S1"], ["S2"]]), ["S1", "S2"]) == []
+    assert check_output(outline(["S1", "S2"], [], [["S1"]]), ["S1", "S2"]) == [
+        "module m1: sections ['S2'] belong to no topic"
+    ]
+    assert (
+        "already covered by topic m1-t1"
+        in check_output(outline(["S1", "S2"], [], [["S1"], ["S1", "S2"]]), ["S1", "S2"])[0]
+    )
+    # requires names only an earlier topic
+    assert (
+        "requires 'm1-t9', which is not an earlier topic"
+        in check_output(outline(["S1"], [], requires=["m1-t9"]), ["S1"])[0]
+    )
 
 
 def test_a_scoped_module_hands_its_last_topic_over_too() -> None:

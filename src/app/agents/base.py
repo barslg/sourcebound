@@ -37,12 +37,9 @@ AGENT_SCHEMAS: dict[str, dict[str, object]] = {
     "librarian": tree.LIBRARIAN_SCHEMA,
     "block_teach": tree.GENERATOR_SCHEMA,
     "block_example": tree.GENERATOR_SCHEMA,
-    "block_check": tree.GENERATOR_SCHEMA,
-    "block_practice": tree.GENERATOR_SCHEMA,
-    "block_test": tree.GENERATOR_SCHEMA,
+    "block_exercise": tree.GENERATOR_SCHEMA,
     "reader": tree.READER_SCHEMA,
     "saboteur": tree.SABOTEUR_SCHEMA,
-    "continuity": tree.CONTINUITY_SCHEMA,
     "tutor": tree.TUTOR_SCHEMA,
     "translator": tree.TRANSLATOR_SCHEMA,
 }
@@ -73,19 +70,16 @@ def assemble(dynamic: str) -> str:
 
 # Keys code reads from each agent reply; the schema must require them all.
 CODE_REQUIRED: dict[str, set[str]] = {
-    "researcher": {"query", "rephrased", "ranked", "web_candidates"},
+    "researcher": {"query", "rephrased", "ranked", "gaps"},
     "architect": {"modules", "estimate_inputs", "through_line"},
-    "outline": {"case", "modules", "uncovered"},
+    "outline": {"learner", "case", "modules", "uncovered", "questions"},
     "librarian": {"container", "fields", "address_rule", "pagination"},
-    "block_teach": {"block_type", "text", "citations", "answer"},
-    "block_example": {"block_type", "text", "citations", "answer"},
-    "block_check": {"block_type", "text", "citations", "answer"},
-    "block_practice": {"block_type", "text", "citations", "answer"},
-    "block_test": {"block_type", "text", "citations", "answer"},
+    "block_teach": {"block_type", "text", "citations", "answer", "handoff", "leftovers"},
+    "block_example": {"block_type", "text", "citations", "answer", "handoff", "leftovers"},
+    "block_exercise": {"block_type", "text", "citations", "answer", "handoff", "leftovers"},
     "reader": {"verdicts"},
     "saboteur": {"sentence", "kind", "mutated"},
     "translator": {"segments"},
-    "continuity": {"handoffs", "issues"},
     "tutor": {"quotes"},
 }
 

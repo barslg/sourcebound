@@ -42,6 +42,68 @@ class LLMResponse:
     reasoning_tokens: int = 0
 
 
+@dataclass(frozen=True)
+class WebSearchReply:
+    """The results of one web_search tool call: every source the search returned, plus usage."""
+
+    results: list[dict[str, str]]
+    searches: int
+    input_tokens: int
+    cached_tokens: int
+    output_tokens: int
+    reasoning_tokens: int = 0
+
+
+def build_search_body(
+    *,
+    model: str,
+    query: str,
+    effort: str = "low",
+    max_output_tokens: int = 1500,
+) -> dict[str, Any]:
+    """The exact kwargs of one grounded search: the web_search tool with raw results included."""
+    return {
+        "model": model,
+        "input": query,
+        "tools": [{"type": "web_search", "search_context_size": "low"}],
+        "include": ["web_search_call.results"],
+        "reasoning": {"effort": effort},
+        "max_output_tokens": max_output_tokens,
+    }
+
+
+def parse_search_results(response: Any) -> tuple[list[dict[str, str]], int]:
+    """(results, searches) from a response's web_search_call items; code reads the URLs."""
+    results: list[dict[str, str]] = []
+    searches = 0
+    for item in getattr(response, "output", None) or []:
+        kind = getattr(item, "type", None) or (item.get("type") if isinstance(item, dict) else None)
+        if kind != "web_search_call":
+            continue
+        searches += 1
+        raw = getattr(item, "results", None)
+        if raw is None and isinstance(item, dict):
+            raw = item.get("results")
+        for hit in raw or []:
+            url = str(_field(hit, "url") or "")
+            if not url.startswith(("http://", "https://")):
+                continue
+            results.append(
+                {
+                    "url": url,
+                    "title": str(_field(hit, "title") or ""),
+                    "snippet": str(_field(hit, "snippet") or ""),
+                }
+            )
+    return results, searches
+
+
+def _field(item: Any, key: str) -> Any:
+    if isinstance(item, dict):
+        return item.get(key)
+    return getattr(item, key, None)
+
+
 def build_request_body(
     *,
     model: str,
@@ -230,6 +292,45 @@ class MetaClient:
     async def retrieve_background(self, response_id: str) -> LLMResponse:
         """Poll one previously created background response to completion."""
         return self._parse(await self._await_background(response_id))
+
+    async def search_web(
+        self, *, model: str, query: str, effort: str = "low", max_output_tokens: int = 1500
+    ) -> WebSearchReply:
+        """One grounded search: the model runs web_search, code keeps the result list."""
+        from openai import APIConnectionError, APIStatusError
+
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                response = await self._client.responses.create(
+                    **build_search_body(
+                        model=model, query=query, effort=effort, max_output_tokens=max_output_tokens
+                    )
+                )
+            except APIConnectionError as exc:
+                raise LLMError(f"web search failed: {self._redact(str(exc))}") from exc
+            except APIStatusError as exc:
+                if should_retry(exc.status_code, attempt):
+                    await asyncio.sleep(backoff_ms(attempt, retry_after_ms(exc)) / 1000)
+                    continue
+                raise LLMError(
+                    f"web search failed after {attempt} attempt(s): {self._redact(str(exc))}"
+                ) from exc
+            results, searches = parse_search_results(response)
+            usage = getattr(response, "usage", None)
+            if usage is None:
+                raise LLMError("web search response carried no usage")
+            return WebSearchReply(
+                results=results,
+                searches=searches,
+                input_tokens=int(usage.input_tokens),
+                cached_tokens=_tokens_details(usage, "input_tokens_details", "cached_tokens"),
+                output_tokens=int(usage.output_tokens),
+                reasoning_tokens=_tokens_details(
+                    usage, "output_tokens_details", "reasoning_tokens"
+                ),
+            )
 
     async def _await_background(self, response_id: str) -> Any:
         """Poll a background response until it completes or polling times out.

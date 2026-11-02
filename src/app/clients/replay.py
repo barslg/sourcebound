@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from app.clients.body import build_body
-from app.clients.meta import LLMResponse
+from app.clients.meta import LLMResponse, WebSearchReply
 from app.errors import ConfigurationError, ReplayMissError
 from app.llm.replies import request_hash
 
@@ -114,3 +114,9 @@ class ReplayClient:
     async def retrieve_background(self, response_id: str) -> LLMResponse:
         """Background calls are never recorded in a ledger."""
         raise ReplayMissError(f"replay mode: no background response {response_id}")
+
+    async def search_web(self, **_: Any) -> WebSearchReply:
+        """Web searches are never recorded in a ledger: replay finds no gaps to fill."""
+        return WebSearchReply(
+            results=[], searches=0, input_tokens=0, cached_tokens=0, output_tokens=0
+        )

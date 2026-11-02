@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx2
 
-from app.clients.meta import LLMResponse
+from app.clients.meta import LLMResponse, WebSearchReply
 from app.config import Settings, get_settings
 from app.errors import ConfigurationError, LLMError, UnparseableReplyError
 from app.llm.retry import backoff_ms, retry_after_ms, should_retry
@@ -172,6 +172,12 @@ class AnthropicClient:
     async def retrieve_background(self, response_id: str) -> LLMResponse:
         """There is no background mode on this provider."""
         raise ConfigurationError("provider anthropic has no background mode")
+
+    async def search_web(self, **_: Any) -> WebSearchReply:
+        """The test provider runs no web search: a gap stays a gap."""
+        return WebSearchReply(
+            results=[], searches=0, input_tokens=0, cached_tokens=0, output_tokens=0
+        )
 
     def _redact(self, text: str) -> str:
         """Redact with key patterns plus every secret from settings."""

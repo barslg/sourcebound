@@ -234,7 +234,6 @@ def generation_handlers() -> dict[str, Any]:
     return {
         "generate_block": executor.generate_block_step,
         "read_topic": executor.read_topic_step,
-        "read_continuity": executor.read_continuity_step,
         "rework_blocks": executor.rework_blocks_step,
         "saboteur": executor.saboteur_step,
     }
@@ -313,21 +312,35 @@ def mock_demo_handler() -> Any:
                 reply["mutated"] = "It is not the case that " + reply["sentence"]
         elif system.startswith("# Reader"):
             blocks = _section(prompt, "Block skeleton")["blocks"]
+
+            def _span(block: dict[str, Any]) -> str:
+                content = block.get("content") if isinstance(block.get("content"), dict) else {}
+                for key in ("body", "stem", "text", "scenario", "caption"):
+                    if isinstance(content.get(key), str) and content[key].strip():
+                        return str(content[key])[:30]
+                return str(block.get("text", ""))[:30] or "Staff apply the cited passage"
+
             reply = {
                 "verdicts": [
                     {
                         "plan_node_id": block["plan_node_id"],
                         "verdict": "pass",
                         "items": {
-                            item: {"verdict": "pass", "evidence": f"quoted {item}"}
+                            item: {
+                                "verdict": "pass",
+                                "evidence": (
+                                    "not applicable"
+                                    if item == "planted_error"
+                                    and block.get("block_type") != "spot_the_error"
+                                    else _span(block)
+                                ),
+                            }
                             for item in RUBRIC_ITEMS
                         },
                     }
                     for block in blocks
                 ]
             }
-        elif system.startswith("# Continuity"):
-            reply = {"handoffs": [], "issues": []}
         else:
             first = _section(prompt, "Approved sources")["sources"][0]
             quote = str(first["text"])[:40]

@@ -7,6 +7,7 @@ and job flows keep their one-session commit boundaries.
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -49,9 +50,16 @@ async def log_call(
     status: str = "completed",
     variant: int = 0,
     subject_user_id: UUID | None = None,
+    extra_cost_usd: Decimal | None = None,
 ) -> UUID:
-    """Insert one llm_calls row with cost from the registry; return its id."""
+    """Insert one llm_calls row with cost from the registry; return its id.
+
+    `extra_cost_usd` adds a per-unit charge the token price does not
+    cover (a web search billed per query beside its tokens).
+    """
     cost = compute_cost_usd(model, input_tokens, cached_tokens, output_tokens, reasoning_tokens)
+    if extra_cost_usd is not None:
+        cost = cost + extra_cost_usd
     result = await session.execute(
         llm_calls.insert()
         .values(

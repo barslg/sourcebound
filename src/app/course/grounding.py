@@ -162,21 +162,6 @@ def passage_kind(passage_text: str) -> str:
     return "prose"
 
 
-def allowed_block_types(passage_text: str) -> tuple[str, ...]:
-    """Block types code allows for one passage kind (figure gating)."""
-    if passage_kind(passage_text) == "prose":
-        return ("reading", "choice", "matching", "cloze", "scenario_practice", "spot_the_error")
-    return (
-        "reading",
-        "figure",
-        "choice",
-        "matching",
-        "cloze",
-        "scenario_practice",
-        "spot_the_error",
-    )
-
-
 _LABEL_ITEM_WORDS = 6
 
 

@@ -37,7 +37,6 @@ CHECK_MODULES = {
     "reader": "reader",
     "saboteur": "saboteur",
     "translator": "translator",
-    "continuity": "continuity",
     "tutor": "tutor",
     "generate_block": "generators",
 }

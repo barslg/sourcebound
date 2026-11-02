@@ -1,9 +1,11 @@
 """Researcher: FTS first, the model only rephrases and ranks.
 
 The researcher is mostly code: full-text search returns addressed
-passages, the model reorders them against the query and proposes web
-candidates for gaps. Every (query, passage) pair is saved to
-retrieval_pairs — the training set for the T05 reranker.
+passages, the model reorders them against the query, rephrases it per
+source language and names the gaps no passage answers; the executor
+then runs a real web search per gap (the model never invents a URL).
+Every (query, passage) pair is saved to retrieval_pairs — the training
+set for the T05 reranker.
 """
 
 from __future__ import annotations
@@ -87,10 +89,9 @@ def check_output(payload: dict[str, Any], handles: set[str]) -> list[str]:
         score = item.get("score")
         if not isinstance(score, (int, float)) or not 0 <= float(score) <= 1:
             errors.append(f"ranked[{position}]: score must be 0..1")
-    for candidate in payload.get("web_candidates", []):
-        url = candidate.get("url", "") if isinstance(candidate, dict) else ""
-        if not (isinstance(url, str) and url.startswith(("http://", "https://"))):
-            errors.append(f"web candidate {url!r}: must be an http(s) URL")
+    gaps = payload.get("gaps", [])
+    if not isinstance(gaps, list) or any(not str(gap).strip() for gap in gaps):
+        errors.append("gaps must be a list of non-empty questions")
     return errors
 
 

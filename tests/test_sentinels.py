@@ -202,7 +202,9 @@ async def test_reader_request_of_one_course_carries_none_of_another_courses_text
     prompts: list[str] = []
 
     def handler(request: httpx2.Request) -> httpx2.Response:
-        prompts.append(str(json.loads(request.content.decode("utf-8")).get("input", "")))
+        body = json.loads(request.content.decode("utf-8"))
+        if str(body.get("instructions", "")).startswith("# Reader"):
+            prompts.append(str(body.get("input", "")))
         return inner(request)
 
     ledger = create_session_factory(_db_url())
@@ -230,7 +232,7 @@ async def test_reader_request_of_one_course_carries_none_of_another_courses_text
         },
         provider_factory=make,
     )
-    reader = [p for p in prompts if p.startswith("# Reader")]
+    reader = list(prompts)
     assert len(reader) == 1
     assert "ONLY-COURSE-B" in reader[0], "the reader saw its own course's blocks"
     assert "ONLY-COURSE-A" not in reader[0], "the reader saw another course's block text"

@@ -27,7 +27,7 @@ def forecast(plan: dict[str, Any]) -> dict[str, Any]:
     tokens = int(plan.get("tokens", 0)) or calls * TOKENS_PER_BLOCK_CALL
     per_call_tokens = tokens // calls if calls else 0
     total_usd = Decimal("0")
-    for step in ("block_teach", "block_check"):
+    for step in ("block_teach", "block_exercise"):
         spec = STEPS[step]
         share, remainder = divmod(calls, 2)
         step_calls = share + (remainder if step == "block_teach" else 0)

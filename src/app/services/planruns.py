@@ -126,6 +126,9 @@ def frozen_plan(tree: dict[str, Any]) -> dict[str, Any]:
                     for ref in block.get("source_refs", [])
                     if isinstance(ref, dict)
                 ]
+                spec = (
+                    block.get("example_spec") if isinstance(block.get("example_spec"), dict) else {}
+                )
                 blocks.append(
                     {
                         "plan_node_id": str(block.get("plan_node_id", "")),
@@ -133,14 +136,23 @@ def frozen_plan(tree: dict[str, Any]) -> dict[str, Any]:
                         "block_type": str(block.get("block_type", "")),
                         "brief": str(block.get("brief", "")),
                         "source_handles": [str(h) for h in handles if h],
+                        "example_spec": {
+                            k: str(spec.get(k, "")) for k in ("input", "action", "result")
+                        },
                     }
                 )
+            row = topic.get("scenario") if isinstance(topic.get("scenario"), dict) else {}
             topics.append(
                 {
                     "plan_node_id": str(topic.get("plan_node_id", "")),
                     "kind": str(topic.get("kind", "")),
                     "title": str(topic.get("title", "")),
                     "objectives": [str(o) for o in (topic.get("objectives") or [])],
+                    "annotation": str(row.get("annotation", "")),
+                    "introduces_terms": [str(t) for t in row.get("introduces_terms", [])],
+                    "prepares_for": str(row.get("prepares_for", "")),
+                    "requires": [str(r) for r in row.get("requires", [])],
+                    "misconception": str(row.get("misconception", "")),
                     "blocks": blocks,
                 }
             )
@@ -151,7 +163,13 @@ def frozen_plan(tree: dict[str, Any]) -> dict[str, Any]:
                 "topics": topics,
             }
         )
-    return {"modules": modules}
+    raw_through = tree.get("through_line")
+    through: dict[str, Any] = raw_through if isinstance(raw_through, dict) else {}
+    return {
+        "learner": str(through.get("learner", "")),
+        "case": str(through.get("case", "")),
+        "modules": modules,
+    }
 
 
 async def _approved_passage_count(session: AsyncSession, *, course_id: UUID) -> int:
@@ -866,8 +884,16 @@ def _topic_index(raw_tree: dict[str, Any]) -> dict[str, dict[str, Any]]:
                 if str(b.get("block_type", "")) == "spot_the_error"
             )
             kind = str(topic.get("kind", ""))
+            raw_row = topic.get("scenario")
+            row: dict[str, Any] = raw_row if isinstance(raw_row, dict) else {}
+            raw_passages = row.get("passages")
+            section_passages: dict[str, Any] = (
+                raw_passages if isinstance(raw_passages, dict) else {}
+            )
             index[str(topic.get("plan_node_id", ""))] = {
                 "cited_passage_ids": ids,
+                "section_passage_ids": [str(p) for p in section_passages.values()],
+                "terms": [str(t) for t in row.get("introduces_terms", [])],
                 "topic_title": str(topic.get("title", "")),
                 "topic_purpose": " ".join(str(o) for o in (topic.get("objectives") or [])),
                 "topic_kind": kind,
@@ -913,33 +939,63 @@ def _plan_handle_map(raw_tree: dict[str, Any]) -> dict[str, str]:
 RETRIEVED_PER_TOPIC = 8
 
 
-def scoped_plan(tree: dict[str, Any], topic_node: str) -> dict[str, Any]:
-    """The frozen plan a step sees: its own module in full, the other modules as titles.
+def scenario_view(tree: dict[str, Any], topic_node: str) -> dict[str, Any]:
+    """What a step sees of the plan: learner, case, every topic as one line, its own topic in full.
 
-    Every block prompt carried the whole plan; on a big course that is
-    the largest part of every call and it is never prefix-cached (the
-    sources section before it differs per topic).
+    A module test also sees its module's lesson blocks (handles only),
+    so the taught-passage pool of the test is the whole module. The
+    whole plan never travels into a block prompt: on a big course it was
+    the largest part of every call and never prefix-cached.
     """
-    modules: list[dict[str, Any]] = []
+    lines: list[dict[str, Any]] = []
+    own_module: dict[str, Any] | None = None
+    own_topic: dict[str, Any] | None = None
     for module in tree.get("modules", []):
-        own = any(str(t.get("plan_node_id", "")) == topic_node for t in module.get("topics", []))
-        if own:
-            modules.append(module)
-        else:
-            modules.append(
+        for topic in module.get("topics", []):
+            node = str(topic.get("plan_node_id", ""))
+            lines.append(
                 {
-                    "plan_node_id": str(module.get("plan_node_id", "")),
-                    "title": str(module.get("title", "")),
-                    "topics": [
-                        {
-                            "plan_node_id": str(t.get("plan_node_id", "")),
-                            "title": str(t.get("title", "")),
-                        }
-                        for t in module.get("topics", [])
-                    ],
+                    "plan_node_id": node,
+                    "module": str(module.get("title", "")),
+                    "title": str(topic.get("title", "")),
+                    "annotation": str(topic.get("annotation", "")),
                 }
             )
-    return {**tree, "modules": modules}
+            if node == topic_node:
+                own_module, own_topic = module, topic
+    if own_module is None or own_topic is None:
+        return {"learner": tree.get("learner", ""), "case": tree.get("case", ""), "topics": lines}
+    siblings: list[dict[str, Any]] = []
+    if str(own_topic.get("kind", "")) == "module_test":
+        siblings = [
+            {
+                "plan_node_id": str(t.get("plan_node_id", "")),
+                "kind": str(t.get("kind", "")),
+                "title": str(t.get("title", "")),
+                "blocks": [
+                    {
+                        "plan_node_id": str(b.get("plan_node_id", "")),
+                        "role": str(b.get("role", "")),
+                        "source_handles": list(b.get("source_handles", [])),
+                    }
+                    for b in t.get("blocks", [])
+                ],
+            }
+            for t in own_module.get("topics", [])
+            if str(t.get("plan_node_id", "")) != topic_node
+        ]
+    return {
+        "learner": str(tree.get("learner", "")),
+        "case": str(tree.get("case", "")),
+        "topics": lines,
+        "modules": [
+            {
+                "plan_node_id": str(own_module.get("plan_node_id", "")),
+                "title": str(own_module.get("title", "")),
+                "topics": [*siblings, own_topic],
+            }
+        ],
+    }
 
 
 def _topic_of(topic_index: dict[str, dict[str, Any]], node: str) -> str:
@@ -954,11 +1010,13 @@ async def _topic_sources(
     sources: list[dict[str, Any]],
     topic_index: dict[str, dict[str, Any]],
 ) -> dict[str, list[dict[str, Any]]]:
-    """Per topic, the passages its generators and reader see: cited ones plus retrieval.
+    """Per topic, the passages its generators and reader see: sections, citations, retrieval.
 
     A big source set never travels whole into a block prompt: the topic
-    gets the passages its plan cites (a module test: the module's), plus
-    the course's best full-text matches for its title and objectives.
+    gets every passage of its own sections (the scenario's assignment),
+    the passages its plan cites (a module test: the module's), plus the
+    course's best full-text matches for the terms it introduces, so a
+    definition the section refers to but does not give is in view.
     Handles stay the course-wide ones. An empty selection falls back to
     every passage, so a plan without refs still generates.
     """
@@ -981,10 +1039,10 @@ async def _topic_sources(
     retriever = get_retriever("fts")
     out: dict[str, list[dict[str, Any]]] = {}
     for topic_node, meta in topic_index.items():
-        wanted = list(meta["cited_passage_ids"])
+        wanted = [*meta["section_passage_ids"], *meta["cited_passage_ids"]]
         if meta["topic_kind"] == "module_test":
             wanted += module_cited.get(topic_node, [])
-        query = f"{meta['topic_title']} {meta['topic_purpose']}".strip()
+        query = " ".join([meta["topic_title"], *meta["terms"]]).strip()
         if query:
             try:
                 found = await retriever.search_course(
@@ -1096,9 +1154,14 @@ async def run_rewrite_operation(
     by_topic = await _topic_sources(
         session, course_id=course_id, raw_tree=raw_tree, sources=sources, topic_index=topic_index
     )
-    dossier = {"thesis": "", "glossary": {}, "handoffs": []}
     dag: list[dict[str, Any]] = []
     gen_keys_by_topic: dict[str, list[str]] = {}
+    specs = {
+        str(b.get("plan_node_id", "")): dict(b.get("example_spec", {}))
+        for m in tree.get("modules", [])
+        for t in m.get("topics", [])
+        for b in t.get("blocks", [])
+    }
     for _bid, node, btype, role, brief, hold_reason, topic_node, versions in rows:
         agent = _role_agent(str(role))
         key = f"{agent}:{node}"
@@ -1132,8 +1195,7 @@ async def run_rewrite_operation(
                 "depends_on": depends,
                 "course_id": str(course_id),
                 "course_language": str(course.get("language", "en")),
-                "plan": scoped_plan(tree, str(topic_node)),
-                "dossier": dossier,
+                "plan": scenario_view(tree, str(topic_node)),
                 "block_type": str(btype),
                 "sources": scoped,
                 "variant_offset": int(versions or 0),
@@ -1145,6 +1207,7 @@ async def run_rewrite_operation(
                     "role": str(role),
                     "block_type": str(btype),
                     "hold_reason": reason,
+                    "example_spec": specs.get(str(node), {}),
                 },
             }
         )
@@ -1156,8 +1219,7 @@ async def run_rewrite_operation(
                 "depends_on": keys,
                 "course_id": str(course_id),
                 "course_language": str(course.get("language", "en")),
-                "plan": scoped_plan(tree, topic_node),
-                "dossier": dossier,
+                "plan": scenario_view(tree, topic_node),
                 "sources": by_topic.get(topic_node, sources),
                 "blocks": [],
             }
@@ -1238,16 +1300,6 @@ async def run_generate_operation(
         for m in tree.get("modules", [])
         for tp in m.get("topics", [])
     }
-    dossier = {"thesis": "", "glossary": {}, "handoffs": []}
-    try:
-        tl = await course_service.read_through_line(session, course_id=course_id)
-        dossier = {
-            "thesis": str(tl.get("case", "")),
-            "glossary": {},
-            "handoffs": list(tl.get("handoffs", [])),
-        }
-    except Exception:
-        pass
     dag = []
     for entry in raw:
         handler = str(entry["handler"])
@@ -1259,19 +1311,18 @@ async def run_generate_operation(
         ]
         e["course_id"] = str(course_id)
         e["course_language"] = str(course.get("language", "en"))
-        e["plan"] = tree
-        e["dossier"] = dossier
         if handler == "generate_block":
             node = str(entry["step_key"]).partition(":")[2]
             skel = dict(blocks_by_id.get(node, {"plan_node_id": node}))
             e["block_type"] = str(skel.get("block_type", "reading"))
             e["sources"] = by_topic.get(_topic_of(topic_index, node), sources)
-            e["plan"] = scoped_plan(tree, _topic_of(topic_index, node))
+            e["plan"] = scenario_view(tree, _topic_of(topic_index, node))
             e["skeleton"] = {
                 "plan_node_id": node,
                 "brief": str(skel.get("brief", "")),
                 "role": str(skel.get("role", "")),
                 "block_type": e["block_type"],
+                "example_spec": dict(skel.get("example_spec", {})),
             }
             if e["block_type"] == "spot_the_error":
                 e.update(_spot_fields(topic_index, node))
@@ -1282,12 +1333,10 @@ async def run_generate_operation(
         elif handler == "read_topic":
             topic = str(entry["step_key"]).partition(":")[2]
             e["sources"] = by_topic.get(topic, sources)
-            e["plan"] = scoped_plan(tree, topic)
+            e["plan"] = scenario_view(tree, topic)
             e["blocks"] = [
                 {"plan_node_id": b["plan_node_id"]} for b in blocks_by_topic.get(topic, [])
             ]
-        elif handler == "read_continuity":
-            e["handoffs"] = dossier["handoffs"]
         elif handler == "rework_blocks":
             e["named"] = []
         dag.append(e)

@@ -316,8 +316,13 @@ async def write_tree(
     run_step_id: UUID | None = None,
     held: dict[str, str] | None = None,
     uncovered: list[dict[str, Any]] | None = None,
+    scenario: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, dict[str, str]]:
     """Replace the plan tree: modules, topics, block skeletons in order.
+
+    `scenario` maps a topic plan_node_id to the outline's row for it
+    (annotation, terms, prepares_for, requires, handles, passages);
+    a topic without a row stores an empty object.
 
     Returns block plan_node_id to {"block_id", "version_id"} for the
     citation writer (same transaction). Plan-written versions carry
@@ -384,9 +389,10 @@ async def write_tree(
                 await session.execute(
                     sa.text(
                         "INSERT INTO topics (module_id, ordinal, kind, title, objectives,"
-                        " through_line_note, plan_node_id, plan_digest)"
+                        " through_line_note, plan_node_id, plan_digest, scenario)"
                         " VALUES (:module, :ord, :kind, :title,"
-                        " CAST(:objectives AS jsonb), :note, :node, :digest)"
+                        " CAST(:objectives AS jsonb), :note, :node, :digest,"
+                        " CAST(:scenario AS jsonb))"
                         " RETURNING id"
                     ),
                     {
@@ -398,6 +404,12 @@ async def write_tree(
                         "note": topic.through_line_note,
                         "node": topic.plan_node_id,
                         "digest": plan_digest,
+                        "scenario": json.dumps(
+                            {
+                                **(scenario or {}).get(topic.plan_node_id, {}),
+                                "misconception": topic.misconception,
+                            }
+                        ),
                     },
                 )
             ).one()[0]
@@ -437,6 +449,7 @@ async def write_tree(
                                 {
                                     "brief": block.brief,
                                     "source_handles": [ref.handle for ref in block.source_refs],
+                                    "example_spec": block.example_spec.model_dump(),
                                 }
                             ),
                             "step": str(run_step_id) if run_step_id is not None else None,
@@ -486,6 +499,38 @@ async def write_tree(
     for node, block_id, version_id in rows:
         by_node[str(node)] = {"block_id": str(block_id), "version_id": str(version_id)}
     return by_node
+
+
+async def set_author_questions(
+    session: AsyncSession, *, course_id: UUID, questions: list[dict[str, Any]]
+) -> None:
+    """Store the outline's questions as required constraints; an answered one keeps its answer.
+
+    Each question blocks generation until the author answers it on the
+    plan page (blocking_questions); a re-plan that drops a question
+    removes its unanswered row.
+    """
+    keys = [str(q.get("key", "")) for q in questions if str(q.get("key", "")).strip()]
+    await session.execute(
+        sa.text(
+            "DELETE FROM profile_constraints WHERE course_id = :course"
+            " AND kind = 'author_question' AND answer IS NULL AND NOT (key = ANY(:keys))"
+        ),
+        {"course": str(course_id), "keys": keys},
+    )
+    for question in questions:
+        key = str(question.get("key", "")).strip()
+        if not key:
+            continue
+        await session.execute(
+            sa.text(
+                "INSERT INTO profile_constraints (course_id, kind, key, value, required, question)"
+                " VALUES (:course, 'author_question', :key, '{}'::jsonb, true, :question)"
+                " ON CONFLICT (course_id, key) DO UPDATE SET question = EXCLUDED.question,"
+                " required = true"
+            ),
+            {"course": str(course_id), "key": key, "question": str(question.get("question", ""))},
+        )
 
 
 async def read_through_line(session: AsyncSession, *, course_id: UUID) -> dict[str, Any]:
@@ -628,8 +673,8 @@ async def read_tree(session: AsyncSession, *, course_id: UUID) -> dict[str, Any]
         topics = (
             await session.execute(
                 sa.text(
-                    "SELECT id, kind, title, objectives, through_line_note, plan_node_id"
-                    " FROM topics WHERE module_id = :module ORDER BY ordinal"
+                    "SELECT id, kind, title, objectives, through_line_note, plan_node_id,"
+                    " scenario FROM topics WHERE module_id = :module ORDER BY ordinal"
                 ),
                 {"module": str(module[0])},
             )
@@ -665,6 +710,7 @@ async def read_tree(session: AsyncSession, *, course_id: UUID) -> dict[str, Any]
                     "objectives": topic[3],
                     "through_line_note": topic[4],
                     "plan_node_id": topic[5],
+                    "scenario": dict(topic[6] or {}),
                     "blocks": [
                         {
                             "id": str(block[0]),
@@ -679,6 +725,11 @@ async def read_tree(session: AsyncSession, *, course_id: UUID) -> dict[str, Any]
                                 (block[7] or {}).get("source_handles", [])
                                 if isinstance(block[7], dict)
                                 else []
+                            ),
+                            "example_spec": dict(
+                                (block[7] or {}).get("example_spec", {})
+                                if isinstance(block[7], dict)
+                                else {}
                             ),
                         }
                         for block in blocks

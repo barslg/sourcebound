@@ -191,6 +191,37 @@ def _plan_architect_output() -> dict[str, Any]:
     return json.loads(pathlib.Path("tests/fixtures/architect_output.json").read_text())
 
 
+def _plan_outline_output(section_ids: list[str]) -> dict[str, Any]:
+    """The scenario the mock outline writes: one module, one lesson topic over every section."""
+    return {
+        "learner": "A municipal case worker who has never configured an AI tool.",
+        "case": "A triage tool adopted by the team with its oversight owner named.",
+        "modules": [
+            {
+                "plan_node_id": "m1",
+                "title": "The literacy duty",
+                "purpose": "Ground the AI literacy duty in Article 4.",
+                "entry_knowledge": "None: the course opens the case.",
+                "exit_knowledge": "Staff can name the AI literacy duty and its owner.",
+                "sections": section_ids,
+                "topics": [
+                    {
+                        "plan_node_id": "t1",
+                        "title": "Article 4 basics",
+                        "annotation": "Names the Article 4 duty and who carries it.",
+                        "introduces_terms": ["AI literacy"],
+                        "prepares_for": "The module test applies the oversight rule.",
+                        "requires": [],
+                        "sections": section_ids,
+                    }
+                ],
+            }
+        ],
+        "uncovered": [],
+        "questions": [],
+    }
+
+
 def _plan_mock_handler(fail_architect: bool = False) -> Any:
     seen: list[str] = []
 
@@ -211,15 +242,17 @@ def _plan_mock_handler(fail_architect: bool = False) -> Any:
                 "query": dynamic["query"],
                 "rephrased": dynamic["rephrased"],
                 "ranked": ranked,
-                "web_candidates": [
-                    {
-                        "url": "https://example.com/act",
-                        "title": "AI Act",
-                        "why": "covers the gap",
-                    }
-                ],
+                "gaps": [],
             }
             return httpx2.Response(200, json=_plan_completed(json.dumps(reply)))
+        if system.startswith("# Outline"):
+            dynamic = json.loads(prompt.split("## Task input (typed, assembled by code)\n")[1])
+            return httpx2.Response(
+                200,
+                json=_plan_completed(
+                    json.dumps(_plan_outline_output([s["id"] for s in dynamic["sections"]]))
+                ),
+            )
         return httpx2.Response(200, json=_plan_completed(json.dumps(_plan_architect_output())))
 
     handler.seen = seen  # type: ignore[attr-defined]
@@ -337,7 +370,7 @@ async def test_plan_submit_writes_run_and_drives_to_done(t03_session: AsyncSessi
     run_id = UUID(str(detail["run_id"]))
     settings = _plan_settings()
     final = await _plan_drive(t03_session, run_id, _plan_mock_handler(), settings)
-    assert final["status"] == "done"
+    assert final["status"] == "done", final["stop_marker"]
     assert all(step["status"] == "done" for step in final["steps"])
     tree = await course_service.read_tree(t03_session, course_id=course_id)
     assert len(tree["modules"]) == 1
@@ -527,7 +560,15 @@ def _gen_reader_reply() -> dict[str, Any]:
                 "plan_node_id": "b1",
                 "verdict": "pass",
                 "items": {
-                    item: {"verdict": "pass", "evidence": f"quote {item}"} for item in RUBRIC_ITEMS
+                    item: {
+                        "verdict": "pass",
+                        "evidence": (
+                            "not applicable"
+                            if item == "planted_error"
+                            else "Deployers must train staff."
+                        ),
+                    }
+                    for item in RUBRIC_ITEMS
                 },
             }
         ]

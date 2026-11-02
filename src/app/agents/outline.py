@@ -1,10 +1,14 @@
-"""Outline: profile plus source sections in, modules with their sections out.
+"""Outline (scenario, planning layer 1): profile plus source sections in, annotated topics out.
 
-The first of two planning levels for a big source set: the model sees
-section titles, sizes and previews (never passage texts), names the
-modules in teaching order and assigns every section to one module or
-to `uncovered` with a reason. Each module is then planned by the
-architect over its own passages.
+The model sees section titles, sizes, kinds and previews (never passage
+texts) and writes the whole course as one short list: the learner, the
+one case the course builds, modules in teaching order and, under each,
+topics with a two-sentence annotation, the terms they introduce, what
+they prepare the next topic for, the earlier topics they require and
+the sections they cover. Every section is placed in exactly one topic
+or listed in `uncovered` with a reason; questions whose answer changes
+the course go to the author before anything is generated. The
+architect then plans each module's blocks over this list.
 """
 
 from __future__ import annotations
@@ -12,7 +16,10 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from pydantic import ValidationError as PydanticValidationError
+
 from app.agents.base import AGENT_SCHEMAS, assemble
+from app.course.tree import ScenarioOutput
 
 
 def build_prompt(
@@ -21,7 +28,7 @@ def build_prompt(
     sections: list[dict[str, Any]],
     course_language: str = "en",
 ) -> str:
-    """Full outline prompt: stable system prefix plus the typed section list."""
+    """Typed outline input: language, profile, answered constraints, section list."""
     dynamic = json.dumps(
         {
             "course_language": course_language,
@@ -35,43 +42,65 @@ def build_prompt(
 
 
 def check_output(payload: dict[str, Any], section_ids: list[str]) -> list[str]:
-    """Validate an outline reply in code: every section placed once, ids known, modules distinct."""
+    """Validate an outline reply in code.
+
+    Every section is placed in one module and, inside it, in one topic
+    (or declared uncovered); topic ids are unique; `requires` names
+    only earlier topics; question keys are unique.
+    """
+    try:
+        parsed = ScenarioOutput.model_validate(payload)
+    except PydanticValidationError as exc:
+        return [f"schema: {error['loc']}: {error['msg']}" for error in exc.errors()]
     errors: list[str] = []
     known = list(section_ids)
-    modules = payload.get("modules")
-    if not isinstance(modules, list) or not modules:
-        return ["modules must be a non-empty list"]
     seen_sections: dict[str, str] = {}
     seen_modules: set[str] = set()
-    for position, module in enumerate(modules):
-        if not isinstance(module, dict):
-            errors.append(f"modules[{position}]: must be an object")
-            continue
-        node = str(module.get("plan_node_id", ""))
-        if not node or node in seen_modules:
-            errors.append(f"modules[{position}]: plan_node_id must be unique and non-empty")
+    seen_topics: list[str] = []
+    for position, module in enumerate(parsed.modules):
+        node = module.plan_node_id
+        if node in seen_modules:
+            errors.append(f"modules[{position}]: plan_node_id {node!r} is not unique")
         seen_modules.add(node)
-        for key in ("title", "purpose", "entry_knowledge", "exit_knowledge"):
-            if not str(module.get(key, "")).strip():
-                errors.append(f"modules[{position}]: {key} is empty")
-        sections = module.get("sections")
-        if not isinstance(sections, list) or not sections:
-            errors.append(f"modules[{position}]: needs at least one section")
-            continue
-        for section in sections:
-            section = str(section)
+        module_sections = list(module.sections)
+        for section in module_sections:
             if section not in known:
-                errors.append(f"modules[{position}]: unknown section {section!r}")
+                errors.append(f"module {node}: unknown section {section!r}")
             elif section in seen_sections:
                 errors.append(
-                    f"modules[{position}]: section {section} already placed"
-                    f" in {seen_sections[section]}"
+                    f"module {node}: section {section} already placed in {seen_sections[section]}"
                 )
             seen_sections[section] = node
+        covered: dict[str, str] = {}
+        for topic in module.topics:
+            if topic.plan_node_id in seen_topics:
+                errors.append(f"topic {topic.plan_node_id}: plan_node_id is not unique")
+            for required in topic.requires:
+                if required not in seen_topics:
+                    errors.append(
+                        f"topic {topic.plan_node_id}: requires {required!r}, which is not an"
+                        " earlier topic"
+                    )
+            seen_topics.append(topic.plan_node_id)
+            for section in topic.sections:
+                if section not in module_sections:
+                    errors.append(
+                        f"topic {topic.plan_node_id}: section {section} is not one of module"
+                        f" {node}'s sections"
+                    )
+                elif section in covered:
+                    errors.append(
+                        f"topic {topic.plan_node_id}: section {section} already covered by"
+                        f" topic {covered[section]}"
+                    )
+                covered[section] = topic.plan_node_id
+        orphans = [s for s in module_sections if s not in covered and s in known]
+        if orphans:
+            errors.append(f"module {node}: sections {orphans} belong to no topic")
     declared = {
         str(item.get("section", ""))
-        for item in payload.get("uncovered", [])
-        if isinstance(item, dict) and str(item.get("reason", "")).strip()
+        for item in parsed.uncovered
+        if str(item.get("reason", "")).strip()
     }
     missing = [s for s in known if s not in seen_sections and s not in declared]
     if missing:
@@ -79,7 +108,31 @@ def check_output(payload: dict[str, Any], section_ids: list[str]) -> list[str]:
             "every section is placed in a module or listed in uncovered with a reason;"
             f" missing: {missing[:20]}"
         )
+    keys = [question.key for question in parsed.questions]
+    if len(set(keys)) != len(keys):
+        errors.append("question keys must be unique")
     return errors
+
+
+def scenario_of(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Topic plan_node_id -> its scenario row (annotation, terms, prepares_for, requires)."""
+    out: dict[str, dict[str, Any]] = {}
+    for module in payload.get("modules", []):
+        if not isinstance(module, dict):
+            continue
+        for topic in module.get("topics", []):
+            if not isinstance(topic, dict):
+                continue
+            out[str(topic.get("plan_node_id", ""))] = {
+                "module": str(module.get("plan_node_id", "")),
+                "title": str(topic.get("title", "")),
+                "annotation": str(topic.get("annotation", "")),
+                "introduces_terms": [str(t) for t in topic.get("introduces_terms", [])],
+                "prepares_for": str(topic.get("prepares_for", "")),
+                "requires": [str(r) for r in topic.get("requires", [])],
+                "sections": [str(s) for s in topic.get("sections", [])],
+            }
+    return out
 
 
 def schema() -> dict[str, Any]:

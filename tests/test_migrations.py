@@ -807,3 +807,21 @@ def test_0023_adds_passage_ordinal_backfilled_in_address_order_and_downgrade_dro
         ).fetchall()
         assert rows == [("p1/para1", 0), ("p1/para2", 1)], rows
         conn.execute("DELETE FROM sources WHERE id = %s", (source,))
+
+
+def test_0024_adds_topic_scenario_defaulting_to_empty_and_downgrade_drops_it() -> None:
+    url = _db_url()
+    require_postgres(url)
+    command.upgrade(_cfg(url), "head")
+    sync = _sync_url(url)
+    assert "scenario" in _harness_tables(url)["topics"]
+    with psycopg.connect(sync, autocommit=True) as conn:
+        default = conn.execute(
+            "SELECT column_default, is_nullable FROM information_schema.columns"
+            " WHERE table_name = 'topics' AND column_name = 'scenario'"
+        ).fetchone()
+    assert default is not None and default[0].startswith("'{}'") and default[1] == "NO"
+    command.downgrade(_cfg(url), "0023")
+    assert "scenario" not in _harness_tables(url)["topics"]
+    command.upgrade(_cfg(url), "head")
+    assert "scenario" in _harness_tables(url)["topics"]

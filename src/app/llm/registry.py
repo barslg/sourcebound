@@ -188,21 +188,18 @@ class StepSpec:
 
 
 STEPS: dict[str, StepSpec] = {
-    "intake": StepSpec(model="muse-spark-1.3", effort="medium", max_output_tokens=4000),
     "librarian": StepSpec(model="muse-spark-1.3", effort="medium", max_output_tokens=2000),
     "researcher": StepSpec(model="muse-spark-1.3", effort="low", max_output_tokens=4000),
-    "architect": StepSpec(model="muse-wonder-1.0", effort="high", max_output_tokens=20000),
+    "web_search": StepSpec(model="muse-spark-1.3", effort="low", max_output_tokens=1500),
     "outline": StepSpec(model="muse-wonder-1.0", effort="high", max_output_tokens=16000),
+    "architect": StepSpec(model="muse-spark-1.3", effort="high", max_output_tokens=20000),
     "block_teach": StepSpec(model="muse-spark-1.3", effort="medium", max_output_tokens=12000),
     "block_example": StepSpec(model="muse-spark-1.3", effort="medium", max_output_tokens=12000),
-    "block_check": StepSpec(model="muse-spark-1.3", effort="medium", max_output_tokens=12000),
-    "block_practice": StepSpec(model="muse-spark-1.3", effort="high", max_output_tokens=10000),
-    "block_test": StepSpec(model="muse-spark-1.3", effort="high", max_output_tokens=12000),
+    "block_exercise": StepSpec(model="muse-spark-1.3", effort="high", max_output_tokens=12000),
     "reader": StepSpec(model="muse-spark-1.3", effort="high", max_output_tokens=12000),
     "saboteur": StepSpec(model="muse-spark-1.3", effort="medium", max_output_tokens=4000),
     "translator": StepSpec(model="muse-spark-1.3", effort="low", max_output_tokens=8000),
     "tutor": StepSpec(model="muse-spark-1.3", effort="low", max_output_tokens=2000),
-    "continuity": StepSpec(model="muse-spark-1.3", effort="high", max_output_tokens=8000),
 }
 
 
@@ -278,3 +275,11 @@ def compute_cost_usd(
         + Decimal(billed_output) * spec.output_per_1m_usd
     ) / Decimal(1_000_000)
     return cost.quantize(Decimal("0.000001"))
+
+
+def unit_cost_usd(model_id: str, units: int) -> Decimal:
+    """Cost of `units` of a per-unit model (a web search, an image) from its dated price."""
+    spec = get_model(model_id)
+    if spec.unit == "token" or spec.unit_price_usd is None:
+        raise UnpricedModelError(f"no dated unit price for model: {model_id}")
+    return (Decimal(max(units, 0)) * spec.unit_price_usd).quantize(Decimal("0.000001"))

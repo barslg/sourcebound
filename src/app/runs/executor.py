@@ -22,10 +22,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.course.handles import address_sort_key, handle_map
 from app.errors import LLMError, ValidationError
-from app.llm.registry import DEFAULT_MODEL, resolve_step
+from app.llm.registry import resolve_step
 from app.runs.stop_text import EMPTY_PLAN, MODEL_DOWN, plain_marker, plain_step_error, plain_stop
 
 RUN_LOCK_PREFIX = "run:"
+MAX_WEB_SEARCHES_PER_QUERY = 3
 # Whole approved source the architect may see (BRIEF §3: ≤200k tokens).
 ARCHITECT_SOURCE_CHAR_BUDGET = 800_000
 TS_CONFIG_TO_LANGUAGE = {"english": "en", "norwegian": "nb", "simple": "uk"}
@@ -664,17 +665,26 @@ async def plan_researcher_step(
             ranker="model",
             fts_order=[item.passage_id for item in found],
         )
-        for candidate in output.get("web_candidates", []):
-            from app.services.library import add_web_candidate
+        from app.services.library import add_web_candidate
 
-            await add_web_candidate(
-                session,
-                course_id=UUID(str(entry["course_id"])),
-                query=query,
-                url=str(candidate["url"]),
-                title=str(candidate.get("title", "")),
-                snippet=str(candidate.get("why", "")),
-            )
+        seen_urls: set[str] = set()
+        for gap in [str(g) for g in output["gaps"]][:MAX_WEB_SEARCHES_PER_QUERY]:
+            # a gap is answered by a real search: every candidate URL comes from the
+            # provider's web_search results, never from the model's memory
+            for hit in await provider.search_web(
+                agent="web_search", query=gap, run_id=run_id, step_id=claim["step_id"]
+            ):
+                if hit["url"] in seen_urls:
+                    continue
+                seen_urls.add(hit["url"])
+                await add_web_candidate(
+                    session,
+                    course_id=UUID(str(entry["course_id"])),
+                    query=gap,
+                    url=hit["url"],
+                    title=hit["title"],
+                    snippet=hit["snippet"],
+                )
         await finish_step(session, step_id=claim["step_id"], output=output)
     await session.commit()
 
@@ -687,7 +697,6 @@ async def plan_architect_step(
     provider_factory: Callable[[AsyncSession], Any],
 ) -> None:
     """Architect step: profile plus passage handles in, plan tree out."""
-    from app.agents import architect
     from app.course.methodologies import prescription_for
     from app.course.tree import ArchitectOutput, CourseTree
     from app.services.courses import write_tree
@@ -755,14 +764,7 @@ async def plan_architect_step(
             if passage.get("ts_config")
         }
     )
-    prompt = architect.build_prompt(
-        profile,
-        constraints,
-        prescription,
-        passages,
-        course_language=language,
-        source_languages=source_languages,
-    )
+    prompt = outline_prompt_of(profile, constraints, passages, language)
     upstream_rows = (
         await session.execute(
             sa.text(
@@ -792,7 +794,7 @@ async def plan_architect_step(
             passages=passages,
             language=language,
             source_languages=source_languages,
-            single_prompt=prompt,
+            handle_to_passage=handle_to_passage,
         )
         parsed = ArchitectOutput.model_validate(output)
         resolved, held = _resolve_handles_tolerant(parsed, handle_to_passage)
@@ -805,22 +807,52 @@ async def plan_architect_step(
             run_step_id=claim["step_id"],
             held=held,
             uncovered=_uncovered_with_addresses(parsed, passages),
+            scenario=dict(output.get("scenario", {})),
         )
         await write_plan_citations(session, version_map=version_map, refs=refs)
-        from app.services.courses import record_source_passages
+        from app.services.courses import record_source_passages, set_author_questions
 
         await record_source_passages(
             session,
             version_map=version_map,
             handles=_handle_passages(parsed, handle_to_passage),
         )
+        await set_author_questions(
+            session, course_id=course_id, questions=list(output.get("questions", []))
+        )
         await finish_step(session, step_id=claim["step_id"], output=resolved)
     await session.commit()
 
 
-OUTLINE_MIN_PASSAGES = 40
-MODULE_PLAN_MODEL = DEFAULT_MODEL
 MODULE_PLAN_OUTPUT_TOKENS = 20000
+
+
+def outline_prompt_of(
+    profile: dict[str, Any],
+    constraints: list[dict[str, Any]],
+    passages: list[dict[str, Any]],
+    language: str,
+) -> str:
+    """The outline prompt of a plan step: what the step digest is computed over."""
+    from app.agents import outline
+    from app.course.sections import public_sections, sections_of
+
+    return outline.build_prompt(
+        profile, constraints, public_sections(sections_of(passages)), course_language=language
+    )
+
+
+def _scenario_lines(scenario: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    """Every topic of the course as one line: id, module, title, annotation."""
+    return [
+        {
+            "plan_node_id": node,
+            "module": row["module"],
+            "title": row["title"],
+            "annotation": row["annotation"],
+        }
+        for node, row in scenario.items()
+    ]
 
 
 async def _plan_output(
@@ -835,15 +867,17 @@ async def _plan_output(
     passages: list[dict[str, Any]],
     language: str,
     source_languages: list[str],
-    single_prompt: str,
+    handle_to_passage: dict[str, Any],
 ) -> dict[str, Any]:
-    """The plan tree: one architect call for a small source set, two levels for a big one.
+    """The plan tree in two layers: the scenario, then one architect call per module.
 
-    Big: the outline call sees sections (titles, sizes, previews) and
-    assigns them to modules; each module is then planned by the
-    architect over its own passages, with the handles the one numbering
-    gave them, and the module trees are merged. Every model call is a
-    ledger row of its own; a repeat of this step replays done calls at
+    The outline call sees sections (titles, sizes, kinds, previews) and
+    writes the scenario: learner, case, modules, annotated topics with
+    their sections, leftovers and questions for the author. Each module
+    is then planned by the architect over its own passages, each
+    passage marked with the topic whose sections hold it, with the whole
+    scenario in view; the module trees are merged. Every model call is
+    a ledger row of its own; a repeat of this step replays done calls at
     no cost through the reply store.
     """
     from app.agents import architect, outline
@@ -854,20 +888,6 @@ async def _plan_output(
     # the outline and every module call keep variant 0: an accepted reply is
     # served by the reply store on the next attempt, a rejected one was evicted
     variant = 0
-    if len(passages) < OUTLINE_MIN_PASSAGES:
-        return dict(
-            await provider.generate_json(
-                agent="architect",
-                prompt=single_prompt,
-                schema=architect.schema(),
-                run_id=run_id,
-                step_id=step_id,
-                variant=variant,
-                check=lambda reply: _rejectable_architect_errors(
-                    reply, prescription, handles, methodology_codes=codes, passages=passages
-                ),
-            )
-        )
     sections = sections_of(passages)
     section_ids = [s["id"] for s in sections]
     plan = await provider.generate_json(
@@ -881,34 +901,59 @@ async def _plan_output(
         variant=variant,
         check=lambda reply: outline.check_output(reply, section_ids),
     )
-    modules = [m for m in plan.get("modules", []) if isinstance(m, dict)]
+    scenario = outline.scenario_of(plan)
     by_handle = {str(p["handle"]): p for p in passages}
+    for row in scenario.values():
+        row["handles"] = module_handles(sections, list(row["sections"]))
+        row["passages"] = {h: str(handle_to_passage[h]) for h in row["handles"]}
+    modules = [m for m in plan.get("modules", []) if isinstance(m, dict)]
     merged_modules: list[dict[str, Any]] = []
     handoffs: list[dict[str, Any]] = []
     uncovered: list[dict[str, Any]] = []
     estimate = {"blocks": 0, "calls": 0, "tokens": 0}
+    lines = _scenario_lines(scenario)
     for index, module in enumerate(modules):
-        own = [by_handle[h] for h in module_handles(sections, list(module.get("sections", [])))]
+        module_id = str(module.get("plan_node_id", f"m{index + 1}"))
+        topic_rows = [
+            {"plan_node_id": node, **row}
+            for node, row in scenario.items()
+            if row["module"] == module_id
+        ]
+        owner = {h: node for node, row in scenario.items() for h in row["handles"]}
+        own_handles_list = module_handles(sections, list(module.get("sections", [])))
+        own = [{**by_handle[h], "topic": owner.get(h, "")} for h in own_handles_list]
         if not own:
             continue
         scope = {
-            "plan_node_id": str(module.get("plan_node_id", f"m{index + 1}")),
+            "plan_node_id": module_id,
             "title": str(module.get("title", "")),
             "purpose": str(module.get("purpose", "")),
             "entry_knowledge": str(module.get("entry_knowledge", "")),
             "exit_knowledge": str(module.get("exit_knowledge", "")),
             "position": f"{index + 1} of {len(modules)}",
             "case": str(plan.get("case", "")),
+            "learner": str(plan.get("learner", "")),
             "next_module": str(modules[index + 1].get("title", ""))
             if index + 1 < len(modules)
             else "",
+            "topics": [
+                {
+                    "plan_node_id": row["plan_node_id"],
+                    "title": row["title"],
+                    "annotation": row["annotation"],
+                    "introduces_terms": row["introduces_terms"],
+                    "prepares_for": row["prepares_for"],
+                    "requires": row["requires"],
+                    "handles": row["handles"],
+                }
+                for row in topic_rows
+            ],
         }
         own_handles = {str(p["handle"]) for p in own}
         # a module plan is 8–16k tokens of JSON: Spark with a 20k budget writes it in one
         # go for a fifth of Wonder's price (Wonder cut 8 of 8 module replies at 8k)
         reply = await provider.generate_json(
             agent="architect",
-            model=MODULE_PLAN_MODEL,
             max_output_tokens=MODULE_PLAN_OUTPUT_TOKENS,
             prompt=architect.build_prompt(
                 profile,
@@ -918,6 +963,7 @@ async def _plan_output(
                 course_language=language,
                 source_languages=source_languages,
                 module_scope=scope,
+                scenario=lines,
             ),
             schema=architect.schema(),
             run_id=run_id,
@@ -934,7 +980,24 @@ async def _plan_output(
                 )
             ),
         )
-        merged_modules += [m for m in reply.get("modules", []) if isinstance(m, dict)]
+        for reply_module in reply.get("modules", []):
+            if not isinstance(reply_module, dict):
+                continue
+            merged_modules.append(reply_module)
+            for topic in reply_module.get("topics", []):
+                node = str(topic.get("plan_node_id", ""))
+                if node not in scenario and str(topic.get("kind", "")) == "module_test":
+                    scenario[node] = {
+                        "module": module_id,
+                        "title": str(topic.get("title", "")),
+                        "annotation": "",
+                        "introduces_terms": [],
+                        "prepares_for": "",
+                        "requires": [],
+                        "sections": list(module.get("sections", [])),
+                        "handles": list(own_handles_list),
+                        "passages": {h: str(handle_to_passage[h]) for h in own_handles_list},
+                    }
         handoffs += list((reply.get("through_line") or {}).get("handoffs", []))
         uncovered += list(reply.get("uncovered", []))
         for key in estimate:
@@ -944,8 +1007,8 @@ async def _plan_output(
             continue
         for handle in module_handles(sections, [str(item.get("section", ""))]):
             uncovered.append({"handle": handle, "reason": str(item.get("reason", ""))})
-    # the 60 % rule and figure gating were enforced per module over that module's
-    # passages; what no module cites after that is the planner's declared leftover
+    # the 60 % rule was enforced per module over that module's passages; what no
+    # module cites after that is the planner's declared leftover
     cited = _cited_handles(merged_modules)
     declared = _declared_handles(uncovered)
     for passage in passages:
@@ -955,8 +1018,18 @@ async def _plan_output(
     merged = {
         "modules": merged_modules,
         "estimate_inputs": {k: max(v, 1) for k, v in estimate.items()},
-        "through_line": {"case": str(plan.get("case", "")), "handoffs": handoffs},
+        "through_line": {
+            "case": str(plan.get("case", "")),
+            "learner": str(plan.get("learner", "")),
+            "handoffs": handoffs,
+        },
         "uncovered": uncovered,
+        "scenario": scenario,
+        "questions": [
+            {"key": str(q.get("key", "")), "question": str(q.get("question", ""))}
+            for q in plan.get("questions", [])
+            if isinstance(q, dict)
+        ],
     }
     errors = _rejectable_architect_errors(merged, prescription, handles, methodology_codes=codes)
     if errors:
@@ -1691,6 +1764,39 @@ def _key_errors(block_type: str, content: dict[str, Any], key: dict[str, Any]) -
     return []
 
 
+def _own_topic_blocks(plan: dict[str, Any], node_id: str) -> set[str]:
+    """Block ids of the topic that holds `node_id` in a scenario view (never a sibling topic's)."""
+    for module in plan.get("modules", []) if isinstance(plan, dict) else []:
+        for topic in module.get("topics", []) if isinstance(module, dict) else []:
+            ids = {str(b.get("plan_node_id", "")) for b in topic.get("blocks", [])}
+            if node_id in ids:
+                return ids
+    return {node_id}
+
+
+async def _previous_handoffs(
+    session: AsyncSession, *, course_id: str, topic_id: str
+) -> list[dict[str, Any]]:
+    """Handoffs the teach blocks of earlier topics of the same module wrote, in course order."""
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT b.plan_node_id, bv.content ->> 'handoff' FROM blocks b"
+                " JOIN topics t ON t.id = b.topic_id JOIN modules m ON m.id = t.module_id"
+                " JOIN block_versions bv ON bv.id = b.current_version_id"
+                " WHERE m.course_id = :c AND b.role = 'teach'"
+                " AND m.id = (SELECT t2.module_id FROM topics t2 JOIN modules m2"
+                "  ON m2.id = t2.module_id WHERE m2.course_id = :c AND t2.plan_node_id = :t)"
+                " AND t.ordinal < (SELECT t3.ordinal FROM topics t3 JOIN modules m3"
+                "  ON m3.id = t3.module_id WHERE m3.course_id = :c AND t3.plan_node_id = :t)"
+                " ORDER BY t.ordinal, b.ordinal"
+            ),
+            {"c": course_id, "t": topic_id},
+        )
+    ).all()
+    return [{"plan_node_id": str(node), "handoff": str(handoff or "")} for node, handoff in rows]
+
+
 async def generate_block_step(
     session: AsyncSession,
     *,
@@ -1716,11 +1822,7 @@ async def generate_block_step(
     from app.course.grounding import taught_handles_for
 
     role = str(dict(entry.get("skeleton", {})).get("role", ""))
-    is_question = agent in ("block_check", "block_practice", "block_test") or role in (
-        "check",
-        "practice",
-        "test",
-    )
+    is_question = agent == "block_exercise" or role in ("check", "practice", "test")
     taught_pids: list[str] = []
     if is_question:
         found = taught_handles_for(dict(entry.get("plan", {})), node_id)
@@ -1731,6 +1833,12 @@ async def generate_block_step(
                     item for item in sources if str(item.get("passage_id", "")) in set(taught_pids)
                 ]
                 handle_to_passage = handle_map(sources)
+    own_nodes = _own_topic_blocks(dict(entry.get("plan", {})), node_id)
+    previously = [
+        {"plan_node_id": u["plan_node_id"], "handoff": str(u["output"].get("handoff", ""))}
+        for u in upstream
+        if u["step_key"].startswith("block_teach:") and u["plan_node_id"] not in own_nodes
+    ]
     prompt = generate_block.build_generation_prompt(
         agent=agent,
         block_type=block_type,
@@ -1738,9 +1846,13 @@ async def generate_block_step(
         course_language=str(entry.get("course_language", "en")),
         sources=sources,
         plan=dict(entry.get("plan", {})),
-        dossier=dict(entry.get("dossier", {})),
+        previously=previously,
         skeleton=dict(entry.get("skeleton", {"plan_node_id": node_id})),
-        upstream_texts=[{"plan_node_id": u["plan_node_id"], "text": u["text"]} for u in upstream],
+        upstream_texts=[
+            {"plan_node_id": u["plan_node_id"], "text": u["text"]}
+            for u in upstream
+            if u["plan_node_id"] in own_nodes
+        ],
     )
     digest = step_digest(
         agent=agent,
@@ -1873,12 +1985,15 @@ async def generate_block_step(
             output, block_type=block_type, citations=resolved_citations
         )
         holds += type_errors
+        handoff = " ".join(str(output.get("handoff", "")).split())
+        if content:
+            content["handoff"] = handoff
         if holds:
             await _persist_block(
                 session,
                 course_id=course_id,
                 node_id=node_id,
-                content=content if content else {"text": text},
+                content=content if content else {"text": text, "handoff": handoff},
                 answer_key=None,
                 step_id=claim["step_id"],
                 status="held",
@@ -2037,7 +2152,7 @@ async def read_topic_step(
         course_language=str(entry.get("course_language", "en")),
         sources=list(entry.get("sources", [])),
         plan=dict(entry.get("plan", {})),
-        dossier=dict(entry.get("dossier", {})),
+        previously=await _previous_handoffs(session, course_id=course_id, topic_id=topic_id),
         blocks=blocks,
     )
     digest = step_digest(
@@ -2060,6 +2175,9 @@ async def read_topic_step(
             variant=int(claim["attempt"]) - 1,
             check=lambda reply: reader.check_reader_output(reply, node_ids=node_ids),
         )
+        # an item's evidence must exist verbatim in the block or a passage; else unknown
+        topic_passages = list(entry.get("sources", []))
+        output = reader.verify_evidence(output, blocks=blocks, passages=topic_passages)
         undecided = _undecided_nodes(output) & own_nodes if own_nodes else _undecided_nodes(output)
         if undecided:
             # `unknown` is not a verdict: ask once more with variant+1, then hold.
@@ -2073,6 +2191,7 @@ async def read_topic_step(
                 variant=int(claim["attempt"]),
                 check=lambda reply: reader.check_reader_output(reply, node_ids=node_ids),
             )
+            second = reader.verify_evidence(second, blocks=blocks, passages=topic_passages)
             output = _merge_undecided(output, second, undecided)
         for verdict in output.get("verdicts", []):
             node = str(verdict.get("plan_node_id", ""))
@@ -2110,45 +2229,6 @@ async def read_topic_step(
                     ),
                     {"c": course_id, "n": node},
                 )
-        await finish_step(session, step_id=claim["step_id"], output=output)
-    await session.commit()
-
-
-async def read_continuity_step(
-    session: AsyncSession,
-    *,
-    run_id: UUID,
-    entry: dict[str, Any],
-    provider_factory: Callable[[AsyncSession], Any],
-) -> None:
-    """One continuity reader call per module over topic handoffs."""
-    from app.agents import continuity
-    from app.llm.prompts import cache_key
-
-    step_key = str(entry["step_key"])
-    _, _, module_id = step_key.partition(":")
-    prompt = continuity.build_continuity_prompt(
-        module_plan_node_id=module_id,
-        course_language=str(entry.get("course_language", "en")),
-        handoffs=list(entry.get("handoffs", [])),
-        dossier=dict(entry.get("dossier", {})),
-    )
-    digest = step_digest(agent="continuity", prompt=prompt, upstream={"module": module_id})
-    claim = await claim_step(session, run_id=run_id, step_key=step_key, input_digest=digest)
-    provider = provider_factory(session)
-    if claim["reused_output"] is not None:
-        output = dict(claim["reused_output"])
-    else:
-        output = await provider.generate_json(
-            agent="continuity",
-            prompt=prompt,
-            schema=continuity.schema(),
-            cache_key=cache_key("continuity", module_id, str(entry.get("course_id", ""))),
-            run_id=run_id,
-            step_id=claim["step_id"],
-            variant=int(claim["attempt"]) - 1,
-            check=continuity.check_continuity_output,
-        )
         await finish_step(session, step_id=claim["step_id"], output=output)
     await session.commit()
 
@@ -2713,7 +2793,6 @@ def generation_handlers() -> dict[str, Any]:
     return {
         "generate_block": generate_block_step,
         "read_topic": read_topic_step,
-        "read_continuity": read_continuity_step,
         "rework_blocks": rework_blocks_step,
         "saboteur": saboteur_step,
     }

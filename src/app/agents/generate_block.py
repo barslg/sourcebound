@@ -1,8 +1,10 @@
-"""Block generators: typed prompt assembly for teach/example/check/practice/test.
+"""Block generators: typed prompt assembly for teach, example and exercise blocks.
 
 Generators never call the model; the runs executor owns generate_json.
-The prompt prefix order is binding: system + rubric, whole approved
-source sorted by (source_id, address), frozen plan + dossier, skeleton.
+The input order is binding: the topic's passages sorted by handle, the
+scenario (learner, case, every topic as a line, this topic in full),
+"previously" (the handoffs of earlier topics, written by their own
+teach blocks), the same-topic blocks already written, the skeleton.
 Cache scope is agent:block_type:course_id.
 """
 
@@ -56,18 +58,19 @@ def build_generation_prompt(
     course_language: str = "en",
     sources: list[dict[str, Any]] | None = None,
     plan: dict[str, Any] | None = None,
-    dossier: dict[str, Any] | None = None,
+    previously: list[dict[str, Any]] | None = None,
     skeleton: dict[str, Any] | None = None,
     upstream_texts: list[dict[str, Any]] | None = None,
 ) -> str:
-    """Full generator prompt with the binding prefix order."""
+    """Full generator prompt with the binding input order."""
     dynamic = "\n\n## Approved sources\n" + json.dumps(
         {"course_language": course_language, "sources": public_sources(list(sources or []))},
         ensure_ascii=False,
         sort_keys=True,
     )
-    dynamic += "\n\n## Frozen plan + dossier\n" + json.dumps(
-        {"plan": plan or {}, "dossier": dossier or {}}, ensure_ascii=False, sort_keys=True
+    dynamic += "\n\n## Scenario\n" + json.dumps(plan or {}, ensure_ascii=False, sort_keys=True)
+    dynamic += "\n\n## Previously\n" + json.dumps(
+        {"previously": previously or []}, ensure_ascii=False, sort_keys=True
     )
     if upstream_texts:
         dynamic += "\n\n## Upstream blocks\n" + json.dumps(
