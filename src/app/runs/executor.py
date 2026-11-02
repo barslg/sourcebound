@@ -234,7 +234,7 @@ async def get_run(session: AsyncSession, *, run_id: UUID) -> dict[str, Any]:
         from app.errors import NotFoundError
 
         raise NotFoundError(f"run {run_id} not found")
-    steps = (
+    rows = (
         await session.execute(
             sa.text(
                 "SELECT step_key, status, input_digest, attempt, error"
@@ -243,6 +243,11 @@ async def get_run(session: AsyncSession, *, run_id: UUID) -> dict[str, Any]:
             {"run": str(run_id)},
         )
     ).all()
+    # DAG order, never name order: "reader:m1-test" sorts before "reader:t1" by name
+    order = {
+        str(e.get("step_key", "")): i for i, e in enumerate(row[2] or []) if isinstance(e, dict)
+    }
+    steps = sorted(rows, key=lambda step: (order.get(str(step[0]), len(order)), str(step[0])))
     spent = (
         await session.execute(
             sa.text("SELECT COALESCE(SUM(cost_usd), 0) FROM llm_calls WHERE run_id = :run"),
