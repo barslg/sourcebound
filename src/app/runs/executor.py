@@ -49,10 +49,12 @@ def step_digest(*, agent: str, prompt: str, upstream: dict[str, Any] | None = No
 
     The digest carries the assembled prompt, the outputs of upstream
     steps (so a changed researcher output reruns the architect), and
-    the resolved model, effort, and max_output_tokens from the
-    registry — never a constant.
+    the resolved model and effort from the registry — never a constant.
+    The output budget stays out: a finished reply is not less valid
+    because the next call may be longer (raising the reader budget
+    mid-run re-read twenty finished topics on the 2026-11-02 resume).
     """
-    model, effort, max_tokens = resolve_step(agent, None, None, None)
+    model, effort, _max_tokens = resolve_step(agent, None, None, None)
     return input_digest_of(
         {
             "agent": agent,
@@ -60,7 +62,6 @@ def step_digest(*, agent: str, prompt: str, upstream: dict[str, Any] | None = No
             "upstream": upstream or {},
             "model": model,
             "effort": effort,
-            "max_output_tokens": max_tokens,
         }
     )
 
@@ -1970,7 +1971,7 @@ async def generate_block_step(
         is_reading = agent in ("block_teach", "block_example") or role in ("teach", "example")
         if is_reading and block_type != "figure":
             # a figure is drawn from a passage's numbers; its caption is not a reading
-            from app.course.grounding import adjacency_holds, coverage_holds
+            from app.course.grounding import adjacency_holds, assignment_holds, coverage_holds
 
             cited_texts = {
                 handle: stored.get(pid, "")
@@ -1978,6 +1979,11 @@ async def generate_block_step(
             }
             holds += coverage_holds(text, cited_texts)
             holds += adjacency_holds(text, resolved_citations)
+            holds += assignment_holds(
+                [str(h) for h in dict(entry.get("skeleton", {})).get("source_handles", [])],
+                cited=[str(c.get("passage_id", "")) for c in output.get("citations", [])],
+                leftovers=[x for x in output.get("leftovers", []) if isinstance(x, dict)],
+            )
         if block_type == "figure":
             from app.course.grounding import passage_kind
 
@@ -2112,6 +2118,28 @@ def _merge_undecided(
     return {**first, "verdicts": merged}
 
 
+def _assigned_handles(plan: dict[str, Any]) -> dict[str, list[str]]:
+    """plan_node_id -> the handles the plan assigned to that block (the scenario view)."""
+    out: dict[str, list[str]] = {}
+    for module in plan.get("modules", []) if isinstance(plan, dict) else []:
+        for topic in module.get("topics", []) if isinstance(module, dict) else []:
+            for block in topic.get("blocks", []) if isinstance(topic, dict) else []:
+                if isinstance(block, dict) and block.get("plan_node_id"):
+                    out[str(block["plan_node_id"])] = [
+                        str(h) for h in block.get("source_handles", []) if h
+                    ]
+    return out
+
+
+def _hold_line(item_id: str, item: dict[str, Any]) -> str:
+    """One hold reason the writer can act on: the reader's note, then its verbatim evidence."""
+    note = " ".join(str(item.get("note", "")).split())
+    evidence = str(item.get("evidence", ""))
+    if note:
+        return f"{item_id}: {note} (evidence: {evidence})"
+    return f"{item_id}: {evidence}"
+
+
 async def read_topic_step(
     session: AsyncSession,
     *,
@@ -2144,11 +2172,13 @@ async def read_topic_step(
             {"c": course_id, "t": topic_id},
         )
     ).all()
+    assigned = _assigned_handles(dict(entry.get("plan", {})))
     blocks: list[dict[str, Any]] = []
     for node, btype, content, answer_key in db_blocks:
         block: dict[str, Any] = {
             "plan_node_id": str(node),
             "block_type": str(btype),
+            "source_handles": assigned.get(str(node), []),
             "content": dict(content or {}),
             "answer_key": dict(answer_key or {}),
         }
@@ -2223,7 +2253,7 @@ async def read_topic_step(
                 continue
             items = verdict.get("items", {}) if isinstance(verdict.get("items"), dict) else {}
             reasons = [
-                f"{k}: {v.get('evidence', '')}"
+                _hold_line(k, v)
                 for k, v in items.items()
                 if isinstance(v, dict) and v.get("verdict") == "hold"
             ]

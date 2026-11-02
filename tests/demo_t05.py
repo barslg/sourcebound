@@ -334,6 +334,7 @@ def mock_demo_handler() -> Any:
                                     and block.get("block_type") != "spot_the_error"
                                     else _span(block)
                                 ),
+                                "note": "",
                             }
                             for item in RUBRIC_ITEMS
                         },
@@ -342,12 +343,18 @@ def mock_demo_handler() -> Any:
                 ]
             }
         else:
-            first = _section(prompt, "Approved sources")["sources"][0]
-            quote = str(first["text"])[:40]
+            sources = _section(prompt, "Approved sources")["sources"]
             try:
-                wanted_type = str(_section(prompt, "Block skeleton").get("block_type", "reading"))
+                skeleton = _section(prompt, "Block skeleton")
             except Exception:
-                wanted_type = "reading"
+                skeleton = {}
+            wanted_type = str(skeleton.get("block_type", "reading"))
+            # a writer cites the passages the plan assigned to its block
+            assigned = [str(h) for h in skeleton.get("source_handles", [])]
+            first = next(
+                (item for item in sources if str(item.get("handle")) in assigned), sources[0]
+            )
+            quote = str(first["text"])[:40]
             reply = {
                 "block_type": wanted_type,
                 "text": "Staff apply the cited passage at work.",

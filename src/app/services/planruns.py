@@ -873,11 +873,15 @@ def _topic_index(raw_tree: dict[str, Any]) -> dict[str, dict[str, Any]]:
     for module in raw_tree.get("modules", []):
         for topic in module.get("topics", []):
             ids: list[str] = []
+            handles: list[str] = []
             for block in topic.get("blocks", []):
                 for ref in block.get("source_refs", []):
                     pid = ref.get("passage_id") if isinstance(ref, dict) else None
                     if pid and str(pid) not in ids:
                         ids.append(str(pid))
+                    handle = ref.get("handle") if isinstance(ref, dict) else None
+                    if handle and str(handle) not in handles:
+                        handles.append(str(handle))
             spots = sum(
                 1
                 for b in topic.get("blocks", [])
@@ -892,6 +896,7 @@ def _topic_index(raw_tree: dict[str, Any]) -> dict[str, dict[str, Any]]:
             )
             index[str(topic.get("plan_node_id", ""))] = {
                 "cited_passage_ids": ids,
+                "cited_handles": handles,
                 "section_passage_ids": [str(p) for p in section_passages.values()],
                 "terms": [str(t) for t in row.get("introduces_terms", [])],
                 "topic_title": str(topic.get("title", "")),
@@ -1024,9 +1029,11 @@ async def _topic_sources(
     from app.providers.retrieval import get_retriever
 
     owner: dict[str, dict[str, Any]] = {}
+    by_handle: dict[str, dict[str, Any]] = {}
     for passage in sources:
         for pid in [passage["passage_id"], *passage.get("merged_ids", [])]:
             owner.setdefault(str(pid), passage)
+        by_handle[str(passage.get("handle", ""))] = passage
     module_cited: dict[str, list[str]] = {}
     for module in raw_tree.get("modules", []):
         ids: list[str] = []
@@ -1054,6 +1061,12 @@ async def _topic_sources(
         chosen: dict[str, dict[str, Any]] = {}
         for pid in wanted:
             found_passage = owner.get(str(pid))
+            if found_passage is not None:
+                chosen.setdefault(found_passage["passage_id"], found_passage)
+        # a plan ref that names a handle without a passage id (older plans)
+        # still puts that passage in front of the writer who must cite it
+        for handle in meta.get("cited_handles", []):
+            found_passage = by_handle.get(str(handle))
             if found_passage is not None:
                 chosen.setdefault(found_passage["passage_id"], found_passage)
         out[topic_node] = sorted(
@@ -1162,6 +1175,12 @@ async def run_rewrite_operation(
         for t in m.get("topics", [])
         for b in t.get("blocks", [])
     }
+    assigned = {
+        str(b.get("plan_node_id", "")): [str(h) for h in b.get("source_handles", [])]
+        for m in tree.get("modules", [])
+        for t in m.get("topics", [])
+        for b in t.get("blocks", [])
+    }
     for _bid, node, btype, role, brief, hold_reason, topic_node, versions in rows:
         agent = _role_agent(str(role))
         key = f"{agent}:{node}"
@@ -1208,6 +1227,7 @@ async def run_rewrite_operation(
                     "block_type": str(btype),
                     "hold_reason": reason,
                     "example_spec": specs.get(str(node), {}),
+                    "source_handles": assigned.get(str(node), []),
                 },
             }
         )
@@ -1323,6 +1343,7 @@ async def run_generate_operation(
                 "role": str(skel.get("role", "")),
                 "block_type": e["block_type"],
                 "example_spec": dict(skel.get("example_spec", {})),
+                "source_handles": [str(h) for h in skel.get("source_handles", [])],
             }
             if e["block_type"] == "spot_the_error":
                 e.update(_spot_fields(topic_index, node))

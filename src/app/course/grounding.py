@@ -229,36 +229,69 @@ def coverage_holds(block_text: str, cited: dict[str, str]) -> list[str]:
     return holds
 
 
+_FENCE_RE = re.compile(r"```.*?```", re.DOTALL)
+
+
+def _fence_spans(text: str) -> list[tuple[int, int]]:
+    return [(m.start(), m.end()) for m in _FENCE_RE.finditer(text)]
+
+
+def _locate_quote(lowered: str, quote: str, marker_positions: list[int]) -> int:
+    """Where a citation's quote stands in the block: after its own marker, else by length.
+
+    A quote is searched from each marker of its passage (the nearest
+    occurrence after it); elsewhere only a quote of at least
+    QUOTED_SPAN_WORDS words is located, so a one-word quote ("Usage")
+    never lands on another passage's sentence, while a marker parked at
+    the end still covers no boundary.
+    """
+    for position in marker_positions:
+        at = lowered.find(quote, position)
+        if at < 0 and len(quote) > 40:
+            at = lowered.find(quote[:40], position)
+        if at >= 0:
+            return at
+    if len(words_of(quote)) < QUOTED_SPAN_WORDS:
+        return -1
+    at = lowered.find(quote)
+    if at < 0 and len(quote) > 40:
+        at = lowered.find(quote[:40])
+    return at
+
+
 def adjacency_holds(block_text: str, citations: list[dict[str, Any]]) -> list[str]:
     """Hold a teach block whose text moves from one passage to another without a marker.
 
-    Each citation's quote is located in the block text; where two
-    located quotes from different passages follow each other, a
-    ⟦P<n>⟧ marker naming the second passage must stand between them.
-    Citation order is irrelevant; a marker parked at the end covers no
-    boundary; a quote that is not in the text (a paraphrase) locates
-    nothing and the reader judges it.
+    Each citation's quote is located in the block text (after its own
+    marker when the passage has one); where two located quotes from
+    different passages follow each other, a ⟦P<n>⟧ marker naming the
+    second passage must stand between them. Citation order is
+    irrelevant; a marker parked at the end covers no boundary; a quote
+    that is not in the text (a paraphrase) locates nothing and the
+    reader judges it; inside one code fence two cited passages may
+    meet without a marker (a marker cannot stand inside code).
     """
-    spans: list[tuple[int, str]] = []
     lowered = block_text.lower()
+    markers = [(m.start(), m.group(1)) for m in HANDLE_MARKER_RE.finditer(block_text)]
+    spans: list[tuple[int, str]] = []
     for citation in citations:
         handle = str(citation.get("handle", ""))
         quote = str(citation.get("quote", "")).strip().lower()
         if not handle or not quote:
             continue
-        at = lowered.find(quote)
-        if at < 0 and len(quote) > 40:
-            at = lowered.find(quote[:40])
+        at = _locate_quote(lowered, quote, [pos for pos, h in markers if h == handle])
         if at >= 0:
             spans.append((at, handle))
     spans.sort()
-    markers = [(m.start(), m.group(1)) for m in HANDLE_MARKER_RE.finditer(block_text)]
+    fences = _fence_spans(block_text)
     holds: list[str] = []
     for (start, first), (end, second) in zip(spans, spans[1:], strict=False):
         if first == second:
             continue
         if "\n\n" in block_text[start:end]:
             continue  # a paragraph break is a boundary the learner sees
+        if any(lo <= end < hi for lo, hi in fences):
+            continue
         between = [h for at, h in markers if start < at <= end]
         if second not in between:
             holds.append(
@@ -266,6 +299,26 @@ def adjacency_holds(block_text: str, citations: list[dict[str, Any]]) -> list[st
                 f"without a ⟦{second}⟧ marker between them"
             )
     return list(dict.fromkeys(holds))
+
+
+def assignment_holds(
+    assigned: list[str], *, cited: list[str], leftovers: list[dict[str, Any]]
+) -> list[str]:
+    """Hold a teach/example block that drops an assigned passage without a word.
+
+    The plan assigns passages to the block (the skeleton's
+    source_handles); the writer either cites each one or names it in
+    `leftovers` with a reason the author sees. A passage that is
+    neither is a silent gap: on the 2026-11-02 course only the paid
+    reader noticed, one topic at a time.
+    """
+    declared = {str(item.get("handle", "")) for item in leftovers if isinstance(item, dict)}
+    named = set(cited) | declared
+    return [
+        f"coverage: assigned passage {handle} is neither cited nor declared in leftovers"
+        for handle in assigned
+        if handle and handle not in named
+    ]
 
 
 def taught_handles_for(plan: dict[str, Any], node_id: str) -> tuple[list[str], str] | None:

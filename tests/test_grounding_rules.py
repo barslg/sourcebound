@@ -253,3 +253,66 @@ def test_coverage_ignores_code_lines_and_fenced_blocks() -> None:
     assert coverage_holds("Nothing named.", {"P1": fenced}) == [
         "coverage: cited passage P1 list item 'Reject' is not named in the block text"
     ]
+
+
+def test_adjacency_locates_a_quote_after_its_own_marker_and_skips_code_fences() -> None:
+    """The 2026-11-02 pricing block: the one-word quote "Usage" of P949 was
+    found at its first occurrence (inside P936's sentence) and every row of
+    the table became a false adjacency; a code example stitched from two
+    cited passages inside one fence carried no marker between them."""
+    from app.course.grounding import adjacency_holds
+
+    text = (
+        "⟦P936⟧ Usage is priced per 1M tokens for Muse Wonder. "
+        "For Muse Spark, ⟦P949⟧ Usage is priced per 1M tokens as well.\n\n"
+        '```python\nfirst = client.responses.create(model="muse-spark-1.3")\n'
+        "followup = client.responses.create(previous_response_id=first.id)\n```"
+    )
+    citations = [
+        {"handle": "P936", "quote": "Usage"},
+        {"handle": "P949", "quote": "Usage"},
+        {"handle": "P345", "quote": 'first = client.responses.create(model="muse-spark-1.3")'},
+        {
+            "handle": "P666",
+            "quote": "followup = client.responses.create(previous_response_id=first.id)",
+        },
+    ]
+    assert adjacency_holds(text, citations) == []
+    unmarked = text.replace("⟦P949⟧ ", "")
+    assert adjacency_holds(unmarked, citations) == [], (
+        "a one-word quote with no marker of its own locates nothing"
+    )
+    prose = (
+        "⟦P936⟧ Cached input costs less when part of your prompt matches a cached prefix. "
+        "Web search grounding costs $2.50 per 1,000 search queries in addition."
+    )
+    assert adjacency_holds(
+        prose,
+        [
+            {"handle": "P936", "quote": "Cached input costs less when part of your prompt"},
+            {"handle": "P962", "quote": "Web search grounding costs $2.50 per 1,000 search"},
+        ],
+    ) == [
+        "false adjacency: text from P936 runs into text from P962 without a ⟦P962⟧ marker "
+        "between them"
+    ]
+
+
+def test_an_assigned_passage_neither_cited_nor_declared_is_a_coverage_hold() -> None:
+    """The 2026-11-02 Muse API course: m5-t5-b1 was assigned P639 and the
+    writer silently dropped it; only the paid reader noticed."""
+    from app.course.grounding import assignment_holds
+
+    assigned = ["P637", "P638", "P639"]
+    assert assignment_holds(assigned, cited=["P637", "P638"], leftovers=[]) == [
+        "coverage: assigned passage P639 is neither cited nor declared in leftovers"
+    ]
+    assert (
+        assignment_holds(
+            assigned,
+            cited=["P637"],
+            leftovers=[{"handle": "P638", "reason": "duplicate"}, {"handle": "P639"}],
+        )
+        == []
+    )
+    assert assignment_holds([], cited=[], leftovers=[]) == [], "no assignment, nothing to hold"
