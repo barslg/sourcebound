@@ -10,13 +10,12 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.agents.base import AGENT_SCHEMAS, assemble, system_prompt
+from app.agents.base import AGENT_SCHEMAS, assemble
 
 
 def build_prompt(*, question: str, passages: list[dict[str, str]], course_language: str) -> str:
     """Typed tutor prompt: the question and handle-addressed passage texts."""
     return assemble(
-        system_prompt("tutor"),
         json.dumps(
             {"course_language": course_language, "question": question, "passages": passages},
             ensure_ascii=False,

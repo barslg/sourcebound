@@ -61,9 +61,14 @@ def prompt_version(agent: str, root: Path | str | None = None) -> str:
     return prompt_registry.version_of(f"{agent}:{system_prompt(agent, root)}")
 
 
-def assemble(system: str, dynamic: str) -> str:
-    """Stable system prefix first (prefix caching), typed dynamic part last."""
-    return f"{system.rstrip()}\n\n## Task input (typed, assembled by code)\n{dynamic}"
+def assemble(dynamic: str) -> str:
+    """The typed dynamic part of a call; the system prompt travels as `instructions`.
+
+    The provider sends prompts/<agent>/system.md as the request's
+    instructions (the stable, cached prefix) and this text as the input,
+    so a step digest changes only when the typed input does.
+    """
+    return f"## Task input (typed, assembled by code)\n{dynamic}"
 
 
 # Keys code reads from each agent reply; the schema must require them all.

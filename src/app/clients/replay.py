@@ -77,6 +77,8 @@ class ReplayClient:
         prompt_cache_key: str | None = None,
         effort: str = "medium",
         max_output_tokens: int = 4096,
+        instructions: str | None = None,
+        safety_identifier: str | None = None,
     ) -> LLMResponse:
         """The recorded reply for this exact request, or ReplayMissError."""
         body = build_body(
@@ -87,6 +89,8 @@ class ReplayClient:
             prompt_cache_key=prompt_cache_key,
             effort=effort,
             max_output_tokens=max_output_tokens,
+            instructions=instructions,
+            safety_identifier=safety_identifier,
         )
         digest = replay_digest(model, body)
         recorded = self._replies.get(digest)

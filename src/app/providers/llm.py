@@ -28,6 +28,7 @@ between create and retrieve never re-posts a possibly paid request.
 
 from __future__ import annotations
 
+import hashlib
 import time
 from typing import Any, Protocol
 from uuid import UUID
@@ -100,6 +101,27 @@ class MetaProvider:
         return self._client
 
     @staticmethod
+    def instructions_for(agent: str) -> str | None:
+        """The agent's system prompt, sent as the request's instructions.
+
+        None for an agent without a prompt file (a legacy caller that
+        still assembles its own full prompt).
+        """
+        from app.agents.base import system_prompt
+
+        try:
+            return system_prompt(agent)
+        except ConfigurationError:
+            return None
+
+    @staticmethod
+    def safety_identifier_for(subject_user_id: UUID | None) -> str | None:
+        """A stable, hashed per-learner id for the provider's abuse detection; never the uuid."""
+        if subject_user_id is None:
+            return None
+        return hashlib.sha256(str(subject_user_id).encode("utf-8")).hexdigest()[:40]
+
+    @staticmethod
     def prompt_version(agent: str, prompt: str) -> str:
         """Version of one agent's prompt: hash of its system file.
 
@@ -165,6 +187,8 @@ class MetaProvider:
         if not is_allowed(resolved_model, self._settings.llm_dev_mode):
             raise ForbiddenError(f"model {resolved_model} needs LLM_DEV_MODE=1")
         version = self.prompt_version(agent, prompt)
+        instructions = self.instructions_for(agent)
+        safety_identifier = self.safety_identifier_for(subject_user_id)
         body = build_body(
             model=resolved_model,
             prompt=prompt,
@@ -172,6 +196,8 @@ class MetaProvider:
             prompt_cache_key=cache_key,
             effort=resolved_effort,
             max_output_tokens=resolved_tokens,
+            instructions=instructions,
+            safety_identifier=safety_identifier,
         )
         digest = replies.request_hash(resolved_model, version, body, variant)
 
@@ -213,6 +239,8 @@ class MetaProvider:
                     prompt_cache_key=cache_key,
                     effort=resolved_effort if ask == 1 else "medium",
                     max_output_tokens=budget,
+                    instructions=instructions,
+                    safety_identifier=safety_identifier,
                 )
                 break
             except UnparseableReplyError as bad:
@@ -292,6 +320,8 @@ class MetaProvider:
         if not is_allowed(resolved_model, self._settings.llm_dev_mode):
             raise ForbiddenError(f"model {resolved_model} needs LLM_DEV_MODE=1")
         version = self.prompt_version(agent, prompt)
+        instructions = self.instructions_for(agent)
+        safety_identifier = self.safety_identifier_for(subject_user_id)
         body = build_body(
             model=resolved_model,
             prompt=prompt,
@@ -300,6 +330,8 @@ class MetaProvider:
             prompt_cache_key=cache_key,
             effort=resolved_effort,
             max_output_tokens=resolved_tokens,
+            instructions=instructions,
+            safety_identifier=safety_identifier,
         )
         response_id = await self._get_client().start_background(
             model=resolved_model,
@@ -308,6 +340,8 @@ class MetaProvider:
             prompt_cache_key=cache_key,
             effort=resolved_effort,
             max_output_tokens=resolved_tokens,
+            instructions=instructions,
+            safety_identifier=safety_identifier,
         )
         digest = replies.request_hash(resolved_model, version, body, variant)
         async with self._ledger_factory() as ledger:

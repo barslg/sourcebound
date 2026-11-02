@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.agents.base import AGENT_SCHEMAS, assemble, system_prompt
+from app.agents.base import AGENT_SCHEMAS, assemble
 
 
 def build_translator_prompt(
@@ -44,7 +44,7 @@ def build_translator_prompt(
             ),
         ]
     )
-    prompt = assemble(system_prompt("translator"), dynamic)
+    prompt = assemble(dynamic)
     _ = course_id
     return prompt
 
@@ -60,7 +60,6 @@ def build_glossary_prompt(
         raise ValueError("glossary pass needs at least one term")
     segments = [{"id": term, "text": term} for term in sorted(terms)]
     return assemble(
-        system_prompt("translator"),
         "\n\n## ".join(
             [
                 "Languages\n"

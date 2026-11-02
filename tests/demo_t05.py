@@ -300,8 +300,9 @@ def mock_demo_handler() -> Any:
     def handler(request: httpx2.Request) -> httpx2.Response:
         body = json.loads(request.content.decode("utf-8"))
         prompt = str(body.get("input", ""))
-        seen.append(prompt[:20])
-        if prompt.startswith("# Saboteur"):
+        system = str(body.get("instructions", ""))
+        seen.append(system[:20])
+        if system.startswith("# Saboteur"):
             task = json.loads(prompt.split("## Task input (typed, assembled by code)\n", 1)[1])
             reply = {
                 "sentence": task["sentence"],
@@ -310,7 +311,7 @@ def mock_demo_handler() -> Any:
             }
             if reply["mutated"] == reply["sentence"]:
                 reply["mutated"] = "It is not the case that " + reply["sentence"]
-        elif prompt.startswith("# Reader"):
+        elif system.startswith("# Reader"):
             blocks = _section(prompt, "Block skeleton")["blocks"]
             reply = {
                 "verdicts": [
@@ -325,7 +326,7 @@ def mock_demo_handler() -> Any:
                     for block in blocks
                 ]
             }
-        elif prompt.startswith("# Continuity"):
+        elif system.startswith("# Continuity"):
             reply = {"handoffs": [], "issues": []}
         else:
             first = _section(prompt, "Approved sources")["sources"][0]

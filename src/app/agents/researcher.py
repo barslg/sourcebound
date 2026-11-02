@@ -14,7 +14,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.base import AGENT_SCHEMAS, assemble, system_prompt
+from app.agents.base import AGENT_SCHEMAS, assemble
 
 
 def rephrase_queries(query: str) -> list[str]:
@@ -63,10 +63,7 @@ def build_prompt(
     source_languages: list[str] | None = None,
 ) -> str:
     """Full researcher prompt: stable system prefix plus typed input."""
-    return assemble(
-        system_prompt("researcher"),
-        build_dynamic(query, rephrased, handles, course_language, source_languages),
-    )
+    return assemble(build_dynamic(query, rephrased, handles, course_language, source_languages))
 
 
 def check_output(payload: dict[str, Any], handles: set[str]) -> list[str]:

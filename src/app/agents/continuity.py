@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.agents.base import AGENT_SCHEMAS, assemble, system_prompt
+from app.agents.base import AGENT_SCHEMAS, assemble
 
 
 def build_continuity_prompt(
@@ -17,7 +17,6 @@ def build_continuity_prompt(
 ) -> str:
     """Typed continuity prompt: handoffs plus the frozen dossier."""
     return assemble(
-        system_prompt("continuity"),
         json.dumps(
             {
                 "course_language": course_language,

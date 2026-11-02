@@ -51,13 +51,18 @@ def build_request_body(
     prompt_cache_key: str | None = None,
     effort: str = "medium",
     max_output_tokens: int = 4096,
+    instructions: str | None = None,
+    safety_identifier: str | None = None,
 ) -> dict[str, Any]:
     """The exact kwargs sent to responses.create.
 
     The provider hashes this same dict for the reply store, so the hash
-    can never drift from what the API receives: model, input, format,
-    background, cache key, reasoning effort, and the output limit are
-    all part of the key.
+    can never drift from what the API receives: model, instructions,
+    input, format, background, cache key, reasoning effort, and the
+    output limit are all part of the key. The system prompt travels as
+    `instructions` (the API's developer-level prefix), the typed task as
+    `input`; a cache key also asks for 24h retention, since a course run
+    reuses one prefix for hours.
     """
     body: dict[str, Any] = {
         "model": model,
@@ -75,8 +80,13 @@ def build_request_body(
     }
     if background:
         body["background"] = True
+    if instructions:
+        body["instructions"] = instructions
     if prompt_cache_key is not None:
         body["prompt_cache_key"] = prompt_cache_key
+        body["prompt_cache_retention"] = "24h"
+    if safety_identifier:
+        body["safety_identifier"] = safety_identifier
     return body
 
 
@@ -121,6 +131,8 @@ class MetaClient:
         prompt_cache_key: str | None = None,
         effort: str = "medium",
         max_output_tokens: int = 4096,
+        instructions: str | None = None,
+        safety_identifier: str | None = None,
     ) -> LLMResponse:
         """Generate one strict-JSON object; retries per policy, then LLMError."""
         from openai import APIConnectionError, APIStatusError
@@ -138,6 +150,8 @@ class MetaClient:
                 prompt_cache_key=prompt_cache_key,
                 effort=effort,
                 max_output_tokens=max_output_tokens,
+                instructions=instructions,
+                safety_identifier=safety_identifier,
             )
             try:
                 response = await self._client.responses.create(**kwargs)
@@ -184,6 +198,8 @@ class MetaClient:
         prompt_cache_key: str | None = None,
         effort: str = "medium",
         max_output_tokens: int = 4096,
+        instructions: str | None = None,
+        safety_identifier: str | None = None,
     ) -> str:
         """POST one background call and return its response id for polling.
 
@@ -202,6 +218,8 @@ class MetaClient:
             prompt_cache_key=prompt_cache_key,
             effort=effort,
             max_output_tokens=max_output_tokens,
+            instructions=instructions,
+            safety_identifier=safety_identifier,
         )
         try:
             response = await self._client.responses.create(**kwargs)

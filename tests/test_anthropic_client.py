@@ -60,7 +60,13 @@ def _client(
 
 async def test_schema_becomes_structured_output_and_reply_parses() -> None:
     body = build_anthropic_body(
-        model="claude-sonnet-5-5", prompt="p", schema=SCHEMA, prompt_cache_key="k", effort="low"
+        model="claude-sonnet-5-5",
+        prompt="p",
+        schema=SCHEMA,
+        prompt_cache_key="k",
+        effort="low",
+        instructions="# Role",
+        safety_identifier="abc",
     )
     sent_schema = body["output_config"]["format"]["schema"]
     assert body["output_config"]["format"]["type"] == "json_schema"
@@ -68,13 +74,14 @@ async def test_schema_becomes_structured_output_and_reply_parses() -> None:
     assert sorted(sent_schema["required"]) == ["heading", "kind"]
     assert sent_schema["properties"]["kind"]["enum"] == ["a", "b"]
     assert "minLength" not in sent_schema["properties"]["heading"]
-    assert body["messages"][0]["content"][0]["cache_control"] == {"type": "ephemeral"}
-    assert (
-        "cache_control"
-        not in build_anthropic_body(model="claude-sonnet-5-5", prompt="p", schema=SCHEMA)[
-            "messages"
-        ][0]["content"][0]
-    )
+    assert body["system"] == [
+        {"type": "text", "text": "# Role", "cache_control": {"type": "ephemeral"}}
+    ]
+    assert body["metadata"] == {"user_id": "abc"}
+    assert "cache_control" not in body["messages"][0]["content"][0]
+    bare = build_anthropic_body(model="claude-sonnet-5-5", prompt="p", schema=SCHEMA)
+    assert "system" not in bare and "metadata" not in bare
+    assert "cache_control" not in bare["messages"][0]["content"][0]
 
     seen: list[dict[str, Any]] = []
     answered = await _client(HAND_WRITTEN_REPLY, seen).respond_json(

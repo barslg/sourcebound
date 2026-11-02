@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.agents.base import AGENT_SCHEMAS, assemble, system_prompt
+from app.agents.base import AGENT_SCHEMAS, assemble
 from app.course.errorspot import MUTATION_KINDS, rewrite_allowed
 
 
@@ -29,10 +29,7 @@ def build_saboteur_prompt(
     note = " ".join(hold_reason.split())[:500]
     if note:
         task["reader_note"] = note
-    return assemble(
-        system_prompt("saboteur"),
-        json.dumps(task, ensure_ascii=False, sort_keys=True),
-    )
+    return assemble(json.dumps(task, ensure_ascii=False, sort_keys=True))
 
 
 def check_saboteur_output(payload: dict[str, Any]) -> list[str]:

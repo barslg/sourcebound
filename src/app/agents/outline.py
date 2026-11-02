@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.agents.base import AGENT_SCHEMAS, assemble, system_prompt
+from app.agents.base import AGENT_SCHEMAS, assemble
 
 
 def build_prompt(
@@ -31,7 +31,7 @@ def build_prompt(
         },
         ensure_ascii=False,
     )
-    return assemble(system_prompt("outline"), dynamic)
+    return assemble(dynamic)
 
 
 def check_output(payload: dict[str, Any], section_ids: list[str]) -> list[str]:

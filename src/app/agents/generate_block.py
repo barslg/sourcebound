@@ -12,7 +12,7 @@ import json
 import re
 from typing import Any
 
-from app.agents.base import assemble, system_prompt
+from app.agents.base import assemble
 from app.course.tree import BLOCK_GENERATOR_SCHEMAS
 from app.llm.prompts import cache_key as prompt_cache_key
 
@@ -61,7 +61,6 @@ def build_generation_prompt(
     upstream_texts: list[dict[str, Any]] | None = None,
 ) -> str:
     """Full generator prompt with the binding prefix order."""
-    system = system_prompt(agent)
     dynamic = "\n\n## Approved sources\n" + json.dumps(
         {"course_language": course_language, "sources": public_sources(list(sources or []))},
         ensure_ascii=False,
@@ -78,7 +77,7 @@ def build_generation_prompt(
         dict(skeleton or {}), ensure_ascii=False, sort_keys=True
     )
     _ = prompt_cache_key(agent, block_type, course_id)
-    return assemble(system, dynamic)
+    return assemble(dynamic)
 
 
 def check_block_output(payload: dict[str, Any], block_type: str = "reading") -> list[str]:

@@ -197,10 +197,11 @@ def _plan_mock_handler(fail_architect: bool = False) -> Any:
     def handler(request: httpx2.Request) -> httpx2.Response:
         body = json.loads(request.content.decode("utf-8"))
         prompt = str(body.get("input", ""))
-        seen.append(prompt[:40])
-        if fail_architect and prompt.startswith("# Architect"):
+        system = str(body.get("instructions", ""))
+        seen.append(system[:40])
+        if fail_architect and system.startswith("# Architect"):
             return httpx2.Response(500, json={"error": {"message": "planted 500"}})
-        if prompt.startswith("# Researcher"):
+        if system.startswith("# Researcher"):
             dynamic = json.loads(prompt.split("## Task input (typed, assembled by code)\n")[1])
             ranked = [
                 {"handle": item["handle"], "rank": index, "score": 0.9 - index * 0.1}
@@ -538,11 +539,11 @@ def _gen_mock_handler(fail_reader: bool = False) -> Any:
 
     def handler(request: httpx2.Request) -> httpx2.Response:
         body = json.loads(request.content.decode("utf-8"))
-        prompt = str(body.get("input", ""))
-        seen.append(prompt[:20])
-        if fail_reader and prompt.startswith("# Reader"):
+        system = str(body.get("instructions", ""))
+        seen.append(system[:20])
+        if fail_reader and system.startswith("# Reader"):
             return httpx2.Response(500, json={"error": {"message": "planted 500"}})
-        if prompt.startswith("# Reader"):
+        if system.startswith("# Reader"):
             return httpx2.Response(200, json=_gen_completed(json.dumps(_gen_reader_reply())))
         return httpx2.Response(200, json=_gen_completed(json.dumps(_gen_block_reply())))
 
@@ -1749,7 +1750,7 @@ async def test_truncated_empty_reply_is_paid_logged_never_stored_and_re_asked_on
 
     def handler(request: httpx2.Request) -> httpx2.Response:
         body = json.loads(request.content.decode("utf-8"))
-        if str(body.get("input", "")).startswith("# Architect"):
+        if str(body.get("instructions", "")).startswith("# Architect"):
             budgets.append(int(body["max_output_tokens"]))
             if len(budgets) == 1:
                 truncated = _plan_completed("")
@@ -1797,7 +1798,7 @@ async def test_garbage_reply_is_rejected_once_and_never_re_asked(t03_session: As
     def handler(request: httpx2.Request) -> httpx2.Response:
         nonlocal architect_posts
         body = json.loads(request.content.decode("utf-8"))
-        if str(body.get("input", "")).startswith("# Architect"):
+        if str(body.get("instructions", "")).startswith("# Architect"):
             architect_posts += 1
             garbage = _plan_completed("this is not json")
             # garbage under the budget is garbage; at the budget it is a truncation (re-asked once)

@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.agents.base import AGENT_SCHEMAS, assemble, system_prompt
+from app.agents.base import AGENT_SCHEMAS, assemble
 
 RUBRIC_ITEMS: tuple[str, ...] = (
     "task_fit",
@@ -38,7 +38,6 @@ def build_reader_prompt(
     """Full reader prompt with the binding prefix order."""
     from app.agents.generate_block import public_sources
 
-    system = system_prompt("reader")
     dynamic = "\n\n## Approved sources\n" + json.dumps(
         {"course_language": course_language, "sources": public_sources(list(sources or []))},
         ensure_ascii=False,
@@ -52,7 +51,7 @@ def build_reader_prompt(
         ensure_ascii=False,
         sort_keys=True,
     )
-    return assemble(system, dynamic)
+    return assemble(dynamic)
 
 
 def check_reader_output(payload: dict[str, Any], *, node_ids: set[str]) -> list[str]:

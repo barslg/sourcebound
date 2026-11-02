@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
 
-from app.agents.base import AGENT_SCHEMAS, assemble, system_prompt
+from app.agents.base import AGENT_SCHEMAS, assemble
 from app.course.tree import ArchitectOutput, CourseTree, validate_tree
 
 
@@ -93,7 +93,6 @@ def build_prompt(
 ) -> str:
     """Full architect prompt: stable system prefix plus typed input."""
     return assemble(
-        system_prompt("architect"),
         build_dynamic(
             profile,
             constraints,
