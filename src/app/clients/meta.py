@@ -357,9 +357,11 @@ class MetaClient:
                     await asyncio.sleep(max(min(wait, deadline - time.monotonic()), 0))
                     continue
                 raise LLMError(f"background poll failed: {self._redact(str(exc))}") from exc
-            if response.status == "completed":
+            # An incomplete reply (output budget spent) is parsed like a
+            # foreground one: its usage is billed and the caller re-asks.
+            if response.status in ("completed", "incomplete"):
                 return response
-            if response.status in ("failed", "cancelled", "incomplete"):
+            if response.status in ("failed", "cancelled"):
                 raise LLMError(f"background response ended as {response.status}")
             if time.monotonic() >= deadline:
                 raise LLMError("background response polling timed out")
