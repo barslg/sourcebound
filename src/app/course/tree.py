@@ -18,6 +18,7 @@ from app.course.errorspot import MUTATION_KINDS
 
 ROLES = ("teach", "example", "check", "practice", "test")
 QUESTION_ROLES = frozenset({"check", "practice", "test"})
+READING_ROLES = frozenset({"teach", "example"})
 TOPIC_KINDS = ("lesson", "module_test")
 TS_CONFIGS = {"en": "english", "nb": "norwegian", "uk": "simple"}
 # Block-type registry per topic kind (item 14): block_type is not free
@@ -242,6 +243,12 @@ def validate_tree(tree: CourseTree, prescription: dict[str, list[str]]) -> list[
                 if block.role not in QUESTION_ROLES and asks:
                     errors.append(
                         f"block {block.plan_node_id}: {block.role} brief is a topic, not a question"
+                    )
+                if block.role in READING_ROLES and block.block_type != "reading":
+                    # the 2026-11-02 Muse API plan typed 24 of 30 examples as exercises
+                    errors.append(
+                        f"block {block.plan_node_id}: a {block.role} block is a reading,"
+                        f" not {block.block_type!r}"
                     )
     node_ids = [module.plan_node_id for module in tree.modules]
     node_ids += [topic.plan_node_id for module in tree.modules for topic in module.topics]

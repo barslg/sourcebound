@@ -202,6 +202,15 @@ def test_architect_check_keeps_the_sixty_percent_rule_and_drops_the_title_word_r
         "'test' and 'staged' in the title stop nothing"
     )
     assert check_output(plan(["P1", "P2"], []), prescription, passages=passages) == []
+    typed = plan(["P1", "P2"], [])
+    typed["modules"][0]["topics"][0]["blocks"][0].update(
+        {"role": "test", "block_type": "scenario_practice"}
+    )
+    assert check_output(typed, prescription, passages=passages) == []
+    typed["modules"][0]["topics"][0]["blocks"][0].update({"role": "teach", "brief": "A topic"})
+    assert check_output(typed, {"module_test": ["teach"]}, passages=passages) == [
+        "block b1: a teach block is a reading, not 'scenario_practice'"
+    ], "teach and example blocks are readings; the plan typed 24 of 30 examples as exercises"
 
 
 def test_one_numbering_keeps_the_plans_handles_through_generation() -> None:
