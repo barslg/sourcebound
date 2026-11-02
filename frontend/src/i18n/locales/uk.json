@@ -534,9 +534,7 @@
       "reader": "Перевірка читачем",
       "block_teach": "Навчальний блок",
       "block_example": "Блок-приклад",
-      "block_practice": "Практичний блок",
-      "block_test": "Тестовий блок",
-      "block_check": "Контрольний блок"
+      "block_exercise": "Блок-вправа"
     },
     "stoppedAtBlock": "Зупинено на блоці {topic} / {ordinal}"
   },

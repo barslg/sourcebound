@@ -534,9 +534,7 @@
       "reader": "Lesesjekk",
       "block_teach": "Undervisningsblokk",
       "block_example": "Eksempelblokk",
-      "block_practice": "Øvingsblokk",
-      "block_test": "Testblokk",
-      "block_check": "Kontrollblokk"
+      "block_exercise": "Oppgaveblokk"
     },
     "stoppedAtBlock": "Stoppet ved blokk {topic} / {ordinal}"
   },

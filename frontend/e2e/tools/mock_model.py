@@ -1,4 +1,4 @@
-"""Local Responses-API mock for the review walk. Agent picked from the prompt head."""
+"""Local Responses-API mock for the review walk. Agent picked from the instructions head."""
 
 import json
 import re
@@ -53,9 +53,9 @@ def carried(text):
     return re.findall(r"\[P\d+\]|___|\d+(?:[.,]\d+)?", text)
 
 
-def reply_for(prompt, schema):
+def reply_for(prompt, schema, instructions=""):
     CALLS[0] += 1
-    head = prompt[:30]
+    head = (instructions or prompt)[:30]
     if head.startswith("# Block"):
         # a real block takes seconds; without this pause a 10-step run ends
         # before the flow spec can observe it running and cancel it
@@ -72,17 +72,37 @@ def reply_for(prompt, schema):
                 "ranked": [
                     {"handle": h, "rank": i + 1, "score": 0.9} for i, h in enumerate(handles)
                 ],
-                "web_candidates": [],
+                "gaps": [],
             }
         )
         for k in list(base):
-            if isinstance(base[k], list) and k not in ("ranked", "web_candidates"):
+            if isinstance(base[k], list) and k not in ("ranked", "gaps"):
                 base[k] = []
         return base
     if head.startswith("# Outline"):
-        ids = re.findall(r'"id": ?"(S[0-9]+)"', prompt)
+        ids = re.findall(r'"id": ?"(S[0-9]+)"', prompt) or ["S1"]
+        half = max(1, len(ids) // 2)
+        first, second = ids[:half], ids[half:] or ids[:1]
+        if not ids[half:]:
+            first, second = ids, []
+
+        def scen(tid, title, sections, requires):
+            return {
+                "plan_node_id": tid,
+                "title": title,
+                "annotation": f"{title}: what the nurse does and why.",
+                "introduces_terms": [title.split()[0].lower()],
+                "prepares_for": "The next step of the ward routine.",
+                "requires": requires,
+                "sections": sections,
+            }
+
+        topics = [scen("t1", "When to wash", first, [])]
+        if second:
+            topics.append(scen("t2", "How long to rub", second, ["t1"]))
         return {
-            "case": "A ward nurse",
+            "learner": "A ward nurse on the first shift.",
+            "case": "A ward nurse who washes at every moment the routine names.",
             "modules": [
                 {
                     "plan_node_id": "m1",
@@ -91,61 +111,99 @@ def reply_for(prompt, schema):
                     "entry_knowledge": "None.",
                     "exit_knowledge": "The basics.",
                     "sections": ids,
+                    "topics": topics,
                 }
             ],
             "uncovered": [],
+            "questions": [],
         }
     if head.startswith("# Architect"):
         d = last_json(prompt)
         # every block cites every passage: the plan covers 100 % of the content
         # passages (T11 R5 rejects a plan under 60 % with nothing in `uncovered`)
-        handles = sorted(
+        all_handles = sorted(
             set(re.findall(r'"handle": ?"(P[0-9]+)"', prompt)), key=lambda h: int(h[1:])
         ) or ["P1"]
+        scope = d.get("module_scope", {})
+        scope_topics = scope.get("topics") or [{"plan_node_id": "t1", "title": "When to wash"}]
         roles = d["prescription"]["lesson"]
+        test_roles = d["prescription"].get("module_test", ["test"])
         allowed = list(BLOCK_TYPES["lesson"])
+        allowed_test = list(BLOCK_TYPES["module_test"])
 
-        def btype(role):
-            pref = {
-                "teach": "reading",
-                "example": "reading",
-                "check": "choice",
-                "practice": "spot_the_error",
-                "test": "choice",
-            }[role]
-            return pref if pref in allowed else allowed[0]
+        def btype(role, pool):
+            pref = {"teach": "reading", "example": "reading"}.get(role, "choice")
+            return pref if pref in pool else pool[0]
 
-        def topic(tid, title):
+        def spec(role):
+            if role != "example":
+                return {"input": "", "action": "", "result": ""}
+            return {
+                "input": "The nurse enters the ward with unwashed hands.",
+                "action": "She washes at the moment the routine names.",
+                "result": "Her hands are clean before the first patient.",
+            }
+
+        def topic(row):
+            tid, title = str(row["plan_node_id"]), str(row["title"])
+            handles = list(row.get("handles") or all_handles)
             return {
                 "plan_node_id": tid,
                 "kind": "lesson",
                 "title": title,
                 "objectives": [f"Explain {title.lower()}"],
                 "through_line_note": "Builds on the case.",
+                "misconception": "Nurses think a quick rinse is enough.",
                 "blocks": [
                     {
                         "plan_node_id": f"{tid}-b{i}",
                         "role": r,
-                        "block_type": btype(r),
+                        "block_type": btype(r, allowed),
                         "brief": (
                             f"Why does {title.lower()} matter?"
                             if r in ("check", "practice", "test")
                             else f"What {title.lower()} means"
                         ),
                         "source_refs": [{"handle": h} for h in handles],
+                        "example_spec": spec(r),
                     }
                     for i, r in enumerate(roles)
                 ],
             }
 
+        module_id = str(scope.get("plan_node_id", "m1"))
+        test_types = ["choice", "matching", "spot_the_error"]
+        test_topic = {
+            "plan_node_id": f"{module_id}-test",
+            "kind": "module_test",
+            "title": "Module test",
+            "objectives": ["Apply the routine"],
+            "through_line_note": "Closes the module.",
+            "misconception": "Nurses think a quick rinse is enough.",
+            "blocks": [
+                {
+                    "plan_node_id": f"{module_id}-test-b{i}",
+                    "role": r,
+                    "block_type": (
+                        test_types[i % len(test_types)]
+                        if test_types[i % len(test_types)] in allowed_test
+                        else allowed_test[0]
+                    ),
+                    "brief": "Which moment calls for washing?",
+                    "source_refs": [{"handle": h} for h in all_handles],
+                    "example_spec": spec(r),
+                }
+                for i, r in enumerate(test_roles)
+            ],
+        }
         mods = [
             {
-                "plan_node_id": "m1",
-                "title": "Hand hygiene basics",
-                "purpose": "Learn the basics.",
-                "entry_knowledge": "None.",
-                "exit_knowledge": "The basics.",
-                "topics": [topic("t1", "When to wash"), topic("t2", "How long to rub")],
+                "plan_node_id": module_id,
+                "title": str(scope.get("title", "Hand hygiene basics")),
+                "purpose": str(scope.get("purpose", "Learn the basics.")),
+                "entry_knowledge": str(scope.get("entry_knowledge", "None.")),
+                "exit_knowledge": str(scope.get("exit_knowledge", "The basics.")),
+                "topics": [*[topic(row) for row in scope_topics], test_topic],
             }
         ]
         n = sum(len(t["blocks"]) for t in mods[0]["topics"])
@@ -160,9 +218,10 @@ def reply_for(prompt, schema):
                         "topic_plan_node_id": t["plan_node_id"],
                         "note": f"The nurse carries {t['title'].lower()} into the next topic.",
                     }
-                    for t in topics[:-1]
+                    for t in topics
                 ],
             },
+            "uncovered": [],
         }
     if head.startswith("# Saboteur"):
         task = json.loads(prompt.split("## Task input (typed, assembled by code)\n", 1)[1])
@@ -179,19 +238,29 @@ def reply_for(prompt, schema):
             HELD_BEFORE[node] = HELD_BEFORE.get(node, 0) + 1
             v = "hold" if hold else "pass"
             LOG.write(json.dumps({"reader_node": node, "verdict": v}) + "\n")
+            content = b.get("content") if isinstance(b.get("content"), dict) else {}
+            span = "Staff apply"
+            for key in ("body", "stem", "text", "scenario", "caption"):
+                if isinstance(content.get(key), str) and content[key].strip():
+                    span = str(content[key])[:30]
+                    break
+            spot = str(b.get("block_type", "")) == "spot_the_error"
             out.append(
                 {
                     "plan_node_id": b["plan_node_id"],
                     "verdict": v,
                     "items": {
-                        it: {"verdict": "pass" if not hold else "hold", "evidence": f"quoted {it}"}
+                        it: {
+                            "verdict": "pass" if not hold else "hold",
+                            "evidence": (
+                                "not applicable" if it == "planted_error" and not spot else span
+                            ),
+                        }
                         for it in RUBRIC_ITEMS
                     },
                 }
             )
         return {"verdicts": out}
-    if head.startswith("# Continuity"):
-        return {"handoffs": [], "issues": []}
     if head.startswith("# Translator"):
         segs = None
         for name in ("Segments",):
@@ -228,6 +297,8 @@ def reply_for(prompt, schema):
         "blanks": [quote.split()[0] if quote.split() else "x"],
         "items": [{"text": quote, "passage_id": h, "tier": "correct"}],
         "sentences": ["Alpha is apply.", "Beta is apply."],
+        "handoff": "The learner now knows the cited passage and the case moved one step.",
+        "leftovers": [],
     }
 
 
@@ -264,16 +335,20 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         prompt = str(body.get("input", ""))
+        instructions = str(body.get("instructions", ""))
         schema = body.get("text", {}).get("format", {}).get("schema", {})
         try:
-            r = reply_for(prompt, schema)
+            r = reply_for(prompt, schema, instructions)
             code = 200
             payload = completed(json.dumps(r))
         except Exception as e:
             code = 500
             payload = {"error": {"message": repr(e)}}
         LOG.write(
-            json.dumps({"head": prompt[:25], "code": code, "err": payload.get("error")}) + "\n"
+            json.dumps(
+                {"head": (instructions or prompt)[:25], "code": code, "err": payload.get("error")}
+            )
+            + "\n"
         )
         LOG.flush()
         raw = json.dumps(payload).encode()

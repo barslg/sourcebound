@@ -534,9 +534,7 @@
       "reader": "Reader check",
       "block_teach": "Teaching block",
       "block_example": "Example block",
-      "block_practice": "Practice block",
-      "block_test": "Test block",
-      "block_check": "Check block"
+      "block_exercise": "Exercise block"
     },
     "stoppedAtBlock": "Stopped at block {topic} / {ordinal}"
   },
