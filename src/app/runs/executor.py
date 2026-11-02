@@ -21,7 +21,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.course.handles import address_sort_key, handle_map
-from app.errors import ValidationError
+from app.errors import LLMError, ValidationError
 from app.llm.registry import DEFAULT_MODEL, resolve_step
 from app.runs.stop_text import EMPTY_PLAN, MODEL_DOWN, plain_marker, plain_step_error, plain_stop
 
@@ -2364,6 +2364,36 @@ async def rework_blocks_step(
                     session, run_id=run_id, entry=gen_entry, provider_factory=provider_factory
                 )
                 reworked.append(node)
+            except (ValidationError, LLMError) as exc:
+                # a rewrite the checks reject (no citation, no JSON after the
+                # re-ask) holds THIS block with the reason and the rework goes
+                # on; the 2026-11-02 big course stopped its whole rework step
+                # and left 24 rewritten blocks unread over one such reply
+                await session.rollback()
+                reason = f"the rewrite did not pass the checks: {exc}"[:500]
+                await session.execute(
+                    sa.text(
+                        "UPDATE blocks SET status = 'held', hold_reason = :r"
+                        " WHERE id IN (SELECT b.id FROM blocks b"
+                        " JOIN topics t ON t.id = b.topic_id"
+                        " JOIN modules m ON m.id = t.module_id"
+                        " WHERE m.course_id = :c AND b.plan_node_id = :n)"
+                    ),
+                    {"r": reason, "c": str(course_of_run), "n": node},
+                )
+                await session.execute(
+                    sa.text(
+                        "UPDATE run_steps SET status = 'done', output = CAST(:o AS jsonb),"
+                        " error = NULL, finished_at = now() WHERE run_id = :run AND step_key = :key"
+                    ),
+                    {
+                        "o": json.dumps({"held": True, "hold_reason": reason}),
+                        "run": str(run_id),
+                        "key": failing,
+                    },
+                )
+                await session.commit()
+                continue
             except Exception as exc:
                 # the claimed step must not strand at running: mark it
                 # failed with the marker, then let the driver stop the
