@@ -56,7 +56,7 @@ def carried(text):
 def reply_for(prompt, schema, instructions=""):
     CALLS[0] += 1
     head = (instructions or prompt)[:30]
-    if head.startswith("# Block"):
+    if head.startswith(("# Block", "# Teach writer", "# Example writer", "# Exercise writer")):
         # a real block takes seconds; without this pause a 10-step run ends
         # before the flow spec can observe it running and cancel it
         time.sleep(0.8)

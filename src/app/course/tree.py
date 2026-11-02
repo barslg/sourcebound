@@ -243,11 +243,6 @@ def validate_tree(tree: CourseTree, prescription: dict[str, list[str]]) -> list[
                     errors.append(
                         f"block {block.plan_node_id}: {block.role} brief is a topic, not a question"
                     )
-                if block.role == "example" and not block.example_spec.complete():
-                    errors.append(
-                        f"block {block.plan_node_id}: an example names its input, action"
-                        " and result on the course case"
-                    )
     node_ids = [module.plan_node_id for module in tree.modules]
     node_ids += [topic.plan_node_id for module in tree.modules for topic in module.topics]
     if len(set(node_ids)) != len(node_ids):

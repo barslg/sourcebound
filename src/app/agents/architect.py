@@ -118,6 +118,7 @@ def check_output(
     except PydanticValidationError as exc:
         return [f"schema: {error['loc']}: {error['msg']}" for error in exc.errors()]
     errors = validate_tree(CourseTree(modules=output.modules), prescription)
+    errors += _example_spec_errors(output)
     if module_scope is not None:
         wanted = str(module_scope.get("plan_node_id", ""))
         if len(output.modules) != 1 or output.modules[0].plan_node_id != wanted:
@@ -140,6 +141,22 @@ def check_output(
     block_count = sum(len(topic.blocks) for module in output.modules for topic in module.topics)
     output.estimate_inputs.blocks = block_count
     return errors
+
+
+def _example_spec_errors(output: Any) -> list[str]:
+    """An example the architect plans names its input, action and result on the case.
+
+    Checked on the architect's reply only: a stored plan (author-edited
+    or written before example specs existed) is never refused for it.
+    """
+    return [
+        f"block {block.plan_node_id}: an example names its input, action and result"
+        " on the course case"
+        for module in output.modules
+        for topic in module.topics
+        for block in topic.blocks
+        if block.role == "example" and not block.example_spec.complete()
+    ]
 
 
 def _scope_topic_errors(module: Any, module_scope: dict[str, Any]) -> list[str]:

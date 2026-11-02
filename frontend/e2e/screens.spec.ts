@@ -225,7 +225,7 @@ test('what to fix: held rows show the reason and the passage, and editing the br
   await expect(rows.first()).toContainText('The claim about twenty seconds is not in the cited passage.')
   await expect(rows.first().locator('blockquote')).toContainText('Alcohol rub takes twenty seconds.')
   await expect(rows.first().locator('cite')).toHaveText('para1')
-  await expect(page.getByTestId('fix-batch')).toContainText('Rewrite all held blocks (3, about $0.06)')
+  await expect(page.getByTestId('fix-batch')).toContainText('Rewrite all held blocks (3, about $0.16)')
   await rows.nth(1).getByRole('button', { name: 'Edit' }).click()
   await rows.nth(1).getByLabel('Block brief').fill('A sharper brief written by the author')
   await rows.nth(1).getByRole('button', { name: 'Save' }).click()
