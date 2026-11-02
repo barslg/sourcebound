@@ -116,17 +116,30 @@ def content_terms(text: str) -> list[str]:
     return out
 
 
+_CODE_LIKE_RE = re.compile(r"""[=(){}\[\];]|^["'`]|^\w+\.\w+""")
+
+
 def list_items(passage_text: str) -> list[str]:
     """Numbered or bulleted lines of one passage, without their markers.
 
     A passage that ends a sentence with a colon and continues as a list
     is one claim unit: these items are the part of the claim a teach or
-    example block must carry, not optional decoration.
+    example block must carry, not optional decoration. Lines inside a
+    code fence and items that read as code (brackets, assignments,
+    dotted calls) are not claims a reading must name: the 2026-11-02
+    Muse API course held its first two blocks on
+    `response = client.chat.completions.create(`.
     """
     items: list[str] = []
+    fenced = False
     for line in str(passage_text).splitlines():
+        if line.strip().startswith("```"):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
         match = _BULLET_RE.match(line)
-        if match:
+        if match and not _CODE_LIKE_RE.search(match.group(1).strip()):
             items.append(match.group(1).strip())
     return items
 

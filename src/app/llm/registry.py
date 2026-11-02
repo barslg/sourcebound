@@ -196,7 +196,7 @@ STEPS: dict[str, StepSpec] = {
     "block_teach": StepSpec(model="muse-spark-1.3", effort="medium", max_output_tokens=12000),
     "block_example": StepSpec(model="muse-spark-1.3", effort="medium", max_output_tokens=12000),
     "block_exercise": StepSpec(model="muse-spark-1.3", effort="high", max_output_tokens=12000),
-    "reader": StepSpec(model="muse-spark-1.3", effort="high", max_output_tokens=12000),
+    "reader": StepSpec(model="muse-spark-1.3", effort="high", max_output_tokens=30000),
     "saboteur": StepSpec(model="muse-spark-1.3", effort="medium", max_output_tokens=4000),
     "translator": StepSpec(model="muse-spark-1.3", effort="low", max_output_tokens=8000),
     "tutor": StepSpec(model="muse-spark-1.3", effort="low", max_output_tokens=2000),

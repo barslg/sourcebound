@@ -239,3 +239,17 @@ def test_navigation_headings_are_not_content() -> None:
         "What to read next"
     )
     assert not is_navigation_heading("Muse Code>Install")
+
+
+def test_coverage_ignores_code_lines_and_fenced_blocks() -> None:
+    """A code line is not a claim a reading must name (Muse API course, first two blocks held)."""
+    code_list = (
+        "The call looks like this:\n- response = client.chat.completions.create(\n"
+        '- model="muse-spark-1.3"\n- Allow once: run this stage one time only'
+    )
+    named = "A reading that names allow once: run this stage one time only."
+    assert coverage_holds(named, {"P1": code_list}) == []
+    fenced = "Steps:\n```\n- not an item\n```\n- Reject: deny the whole command"
+    assert coverage_holds("Nothing named.", {"P1": fenced}) == [
+        "coverage: cited passage P1 list item 'Reject' is not named in the block text"
+    ]
