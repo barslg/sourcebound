@@ -146,3 +146,27 @@ def test_a_scoped_module_hands_its_last_topic_over_too() -> None:
     assert _handoff_errors(output, require_last=True) == [
         "through-line: no handoff for topic boundary after 'm1-t2'"
     ]
+
+
+def test_block_ids_are_written_by_code_in_topic_order() -> None:
+    """A module reply that repeats a block id is repaired, never rejected (m3-t3-b1 twice)."""
+    from app.runs.executor import _renumber_blocks
+
+    reply = {
+        "modules": [
+            {
+                "plan_node_id": "m3",
+                "topics": [
+                    {
+                        "plan_node_id": "m3-t3",
+                        "blocks": [{"plan_node_id": "m3-t3-b1"}, {"plan_node_id": "m3-t3-b1"}],
+                    }
+                ],
+            }
+        ]
+    }
+    _renumber_blocks(reply)
+    assert [b["plan_node_id"] for b in reply["modules"][0]["topics"][0]["blocks"]] == [
+        "m3-t3-b1",
+        "m3-t3-b2",
+    ]

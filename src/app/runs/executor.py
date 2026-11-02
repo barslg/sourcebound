@@ -1082,6 +1082,24 @@ def _fill_handoffs_from_notes(reply: dict[str, Any], module_scope: dict[str, Any
             handoffs.append({"topic_plan_node_id": node, "note": note})
 
 
+def _renumber_blocks(reply: dict[str, Any]) -> None:
+    """Block ids are `<topic id>-b<n>` in order, written by code: a reply never duplicates one.
+
+    The 2026-11-02 Muse API plan lost a $0.16 module reply to one repeated
+    block id; nothing at plan time refers to a block id but the tree.
+    """
+    for module in reply.get("modules", []):
+        if not isinstance(module, dict):
+            continue
+        for topic in module.get("topics", []):
+            if not isinstance(topic, dict):
+                continue
+            prefix = str(topic.get("plan_node_id", "")).strip()
+            for index, block in enumerate(topic.get("blocks", []), 1):
+                if isinstance(block, dict) and prefix:
+                    block["plan_node_id"] = f"{prefix}-b{index}"
+
+
 def _declared_handles(uncovered: list[dict[str, Any]]) -> set[str]:
     """Every handle an uncovered list names."""
     return {str(item.get("handle", "")) for item in uncovered if isinstance(item, dict)}
@@ -1137,6 +1155,7 @@ def _rejectable_architect_errors(
     from app.course.tree import ArchitectOutput
 
     _fill_handoffs_from_notes(reply, module_scope)
+    _renumber_blocks(reply)
     errors = architect.check_output(
         reply, prescription, handles, passages=passages, module_scope=module_scope
     )
