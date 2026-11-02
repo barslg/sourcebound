@@ -1831,7 +1831,9 @@ async def generate_block_step(
         # cited passage (its list items) and never join two passages
         # into one paragraph without a handle marker between them.
         role = str(dict(entry.get("skeleton", {})).get("role", ""))
-        if agent in ("block_teach", "block_example") or role in ("teach", "example"):
+        is_reading = agent in ("block_teach", "block_example") or role in ("teach", "example")
+        if is_reading and block_type != "figure":
+            # a figure is drawn from a passage's numbers; its caption is not a reading
             from app.course.grounding import adjacency_holds, coverage_holds
 
             cited_texts = {

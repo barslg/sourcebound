@@ -71,6 +71,14 @@ def test_coverage_holds_a_block_that_stops_at_the_colon_and_passes_one_naming_ev
         "coverage: cited passage P48 list item 'Reject' is not named in the block text",
     ]
     assert coverage_holds(names, {"P48": TRUST}) == []
+    prose_list = (
+        "Before you run the loop:\n- Use a base image that already has the toolchain installed.\n"
+        "- Know the limits of the sandbox before you rely on it.\n- Allowlist"
+    )
+    assert coverage_holds("A paraphrase that names an allowlist.", {"P1": prose_list}) == []
+    assert coverage_holds("A paraphrase without it.", {"P1": prose_list}) == [
+        "coverage: cited passage P1 list item 'Allowlist' is not named in the block text"
+    ], "a short named item is checked by code; prose bullets go to the reader"
 
 
 def test_adjacency_holds_only_where_text_crosses_passages_without_a_marker() -> None:

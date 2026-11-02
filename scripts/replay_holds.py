@@ -189,14 +189,27 @@ def replay(course: dict[str, Any]) -> dict[str, Any]:
     for block in course["blocks"]:
         if not block["version_id"] or block["block_type"] == "spot_the_error":
             continue
+        if not block_text(block) and not block["content"].get("pairs"):
+            continue  # a plan skeleton, nothing generated yet
         text = block_text(block)
+        if not block["citations"]:
+            # a held block has no citation rows: read the handles the generator wrote
+            raw = block["content"].get("citations")
+            if isinstance(block["content"].get("citation"), dict):
+                raw = [block["content"]["citation"]]
+            by_handle = {p["handle"]: p["passage_id"] for p in numbered}
+            block["citations"] = [
+                (by_handle.get(str(c.get("handle", "")), ""), str(c.get("quote", "")))
+                for c in (raw if isinstance(raw, list) else [])
+                if isinstance(c, dict) and by_handle.get(str(c.get("handle", "")))
+            ]
         cited_pids = list(dict.fromkeys(pid for pid, _ in block["citations"]))
         cited_handles = [handle_of.get(pid, "?") for pid in cited_pids]
         cited_texts = {
             handle_of.get(pid, pid): by_id.get(pid, {}).get("text", "") for pid in cited_pids
         }
         holds: list[str] = []
-        if block["role"] in ("teach", "example"):
+        if block["role"] in ("teach", "example") and block["block_type"] != "figure":
             holds += grounding.coverage_holds(text, cited_texts)
             holds += grounding.adjacency_holds(
                 text,

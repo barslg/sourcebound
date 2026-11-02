@@ -177,13 +177,23 @@ def allowed_block_types(passage_text: str) -> tuple[str, ...]:
     )
 
 
+_LABEL_ITEM_WORDS = 6
+
+
 def item_label(item: str) -> tuple[str, str]:
-    """(label, rest) of one list item: the words before a colon, else two content terms."""
+    """(label, rest) of one list item code can check: a colon label, or a short named item.
+
+    A prose bullet ("Use a base image that already has the toolchain")
+    carries no name a word can establish — asking for its words held
+    paraphrases on the 2026-11-02 big course — so it returns an empty
+    label and the reader's coverage item judges it.
+    """
     head, colon, rest = item.partition(":")
-    if colon and len(head.split()) <= 6:
+    if colon and len(head.split()) <= _LABEL_ITEM_WORDS:
         return head.strip(), rest.strip()
-    terms = content_terms(item)
-    return " ".join(terms[:2]), item
+    if len(item.split()) <= _LABEL_ITEM_WORDS:
+        return item.strip(), ""
+    return "", item
 
 
 def _item_carried(item: str, block_norm: str) -> bool:
@@ -249,6 +259,8 @@ def adjacency_holds(block_text: str, citations: list[dict[str, Any]]) -> list[st
     for (start, first), (end, second) in zip(spans, spans[1:], strict=False):
         if first == second:
             continue
+        if "\n\n" in block_text[start:end]:
+            continue  # a paragraph break is a boundary the learner sees
         between = [h for at, h in markers if start < at <= end]
         if second not in between:
             holds.append(
