@@ -51,18 +51,17 @@ def sections_of(passages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not current["preview"] and passage.get("is_content", True):
             current["preview"] = " ".join(str(passage.get("text", "")).split())[:160]
     while len(sections) > MAX_SECTIONS:
-        # merge the smallest section into its neighbour of the same source
-        index = min(range(len(sections)), key=lambda i: sections[i]["chars"])
-        neighbour = (
-            index - 1
-            if index > 0 and sections[index - 1]["source_id"] == sections[index]["source_id"]
-            else index + 1
-        )
-        if (
-            neighbour >= len(sections)
-            or sections[neighbour]["source_id"] != sections[index]["source_id"]
-        ):
-            neighbour = index - 1 if index > 0 else index + 1
+        # merge the smallest section into a neighbour of the same source; a
+        # section never crosses a source (the 2026-11-02 cap glued the end of
+        # one page to the next page and a topic was assigned foreign passages)
+        candidates = [
+            i for i in range(len(sections)) if _same_source_neighbour(sections, i) is not None
+        ]
+        if not candidates:
+            break
+        index = min(candidates, key=lambda i: sections[i]["chars"])
+        neighbour = _same_source_neighbour(sections, index)
+        assert neighbour is not None
         keep, drop = sorted((index, neighbour))
         sections[keep]["handles"] += sections[drop]["handles"]
         sections[keep]["chars"] += sections[drop]["chars"]
@@ -71,6 +70,16 @@ def sections_of(passages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for number, section in enumerate(sections, 1):
         section["id"] = f"S{number}"
     return sections
+
+
+def _same_source_neighbour(sections: list[dict[str, Any]], index: int) -> int | None:
+    """The previous section of the same source, else the next, else None."""
+    source = sections[index]["source_id"]
+    if index > 0 and sections[index - 1]["source_id"] == source:
+        return index - 1
+    if index + 1 < len(sections) and sections[index + 1]["source_id"] == source:
+        return index + 1
+    return None
 
 
 def public_sections(sections: list[dict[str, Any]]) -> list[dict[str, Any]]:

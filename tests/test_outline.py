@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from app.agents.architect import _handoff_errors
 from app.agents.outline import check_output
 from app.course.sections import module_handles, sections_of
@@ -170,3 +172,38 @@ def test_block_ids_are_written_by_code_in_topic_order() -> None:
         "m3-t3-b1",
         "m3-t3-b2",
     ]
+
+
+def test_sections_never_merge_across_sources_and_small_stubs_join_their_own_page() -> None:
+    """The 2026-11-02 Muse API course: the section cap glued the end of the
+    error-handling page to the whole reasoning page (S32 = P637..P664), so a
+    monitoring topic was assigned reasoning passages and held on coverage."""
+    from app.course import sections as sections_module
+
+    def _passages(source: str, headings: list[tuple[str, int]]) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for heading, count in headings:
+            for index in range(1, count + 1):
+                out.append(
+                    {
+                        "handle": f"P{len(out) + 1}-{source}",
+                        "source_id": source,
+                        "address": f"h:{heading}/para{index}",
+                        "text": "x" * 20,
+                    }
+                )
+        return out
+
+    passages = _passages("a", [("Errors>Retry", 3), ("Errors>Monitoring", 2)]) + _passages(
+        "b", [("Reasoning", 1)]
+    )
+    old_cap = sections_module.MAX_SECTIONS
+    sections_module.MAX_SECTIONS = 2
+    try:
+        result = sections_module.sections_of(passages)
+    finally:
+        sections_module.MAX_SECTIONS = old_cap
+    for section in result:
+        sources = {h.rsplit("-", 1)[1] for h in section["handles"]}
+        assert len(sources) == 1, f"{section['id']} spans sources {sources}"
+    assert len(result) == 2, [s["title"] for s in result]
