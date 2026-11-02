@@ -225,9 +225,9 @@ async def submit_plan(
         raise ValidationError("queries must be a non-empty list of non-empty strings")
     if await _approved_passage_count(session, course_id=course_id) == 0:
         raise UnprocessableError("Add and approve at least one source before building a plan.")
-    tree_errors = await _invalid_tree_errors(session, course_id=course_id)
-    if tree_errors:
-        raise UnprocessableError("the plan is invalid: " + "; ".join(tree_errors))
+    # an invalid stored plan is no reason to refuse a new plan: the run replaces the
+    # tree, and re-planning is the author's way out of a plan a newer rule rejects
+    # (the Muse API course was locked out on 2026-11-02 by the reading-role rule)
     return await _submit(
         session,
         actor=actor,
