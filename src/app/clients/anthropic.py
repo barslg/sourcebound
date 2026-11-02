@@ -53,18 +53,19 @@ def build_anthropic_body(
     prompt_cache_key: str | None = None,
     effort: str = "medium",
     max_output_tokens: int = 4096,
+    instructions: str | None = None,
+    safety_identifier: str | None = None,
 ) -> dict[str, Any]:
     """The exact kwargs sent to messages.create; the provider hashes this same dict.
 
-    `prompt_cache_key` has no keyed equivalent here: a set key marks the
-    prompt block cacheable (prefix caching), an unset key sends no marker.
-    `background` is accepted for signature parity and ignored: calls are
-    always synchronous.
+    `instructions` is the system prompt; `prompt_cache_key` has no keyed
+    equivalent here: a set key marks the system block (or, without one,
+    the prompt block) cacheable, an unset key sends no marker.
+    `safety_identifier` becomes `metadata.user_id`. `background` is
+    accepted for signature parity and ignored: calls are synchronous.
     """
     block: dict[str, Any] = {"type": "text", "text": prompt}
-    if prompt_cache_key is not None:
-        block["cache_control"] = {"type": "ephemeral"}
-    return {
+    body: dict[str, Any] = {
         "model": model,
         "max_tokens": max_output_tokens,
         "messages": [{"role": "user", "content": [block]}],
@@ -73,6 +74,16 @@ def build_anthropic_body(
             "format": {"type": "json_schema", "schema": to_anthropic_schema(schema)},
         },
     }
+    if instructions:
+        system: dict[str, Any] = {"type": "text", "text": instructions}
+        if prompt_cache_key is not None:
+            system["cache_control"] = {"type": "ephemeral"}
+        body["system"] = [system]
+    elif prompt_cache_key is not None:
+        block["cache_control"] = {"type": "ephemeral"}
+    if safety_identifier:
+        body["metadata"] = {"user_id": safety_identifier}
+    return body
 
 
 class AnthropicClient:
@@ -90,9 +101,15 @@ class AnthropicClient:
         if secret is None or not secret.get_secret_value():
             raise ConfigurationError("ANTHROPIC_API_KEY is not set")
         self._settings = resolved
+        headers = (
+            {"anthropic-workspace-id": resolved.anthropic_workspace_id}
+            if resolved.anthropic_workspace_id
+            else None
+        )
         self._client: AsyncAnthropic = AsyncAnthropic(
             base_url=resolved.anthropic_api_base_url,
             api_key=secret.get_secret_value(),
+            default_headers=headers,
             timeout=httpx2.Timeout(
                 connect=resolved.llm_connect_timeout_s,
                 read=resolved.llm_read_timeout_s,
@@ -114,6 +131,8 @@ class AnthropicClient:
         prompt_cache_key: str | None = None,
         effort: str = "medium",
         max_output_tokens: int = 4096,
+        instructions: str | None = None,
+        safety_identifier: str | None = None,
     ) -> LLMResponse:
         """Generate one strict-JSON object; retries per policy, then LLMError."""
         from anthropic import APIConnectionError, APIStatusError
@@ -126,6 +145,8 @@ class AnthropicClient:
             prompt_cache_key=prompt_cache_key,
             effort=effort,
             max_output_tokens=max_output_tokens,
+            instructions=instructions,
+            safety_identifier=safety_identifier,
         )
         attempt = 0
         while True:

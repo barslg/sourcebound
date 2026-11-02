@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     model_provider: Literal["meta", "anthropic"] = "meta"
     anthropic_api_key: SecretStr | None = None
     anthropic_api_base_url: str = "https://api.anthropic.com"
+    anthropic_workspace_id: str = ""
     llm_default_model: str = "muse-spark-1.3"
     llm_dev_mode: bool = False
     llm_spend_ceiling_usd: float = 5.0
