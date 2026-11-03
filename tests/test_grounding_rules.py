@@ -316,3 +316,63 @@ def test_an_assigned_passage_neither_cited_nor_declared_is_a_coverage_hold() -> 
         == []
     )
     assert assignment_holds([], cited=[], leftovers=[]) == [], "no assignment, nothing to hold"
+
+
+WRAPPED = (
+    "You are the engineer on a new HTTP reverse proxy + load balancer. Build it in\n"
+    "TypeScript using only Node.js built-in modules plus the existing vitest tooling."
+)
+
+
+def test_a_quote_that_differs_from_its_passage_only_in_whitespace_is_verbatim() -> None:
+    """P1515 of the Muse API course wraps mid-sentence; the writer quoted it with a space.
+
+    The exact-containment check held m6-t3-b1 for that (2026-11-03, 15 of
+    the course's 3,904 citations): whitespace is not the writer's claim.
+    A transposed bracket or a missing word still is.
+    """
+    from app.course.grounding import locate_verbatim
+
+    start = WRAPPED.index("Build it in")
+    assert locate_verbatim(WRAPPED, "Build it in TypeScript using only") == (
+        start,
+        start + len("Build it in\nTypeScript using only"),
+    )
+    assert locate_verbatim(WRAPPED, "Build it in\nTypeScript") == (start, start + 22)
+    assert locate_verbatim(WRAPPED, "Build it in  TypeScript") == (start, start + 22)
+    assert locate_verbatim(WRAPPED, "Build it TypeScript") is None
+    assert (
+        locate_verbatim('tools=[{"type": "web_search"}]:', 'tools=[{"type": "web_search"]}:')
+        is None
+    )
+    assert locate_verbatim(WRAPPED, "") is None
+    assert locate_verbatim(WRAPPED, "   ") is None
+
+
+def test_replay_accepts_a_stored_quote_that_wraps_differently_from_its_passage() -> None:
+    """The offline replay judges a quote the way the executor does: by words, not line breaks."""
+    from app.course.replay import replay_blocks
+
+    numbered = [{"passage_id": "p1", "handle": "P1", "text": WRAPPED, "merged_ids": []}]
+    block = {
+        "id": "b",
+        "node": "m1-t1-b1",
+        "role": "teach",
+        "block_type": "reading",
+        "status": "held",
+        "hold_reason": "",
+        "version_id": "v1",
+        "content": {"body": "⟦P1⟧ Build it in TypeScript using only Node.js built-in modules."},
+        "answer_key": {},
+        "topic": "m1-t1",
+        "topic_kind": "core",
+        "topic_title": "Proxy",
+        "objectives": [],
+        "plan_content": {"source_handles": ["P1"]},
+        "citations": [("p1", "Build it in TypeScript using only")],
+    }
+    rows = replay_blocks([block], numbered)
+    assert [h for h in rows[0]["holds"] if h.startswith("quote is not verbatim")] == []
+    block["citations"] = [("p1", "Build it TypeScript")]
+    rows = replay_blocks([block], numbered)
+    assert rows[0]["holds"] == ["quote is not verbatim in its passage (P1)"]

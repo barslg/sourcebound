@@ -107,6 +107,27 @@ def normalize(text: str) -> str:
     return " ".join(str(text).lower().split())
 
 
+def locate_verbatim(passage_text: str, quote: str) -> tuple[int, int] | None:
+    """Where a quote stands in its passage, or None when the words are not there.
+
+    Exact containment first; else the same words with any run of
+    whitespace between them (a passage wraps mid-sentence, the writer
+    quotes it on one line). The span returned is the passage's own
+    text, so a stored quote is always verbatim. Every character
+    difference beyond whitespace keeps the quote a paraphrase.
+    """
+    if not quote.strip():
+        return None
+    at = passage_text.find(quote)
+    if at >= 0:
+        return at, at + len(quote)
+    pattern = r"\s+".join(re.escape(word) for word in quote.split())
+    found = re.search(pattern, passage_text)
+    if found is None:
+        return None
+    return found.start(), found.end()
+
+
 def content_terms(text: str) -> list[str]:
     """Content words of a text: length >= 4, no stopwords, in order."""
     out: list[str] = []

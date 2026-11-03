@@ -20,6 +20,7 @@ from uuid import UUID
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.course.grounding import locate_verbatim
 from app.course.handles import address_sort_key, handle_map
 from app.errors import LLMError, ValidationError
 from app.llm.registry import resolve_step
@@ -399,13 +400,15 @@ def verify_citations(citations: list[dict[str, Any]], passages: dict[str, str]) 
         text = passages.get(passage_id, "")
         quote = str(citation.get("quote", ""))
         claim = str(citation.get("claim_path", "?"))
-        if not quote or quote not in text:
+        span = locate_verbatim(text, quote)
+        if span is None:
             holds.append(f"claim {claim}: quote is not verbatim in its passage")
             continue
-        start = text.index(quote)
-        if int(citation.get("quote_start", start)) != start or int(
-            citation.get("quote_end", start + len(quote))
-        ) != start + len(quote):
+        start, end = span
+        if (
+            int(citation.get("quote_start", start)) != start
+            or int(citation.get("quote_end", end)) != end
+        ):
             holds.append(f"claim {claim}: quote offsets do not match the passage")
     return holds
 
@@ -2000,22 +2003,27 @@ async def generate_block_step(
         resolved_citations: list[dict[str, Any]] = []
         citation_pids: list[str] = []
         cited_handles: list[str] = []
+        handle_of_pid = {pid: handle for handle, pid in handle_to_passage.items()}
         for cit in output.get("citations", []):
             handle = str(cit.get("passage_id", ""))
             pid = handle_to_passage.get(handle, handle)
             quote = str(cit.get("quote", ""))
             passage_text = stored.get(pid, "")
-            if not quote or quote not in passage_text:
-                holds.append(f"quote is not verbatim in its passage ({handle})")
+            span = locate_verbatim(passage_text, quote)
+            if span is None:
+                holds.append(
+                    _misplaced_quote_line(handle, quote, stored=stored, handle_of_pid=handle_of_pid)
+                )
             else:
-                start = passage_text.index(quote)
-                # stored content carries the public handle only, never a UUID
+                start, end = span
+                # stored content carries the public handle only, never a UUID;
+                # the quote is the passage's own span (whitespace as the passage has it)
                 resolved_citations.append(
                     {
                         "handle": handle,
-                        "quote": quote,
+                        "quote": passage_text[start:end],
                         "quote_start": start,
-                        "quote_end": start + len(quote),
+                        "quote_end": end,
                     }
                 )
                 citation_pids.append(pid)
@@ -2185,6 +2193,27 @@ def _assigned_handles(plan: dict[str, Any]) -> dict[str, list[str]]:
                         str(h) for h in block.get("source_handles", []) if h
                     ]
     return out
+
+
+def _misplaced_quote_line(
+    handle: str, quote: str, *, stored: dict[str, str], handle_of_pid: dict[str, str]
+) -> str:
+    """The non-verbatim hold, naming the one passage that does carry the quote.
+
+    8 of the Muse API course's 3,904 citations (2026-11-03) were real words
+    under the wrong handle; the writer fixes a handle only when told which.
+    """
+    line = f"quote is not verbatim in its passage ({handle})"
+    owners = sorted(
+        {
+            handle_of_pid[pid]
+            for pid, text in stored.items()
+            if pid in handle_of_pid and locate_verbatim(text, quote) is not None
+        }
+    )
+    if len(owners) == 1 and owners[0] != handle:
+        return f"{line}; it is verbatim in {owners[0]}: cite that handle"
+    return line
 
 
 def _hold_line(item_id: str, item: dict[str, Any]) -> str:

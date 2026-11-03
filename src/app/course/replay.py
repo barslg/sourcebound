@@ -152,7 +152,10 @@ def replay_blocks(
                 generator_output(block), taught_texts, block["block_type"]
             )
         for pid, quote in citations:
-            if quote and quote not in by_id.get(pid, {}).get("text", ""):
+            if (
+                quote
+                and grounding.locate_verbatim(by_id.get(pid, {}).get("text", ""), quote) is None
+            ):
                 holds.append(f"quote is not verbatim in its passage ({handle_of.get(pid, '?')})")
         rows.append(
             {
