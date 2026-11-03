@@ -376,3 +376,32 @@ def test_replay_accepts_a_stored_quote_that_wraps_differently_from_its_passage()
     block["citations"] = [("p1", "Build it TypeScript")]
     rows = replay_blocks([block], numbered)
     assert rows[0]["holds"] == ["quote is not verbatim in its passage (P1)"]
+
+
+QUOTED_STATE = (
+    "Prompt the model to keep an explicit running state. Verbatim from the run, trimmed:\n"
+    "# HTTP Reverse Proxy + Load Balancer — Working Memory\n"
+    "## Goal\n"
+    "Build a proxy in TypeScript using only Node.js built-ins.\n"
+    "## Key Decisions\n"
+    "- Node built-in `http`/`https` only, no Express.\n"
+    "- CircuitBreaker: CLOSED/OPEN/HALF_OPEN, failure threshold, cooldown.\n"
+    "- Router: host + path prefix matching, longest-prefix wins.\n"
+)
+
+
+def test_a_quoted_document_inside_a_passage_is_an_illustration_not_a_claim_list() -> None:
+    """P1520 of the Muse API course quotes a STATE.md file; its bullets are the file, not claims.
+
+    The coverage check held m6-t3-b1 fifteen times over three rewrites for
+    not naming CircuitBreaker and Router — requirements of the sample
+    project, not what the passage teaches. A passage that embeds a
+    document (a markdown heading inside its text) carries no list items
+    for code; the reader's coverage item still judges it.
+    """
+    from app.course.grounding import list_items
+
+    assert list_items(QUOTED_STATE) == []
+    assert coverage_holds("We keep a STATE.md running state.", {"P1520": QUOTED_STATE}) == []
+    plain = "The top level carries:\n- sessions: one summary per stream\n- events: one per line"
+    assert list_items(plain) == ["sessions: one summary per stream", "events: one per line"]

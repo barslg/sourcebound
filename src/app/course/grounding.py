@@ -137,6 +137,7 @@ def content_terms(text: str) -> list[str]:
     return out
 
 
+_DOC_HEADING_RE = re.compile(r"(?:^|\n)#{1,6} \S")
 _CODE_LIKE_RE = re.compile(r"""[=(){}\[\];]|^["'`]|^\w+\.\w+""")
 
 
@@ -151,6 +152,11 @@ def list_items(passage_text: str) -> list[str]:
     Muse API course held its first two blocks on
     `response = client.chat.completions.create(`.
     """
+    if _DOC_HEADING_RE.search(str(passage_text)):
+        # a passage that embeds a document (a STATE.md, a rules file) quotes
+        # it as an illustration: its bullets are the file's, not the claim's
+        # (P1520 of the Muse API course, 15 holds over three rewrites)
+        return []
     items: list[str] = []
     fenced = False
     for line in str(passage_text).splitlines():
