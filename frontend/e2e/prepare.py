@@ -95,7 +95,16 @@ def seed_tree(prefix: str) -> Any:
         {
             "modules": [
                 module("m1", "Foundations", [topic("t1", "Basics"), topic("t2", "Terms")]),
-                module("m2", "Practice", [topic("t3", "Drills")]),
+                module(
+                    "m2",
+                    "Practice",
+                    [
+                        topic(
+                            "t3",
+                            "Drills for ward staff who move between patients and their surroundings all day",
+                        )
+                    ],
+                ),
             ]
         }
     )
@@ -368,7 +377,7 @@ async def seed_learn(session: AsyncSession, owner: str) -> dict[str, str]:
     )
     await session.execute(
         sa.text(
-            "UPDATE passages SET address = jsonb_set(address, '{heading_path}', '[\"Hand hygiene\"]')"
+            "UPDATE passages SET address = jsonb_set(address, '{heading_path}', '\"Hand hygiene>Rub or wash\"')"
             " WHERE source_id IN (SELECT source_id FROM course_sources WHERE course_id = :c)"
         ),
         {"c": str(cid)},
@@ -425,6 +434,7 @@ async def seed_learn(session: AsyncSession, owner: str) -> dict[str, str]:
     content, key = fx("reading")
     content["body"] = (
         "Hands are rubbed with alcohol for twenty seconds when they are not visibly soiled."
+        "\n\nSoap and water takes forty seconds and is the method when they are."
     )
     content["citations"] = public(chips[:1])
     add("reading", "teach", "t1", content, key, chips[:1])
@@ -540,7 +550,7 @@ async def seed_learn(session: AsyncSession, owner: str) -> dict[str, str]:
                     TopicNode(
                         plan_node_id=f"t1-{suffix}",
                         kind="lesson",
-                        title="Rub or wash",
+                        title="Rub or wash: choosing the method for hands that are not visibly soiled",
                         objectives=["Choose the method"],
                         through_line_note="c",
                         blocks=[skeleton(x) for x in topics["t1"]],
