@@ -6,9 +6,13 @@ Format — [Keep a Changelog](https://keepachangelog.com/). Versioning — [SemV
 
 ### Added
 
-- Deploy path: a Cloudflare Pages Function (`frontend/functions/api/[[path]].ts`)
-  proxies `/api/*` to `API_ORIGIN`, so the static frontend, the session cookie
-  and the CSRF token share one origin; compose passes `APP_ENV` from `.env`
+- Public-repository hygiene: `SECURITY.md` (private vulnerability reporting),
+  `.github/CODEOWNERS`, weekly Dependabot updates for uv, npm and GitHub
+  Actions, and a read-only workflow token in CI. (2026-11-04)
+
+- Deploy path: a Cloudflare Worker (`frontend/wrangler.jsonc`, `frontend/worker/index.ts`)
+  serves the static build and proxies `/api/*` to `API_ORIGIN`, so the frontend,
+  the session cookie and the CSRF token share one origin; compose passes `APP_ENV` from `.env`
   and binds Postgres to the host's loopback. README gains a Deploy section.
   (2026-11-04)
 

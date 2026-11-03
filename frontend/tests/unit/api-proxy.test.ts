@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { onRequest } from '../../functions/api/[[path]]'
+import { proxyApi } from '../../worker/index'
 
 type Upstream = { request: Request; init: RequestInit | undefined }
 
@@ -20,10 +20,10 @@ function only(calls: Upstream[]): Upstream {
 
 afterEach(() => vi.unstubAllGlobals())
 
-describe('the /api proxy of the Pages site', () => {
+describe('the /api proxy of the Workers site', () => {
   it('answers 503 and names the missing variable when API_ORIGIN is not set', async () => {
     const calls = stubUpstream(new Response('never'))
-    const res = await onRequest({ request: new Request('https://site.example.org/api/v1/auth/me'), env: {} })
+    const res = await proxyApi(new Request('https://site.example.org/api/v1/auth/me'), {})
     expect(res.status).toBe(503)
     expect(await res.text()).toContain('API_ORIGIN')
     expect(calls).toHaveLength(0)
@@ -36,7 +36,7 @@ describe('the /api proxy of the Pages site', () => {
       headers: { cookie: '__Host-muse_session=abc', 'x-csrf-token': 't1', 'content-type': 'application/json' },
       body: '{"title":"x"}',
     })
-    const res = await onRequest({ request, env: { API_ORIGIN: 'https://api.example.org' } })
+    const res = await proxyApi(request, { API_ORIGIN: 'https://api.example.org' })
     const sent = only(calls).request
     expect(sent.url).toBe('https://api.example.org/api/v1/courses?page=2')
     expect(sent.method).toBe('POST')
@@ -51,10 +51,7 @@ describe('the /api proxy of the Pages site', () => {
 
   it('hands the sign-in redirect back to the browser instead of following it', async () => {
     const calls = stubUpstream(new Response(null, { status: 302, headers: { location: 'https://accounts.example.org/o/oauth2/auth?state=s' } }))
-    const res = await onRequest({
-      request: new Request('https://site.example.org/api/v1/auth/login'),
-      env: { API_ORIGIN: 'https://api.example.org/' },
-    })
+    const res = await proxyApi(new Request('https://site.example.org/api/v1/auth/login'), { API_ORIGIN: 'https://api.example.org/' })
     const sent = only(calls)
     expect(sent.init?.redirect).toBe('manual')
     expect(sent.request.url).toBe('https://api.example.org/api/v1/auth/login')

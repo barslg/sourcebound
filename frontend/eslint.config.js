@@ -34,5 +34,5 @@ export default tseslint.config(
       'vue/html-closing-bracket-newline': 'off',
     },
   },
-  { files: ['src/api/**', 'functions/**', 'tests/**', 'e2e/**'], rules: { 'no-restricted-globals': 'off', 'no-restricted-properties': 'off' } },
+  { files: ['src/api/**', 'worker/**', 'tests/**', 'e2e/**'], rules: { 'no-restricted-globals': 'off', 'no-restricted-properties': 'off' } },
 )
