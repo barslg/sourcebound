@@ -347,7 +347,7 @@ class MetaClient:
                 response = await self._client.responses.retrieve(response_id)
             except APIConnectionError as exc:
                 if time.monotonic() >= deadline:
-                    raise LLMError("background response polling timed out") from exc
+                    raise LLMError(f"background response {response_id} polling timed out") from exc
                 await asyncio.sleep(max(min(2.0, deadline - time.monotonic()), 0))
                 continue
             except APIStatusError as exc:
@@ -364,7 +364,7 @@ class MetaClient:
             if response.status in ("failed", "cancelled"):
                 raise LLMError(f"background response ended as {response.status}")
             if time.monotonic() >= deadline:
-                raise LLMError("background response polling timed out")
+                raise LLMError(f"background response {response_id} polling timed out")
             await asyncio.sleep(max(min(2.0, deadline - time.monotonic()), 0))
 
     @staticmethod

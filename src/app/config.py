@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     api_port: int = 8000
     llm_connect_timeout_s: float = 10.0
     llm_read_timeout_s: float = 120.0
-    llm_poll_timeout_s: float = 600.0
+    llm_poll_timeout_s: float = 1800.0
     google_oauth_client_id: str = ""
     google_oauth_client_secret: SecretStr | None = None
     session_secret_key: SecretStr | None = None

@@ -556,7 +556,7 @@
       "accept": "Block accepted.",
       "edit": "Block saved.",
       "batch": "Rewrite of all held blocks queued.",
-      "recheck": "Re-check done: {released} released, {held} still held."
+      "recheck": "Re-check done: {released} released, {unread} back to draft for a reading, {held} still held."
     },
     "recheck": "Re-check held blocks",
     "batch": "Rewrite all held blocks ({count}, about {price})",

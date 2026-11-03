@@ -1172,14 +1172,21 @@ def _edited(inner: Any, edit: Any) -> Any:
 async def _smoke_run(
     session: AsyncSession, demo: dict[str, Any], dag: list[dict[str, Any]], handler: Any
 ) -> dict[str, Any]:
-    from app.db import create_session_factory
     from app.runs import executor
 
-    settings = _gen_settings()
     run_id = await executor.new_run(
         session, course_id=demo["course_id"], kind="generation", dag=dag
     )
     await session.commit()
+    return await _smoke_drive(run_id, handler)
+
+
+async def _smoke_drive(run_id: UUID, handler: Any) -> dict[str, Any]:
+    """Drive (or resume) one generation run against the mock model."""
+    from app.db import create_session_factory
+    from app.runs import executor
+
+    settings = _gen_settings()
     ledger = create_session_factory(_db_url())
     http = guarded_client(settings, inner=httpx2.MockTransport(handler))
     return await executor.drive_run(
@@ -1914,8 +1921,9 @@ async def test_recheck_releases_a_hold_the_current_checks_no_longer_find(
     (a hold the current checks still find). Recheck releases b1 only, keeps b2's
     line and replaces b3's with what the check finds today. Then, with b3's
     topic read step gone, a clean b3 stays held (no verdict on this version),
-    and b1 held on a non-verbatim quote stays held: stored content cannot
-    prove that line either way.
+    a clean b3 goes back to draft (no verdict on this version: the rework's
+    reread picks it up), and b1 held on a non-verbatim quote stays held:
+    stored content cannot prove that line either way.
     """
     from app.services.recheck import recheck_held
 
@@ -1974,7 +1982,7 @@ async def test_recheck_releases_a_hold_the_current_checks_no_longer_find(
     assert blocks["b3"][0] == "held" and blocks["b3"][1].startswith(
         "quote is not verbatim in its passage"
     ), blocks["b3"]
-    assert result == {"rechecked": 3, "released": 1, "held": 2}, result
+    assert result == {"rechecked": 3, "released": 1, "unread": 0, "held": 2}, result
     accepted = (
         await t03_session.execute(
             sa.text("SELECT accepted_version_id = current_version_id FROM blocks" + block_sql),
@@ -1997,9 +2005,9 @@ async def test_recheck_releases_a_hold_the_current_checks_no_longer_find(
     result = await recheck_held(t03_session, course_id=demo["course_id"])
     await t03_session.commit()
     blocks = await _smoke_blocks(t03_session, demo["course_id"])
-    assert blocks["b3"] == ("held", old), blocks["b3"]
+    assert blocks["b3"] == ("draft", ""), blocks["b3"]
     assert blocks["b1"] == ("held", dropped), blocks["b1"]
-    assert result == {"rechecked": 3, "released": 0, "held": 3}, result
+    assert result == {"rechecked": 3, "released": 0, "unread": 1, "held": 2}, result
 
 
 async def test_generation_keeps_a_writer_leftover_with_the_block(
@@ -2033,3 +2041,81 @@ async def test_generation_keeps_a_writer_leftover_with_the_block(
         )
     ).scalar_one()
     assert stored == [leftover], stored
+
+
+async def test_rework_resume_reads_a_draft_the_failed_pass_left_unread(
+    t03_session: AsyncSession,
+) -> None:
+    """A rewrite whose reread never ran is read on resume, not left draft or re-paid.
+
+    The 2026-11-03 Muse API course: the rework pass rewrote 23 blocks, then a
+    reread timed out; on resume the rework recomputed its named list from the
+    blocks held NOW, so the 23 drafts had no reader and the run could only
+    stop again on the no-draft gate. The reread set is every topic with a
+    draft block; the reader prompt carries the block text, so a reread of
+    changed content never reuses an older verdict.
+    """
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-rework-resume")
+    final = await _smoke_run(t03_session, demo, dag, demo_t05.mock_demo_handler())
+    assert final["status"] == "done", final["stop_marker"]
+    course = str(demo["course_id"])
+    run_id = UUID(str(final["id"]))
+    topic = (
+        await t03_session.execute(
+            sa.text(
+                "SELECT t.plan_node_id FROM blocks b JOIN topics t ON t.id = b.topic_id"
+                " JOIN modules m ON m.id = t.module_id"
+                " WHERE m.course_id = :c AND b.plan_node_id = 'b1'"
+            ),
+            {"c": course},
+        )
+    ).scalar_one()
+    await t03_session.execute(
+        sa.text(
+            "UPDATE blocks SET status = 'draft', hold_reason = NULL, accepted_version_id = NULL"
+            " WHERE id IN (SELECT b.id FROM blocks b JOIN topics t ON t.id = b.topic_id"
+            " JOIN modules m ON m.id = t.module_id"
+            " WHERE m.course_id = :c AND b.plan_node_id = 'b1')"
+        ),
+        {"c": course},
+    )
+    await t03_session.execute(
+        sa.text(
+            "UPDATE run_steps SET status = 'failed', error = 'LLMError: polling timed out'"
+            " WHERE run_id = :run AND step_key = 'rework:named-blocks'"
+        ),
+        {"run": str(run_id)},
+    )
+    await t03_session.execute(
+        sa.text("UPDATE runs SET status = 'stopped' WHERE id = :run"), {"run": str(run_id)}
+    )
+    await t03_session.commit()
+    before = await demo_t05.paid_by_step(t03_session, run_id=run_id)
+    held_before = sorted(
+        node
+        for node, (status, _) in (await _smoke_blocks(t03_session, demo["course_id"])).items()
+        if status == "held"
+    )
+    resumed = await _smoke_drive(run_id, demo_t05.mock_demo_handler())
+    assert resumed["status"] == "done", resumed["stop_marker"]
+    after = await demo_t05.paid_by_step(t03_session, run_id=run_id)
+    blocks = await _smoke_blocks(t03_session, demo["course_id"])
+    assert blocks["b1"] == ("accepted", ""), blocks["b1"]
+    reader_key = f"reader:{topic}"
+    assert after[reader_key]["paid"] == before[reader_key]["paid"] + 1, (before, after)
+    # the draft is read, not rewritten: only a still-held block may pay a writer again
+    writers = sorted(
+        k.partition(":")[2] for k in after if k.startswith("block_") and after[k] != before.get(k)
+    )
+    assert not set(writers) - set(held_before), (writers, held_before)
+    rework = (
+        await t03_session.execute(
+            sa.text(
+                "SELECT output FROM run_steps WHERE run_id = :run"
+                " AND step_key = 'rework:named-blocks'"
+            ),
+            {"run": str(run_id)},
+        )
+    ).scalar_one()
+    assert str(topic) in rework["reread_topics"], rework
+    assert sorted(rework["reworked"]) == held_before, (rework, held_before)

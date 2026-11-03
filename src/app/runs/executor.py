@@ -2425,6 +2425,23 @@ async def _version_count(session: AsyncSession, *, course_id: str, node: str) ->
     )
 
 
+async def _held_blocks(session: AsyncSession, *, run_id: UUID) -> tuple[list[str], dict[str, str]]:
+    """Plan node ids and reasons of the blocks held in the run's course."""
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT plan_node_id, hold_reason FROM blocks WHERE status = 'held'"
+                " AND topic_id IN (SELECT t.id FROM topics t"
+                " JOIN modules m ON m.id = t.module_id"
+                " JOIN runs r ON r.course_id = m.course_id WHERE r.id = :run)"
+                " ORDER BY plan_node_id"
+            ),
+            {"run": str(run_id)},
+        )
+    ).all()
+    return [str(r[0]) for r in rows], {str(r[0]): str(r[1] or "") for r in rows}
+
+
 async def rework_blocks_step(
     session: AsyncSession,
     *,
@@ -2432,29 +2449,30 @@ async def rework_blocks_step(
     entry: dict[str, Any],
     provider_factory: Callable[[AsyncSession], Any],
 ) -> None:
-    """Rework only named blocks, with the hold reason in the prompt."""
+    """Rework the held blocks, with the hold reason in the prompt.
+
+    Order: the current code checks run over the held blocks first ($0: a
+    hold from a check fixed since the write is not a reason to pay), then
+    what is still held is rewritten, then every topic with a draft block is
+    read again: the rewrites of this pass and any draft an earlier, stopped
+    pass left unread.
+    """
+    from app.services.recheck import recheck_held
+
     step_key = str(entry["step_key"])
     named = [str(n) for n in entry.get("named", [])]
+    course_of_run = await run_course_id(session, run_id=run_id)
     if not named:
-        # named = blocks the reader held in this run
-        rows = (
-            await session.execute(
-                sa.text(
-                    "SELECT plan_node_id, hold_reason FROM blocks WHERE status = 'held'"
-                    " AND topic_id IN (SELECT t.id FROM topics t"
-                    " JOIN modules m ON m.id = t.module_id"
-                    " JOIN runs r ON r.course_id = m.course_id WHERE r.id = :run)"
-                ),
-                {"run": str(run_id)},
-            )
-        ).all()
-        named = [str(r[0]) for r in rows]
-        reasons = {str(r[0]): str(r[1] or "") for r in rows}
+        named, reasons = await _held_blocks(session, run_id=run_id)
     else:
         reasons = {str(k): str(v) for k, v in dict(entry.get("reasons", {})).items()}
     digest = input_digest_of({"kind": "rework", "named": named, "reasons": reasons})
     claim = await claim_step(session, run_id=run_id, step_key=step_key, input_digest=digest)
     if claim["reused_output"] is None:
+        if course_of_run is not None and not entry.get("named"):
+            await recheck_held(session, course_id=course_of_run)
+            await session.commit()
+            named, reasons = await _held_blocks(session, run_id=run_id)
         dag_row = (
             await session.execute(
                 sa.text("SELECT compiled_dag FROM runs WHERE id = :run"), {"run": str(run_id)}
@@ -2471,7 +2489,6 @@ async def rework_blocks_step(
             for e in (dag_list or [])
             if isinstance(e, dict) and str(e.get("handler", "")) == "saboteur"
         }
-        course_of_run = await run_course_id(session, run_id=run_id)
         reworked = []
         for node in named:
             original = originals.get(node)
@@ -2555,19 +2572,21 @@ async def rework_blocks_step(
                 )
                 await session.commit()
                 raise
-        # every reworked block is read again before the run ends
+        # every reworked block, and every draft an earlier pass left
+        # unread, is read again before the run ends
         reread_topics: list[str] = []
-        if reworked:
-            course = await run_course_id(session, run_id=run_id)
+        if course_of_run is not None:
             topic_rows = (
                 await session.execute(
                     sa.text(
                         "SELECT DISTINCT t.plan_node_id FROM blocks b"
                         " JOIN topics t ON t.id = b.topic_id"
                         " JOIN modules m ON m.id = t.module_id"
-                        " WHERE m.course_id = :c AND b.plan_node_id = ANY(:nodes)"
+                        " WHERE m.course_id = :c"
+                        " AND (b.status = 'draft' OR b.plan_node_id = ANY(:nodes))"
+                        " ORDER BY t.plan_node_id"
                     ),
-                    {"c": str(course), "nodes": reworked},
+                    {"c": str(course_of_run), "nodes": reworked},
                 )
             ).all()
             reader_entries = {

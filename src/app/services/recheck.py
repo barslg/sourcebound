@@ -4,7 +4,9 @@ A check fixed after a run is not a reason to pay for a rewrite: the block is
 the same, only the judge changed. `recheck_held` recomputes every code hold
 over the held blocks (SELECT + UPDATE on blocks only, no model call) and
 releases a block when no line remains and the topic's reader passed this very
-version. Callers: `POST /courses/{id}/held/recheck`, `scripts/replay_holds.py`.
+version; with no line and no reading of this version the block is a draft
+again, for the rework reread. Callers: `POST /courses/{id}/held/recheck`,
+`rework_blocks_step` (before it pays for a rewrite), `scripts/replay_holds.py`.
 """
 
 from __future__ import annotations
@@ -111,7 +113,7 @@ async def recheck_held(session: AsyncSession, *, course_id: UUID) -> dict[str, i
 
     await course_service.get_course(session, course_id=course_id)
     replayed = await replay_course(session, course_id=course_id)
-    rechecked = released = 0
+    rechecked = released = unread = 0
     for row in replayed["blocks"]:
         if row["stored_status"] != "held":
             continue
@@ -119,22 +121,39 @@ async def recheck_held(session: AsyncSession, *, course_id: UUID) -> dict[str, i
         stored = row["stored_reason"].split("; ")
         kept = [line for line in stored if line and not is_code_hold(line)]
         lines = kept + list(row["holds"])
-        if not lines and await _reader_passed_this_version(
-            session, course_id=course_id, topic_node=row["topic_node"], version_id=row["version_id"]
-        ):
-            await session.execute(
-                sa.text(
-                    "UPDATE blocks SET status = 'accepted', hold_reason = NULL,"
-                    " accepted_version_id = current_version_id WHERE id = :b"
-                ),
-                {"b": row["id"]},
-            )
-            released += 1
+        if not lines:
+            if await _reader_passed_this_version(
+                session,
+                course_id=course_id,
+                topic_node=row["topic_node"],
+                version_id=row["version_id"],
+            ):
+                await session.execute(
+                    sa.text(
+                        "UPDATE blocks SET status = 'accepted', hold_reason = NULL,"
+                        " accepted_version_id = current_version_id WHERE id = :b"
+                    ),
+                    {"b": row["id"]},
+                )
+                released += 1
+            else:
+                # nothing holds it, nobody has read this version: a draft
+                # again, and the next rework reread (or rewrite run) reads it
+                await session.execute(
+                    sa.text("UPDATE blocks SET status = 'draft', hold_reason = NULL WHERE id = :b"),
+                    {"b": row["id"]},
+                )
+                unread += 1
             continue
-        reason = "; ".join(lines) or row["stored_reason"]
+        reason = "; ".join(lines)
         if reason != row["stored_reason"]:
             await session.execute(
                 sa.text("UPDATE blocks SET hold_reason = :r WHERE id = :b"),
                 {"r": reason, "b": row["id"]},
             )
-    return {"rechecked": rechecked, "released": released, "held": rechecked - released}
+    return {
+        "rechecked": rechecked,
+        "released": released,
+        "unread": unread,
+        "held": rechecked - released - unread,
+    }
