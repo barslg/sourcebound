@@ -8,7 +8,8 @@ const CAP = 260 // 19 seeded courses × their tabs sit before the preview topic 
 interface Visit { path: string; name: string; problems: string[]; hrefs: string[] }
 
 async function hrefsOf(page: Page): Promise<string[]> {
-  return page.evaluate(() => [...document.querySelectorAll('a[href]')].map((a) => (a as HTMLAnchorElement).getAttribute('href') ?? ''))
+  // a source's own address on the sources page is content, not navigation: the one outbound link the crawl skips
+  return page.evaluate(() => [...document.querySelectorAll('a[href]:not([data-source-address])')].map((a) => (a as HTMLAnchorElement).getAttribute('href') ?? ''))
 }
 
 async function hasWayOut(page: Page): Promise<boolean> {

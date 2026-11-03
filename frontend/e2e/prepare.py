@@ -432,9 +432,11 @@ async def seed_learn(session: AsyncSession, owner: str) -> dict[str, str]:
         )
 
     content, key = fx("reading")
+    # markdown as the writers produce it: a bold term, a passage marker, a table passage
     content["body"] = (
-        "Hands are rubbed with alcohol for twenty seconds when they are not visibly soiled."
+        "⟦P1⟧ An **alcohol rub** takes twenty seconds when hands are not visibly soiled."
         "\n\nSoap and water takes forty seconds and is the method when they are."
+        "\n\n| Method | Seconds |\n|---|---|\n| Alcohol rub | 20 |\n| Soap and water | 40 |"
     )
     content["citations"] = public(chips[:1])
     add("reading", "teach", "t1", content, key, chips[:1])
@@ -604,6 +606,10 @@ async def seed_learn(session: AsyncSession, owner: str) -> dict[str, str]:
             )
         ).all()
     }
+    await session.execute(
+        sa.text("UPDATE topics SET scenario = CAST(:s AS jsonb) WHERE id = :t"),
+        {"s": json.dumps({"introduces_terms": ["alcohol rub"]}), "t": topic_ids[f"t1-{suffix}"]},
+    )
     await session.commit()
     version = await courses.publish_course(session, course_id=cid)
     translation = (

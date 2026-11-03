@@ -220,9 +220,9 @@ test('learner path: enrolled student reads a topic, answers blocks, finds the er
   const blockOf = (type: string): TopicApi['blocks'][number] => topicApi.blocks.find((b) => b.block_type === type) as TopicApi['blocks'][number]
   expect(JSON.stringify(topicApi)).not.toMatch(/answer_key|planted|SENTINEL/)
 
-  // a citation chip opens the companion panel beside the text (no modal) and shows the passage
+  // a citation mark in the text opens the companion panel beside it (no modal) and shows the passage
   await expect(page.getByTestId('companion-empty')).toBeVisible()
-  await card('reading').getByTestId('cite-chip').first().click()
+  await card('reading').locator('button.cite-mark').first().click()
   await expect(page.getByTestId('passage-text')).toContainText('Alcohol rub takes twenty seconds')
   await expect(page.locator('[role="dialog"]')).toHaveCount(0)
   await page.screenshot({ path: '../tmp/shots-t06/topic-1280.png', fullPage: true })

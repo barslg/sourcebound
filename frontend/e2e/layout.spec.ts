@@ -50,11 +50,57 @@ for (const [name, path] of [['preview topic', () => `/preview/topics/${ids().tra
   })
 }
 
-test('learner topic: a reading keeps its paragraphs and shows no evidence quotes', async ({ page }) => {
+test('learner topic: a reading renders the writer\'s markdown (paragraphs, bold, table) with numbered citation marks and no evidence quotes', async ({ page }) => {
   await signInAs(page.context(), 'admin')
   await page.goto(`/learn/topics/${ids().learn_topic}`)
   const reading = page.locator('[data-block="reading"]').first()
   await expect(reading).toBeVisible()
   await expect(reading.locator('p')).toHaveCount(2)
   await expect(reading.locator('q')).toHaveCount(0)
+  await expect(reading.locator('table tbody tr')).toHaveCount(2)
+  await expect(reading.locator('strong')).toHaveText('alcohol rub')
+  expect(await reading.textContent()).not.toMatch(/\*\*|⟦|\|---/)
+  const mark = reading.locator('button.cite-mark').first()
+  await expect(mark).toHaveText('1')
+  expect((await mark.boundingBox())?.width ?? 999, 'a citation mark is a footnote number, not a chip').toBeLessThanOrEqual(30)
+  await expect(page.locator('[data-block="reading"] ~ [data-testid="block-chips"]')).toHaveCount(0)
+  await mark.click()
+  await expect(page.getByTestId('passage-text')).toContainText('twenty seconds')
+})
+
+test('learner topic: the topic\'s term is marked once and opens its definition beside the text', async ({ page }) => {
+  await signInAs(page.context(), 'admin')
+  await page.goto(`/learn/topics/${ids().learn_topic}`)
+  const marks = page.locator('[data-block="reading"] button.term-mark')
+  await expect(marks).toHaveCount(1)
+  await marks.first().click()
+  await expect(page.getByTestId('companion-term')).toContainText('An alcohol rub takes twenty seconds')
+  await expect(page.getByTestId('companion-glossary')).toHaveAttribute('href', `/learn/courses/${ids().learn}/glossary`)
+})
+
+// the translated lab binds no source, so the preview probe reads the fix lab (one approved, cited source)
+for (const [name, path] of [['preview', () => `/courses/${ids().fix}/preview/sources`], ['learner', () => `/learn/courses/${ids().learn}/sources`]] as const) {
+  test(`${name} sources page: every approved source under its citation number`, async ({ page }) => {
+    await signInAs(page.context(), 'admin')
+    await page.goto(path())
+    const rows = page.getByTestId('source-row')
+    await expect(rows.first()).toBeVisible()
+    await expect(page.getByTestId('source-number').first()).toHaveText('1')
+    await expect(page.locator('h1')).toHaveText('Sources')
+  })
+}
+
+test('learner glossary: the term with the sentence that introduces it and the topic it comes from', async ({ page }) => {
+  await signInAs(page.context(), 'admin')
+  await page.goto(`/learn/courses/${ids().learn}/glossary`)
+  await expect(page.getByTestId('glossary-term')).toHaveText(['alcohol rub'])
+  await expect(page.getByTestId('glossary')).toContainText('An alcohol rub takes twenty seconds when hands are not visibly soiled.')
+  await expect(page.getByTestId('glossary-topic')).toHaveAttribute('href', `/learn/topics/${ids().learn_topic}`)
+})
+
+test('learner course: the outline links to the sources page and the glossary with their counts', async ({ page }) => {
+  await signInAs(page.context(), 'admin')
+  await page.goto(`/learn/courses/${ids().learn}`)
+  await expect(page.getByTestId('to-sources')).toHaveText('1 source')
+  await expect(page.getByTestId('to-glossary')).toHaveText('1 term in the glossary')
 })
