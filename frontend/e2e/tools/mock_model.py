@@ -234,7 +234,10 @@ def reply_for(prompt, schema, instructions=""):
         out = []
         for b in blocks:
             node = str(b["plan_node_id"])
-            hold = node.endswith("-b0") and HELD_BEFORE.get(node, 0) < 2
+            # the first block of the first lesson is held on its first two readings
+            # (the generation and the rework reread) and passes on the third, the
+            # author's rewrite: the flow fixes one held block through the product
+            hold = (node.endswith("-b0") or node == "t1-b1") and HELD_BEFORE.get(node, 0) < 2
             HELD_BEFORE[node] = HELD_BEFORE.get(node, 0) + 1
             v = "hold" if hold else "pass"
             LOG.write(json.dumps({"reader_node": node, "verdict": v}) + "\n")
@@ -278,19 +281,31 @@ def reply_for(prompt, schema, instructions=""):
             ],
         }
     try:
-        first = section(prompt, "Approved sources")["sources"][0]
+        sources = section(prompt, "Approved sources")["sources"]
+        first = sources[0]
         quote = str(first["text"])[:40]
         h = str(first.get("handle", "P1"))
     except Exception:
-        quote, h = "x", "P1"
+        sources, quote, h = [], "x", "P1"
     try:
-        block_type = str(section(prompt, "Block skeleton").get("block_type") or "reading")
+        skeleton = section(prompt, "Block skeleton")
     except Exception:
-        block_type = "reading"
+        skeleton = {}
+    block_type = str(skeleton.get("block_type") or "reading")
+    # a compliant writer cites every passage the plan assigned to the block
+    # (or declares it in leftovers); the assignment check holds a writer that
+    # drops one silently, so the mock cites each assigned handle verbatim
+    assigned = [str(x) for x in skeleton.get("source_handles") or []]
+    by_handle = {str(item.get("handle", "")): item for item in sources if isinstance(item, dict)}
+    citations = [
+        {"passage_id": a, "quote": str(by_handle[a]["text"])[:40]}
+        for a in assigned
+        if a in by_handle
+    ] or [{"passage_id": h, "quote": quote}]
     return {
         "block_type": block_type,
         "text": f"Staff apply the cited passage at work (take {CALLS[0]}).",
-        "citations": [{"passage_id": h, "quote": quote}],
+        "citations": citations,
         # keys are quoted from the passage: the taught check asks provenance
         "answer": quote,
         "options": [{"text": quote, "correct": True}, {"text": "No", "correct": False}],

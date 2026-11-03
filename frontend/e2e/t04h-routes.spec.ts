@@ -3,7 +3,7 @@ import { expect, test } from './fixtures'
 import { concrete, enter, expectedLanding, mustReach, text, type Role, type Session } from './t04h-support'
 import { BACKEND_HREF_PREFIXES, EXTERNAL_ORIGINS, matchRow, ROWS } from '../src/router/registry'
 
-const CAP = 160
+const CAP = 260 // 19 seeded courses × their tabs sit before the preview topic pages in the crawl
 
 interface Visit { path: string; name: string; problems: string[]; hrefs: string[] }
 

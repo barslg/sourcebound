@@ -234,8 +234,14 @@ async def give_content(session: AsyncSession, course: Any) -> list[str]:
                 ),
                 {
                     "b": str(block_id),
+                    # a learner-valid reading: a body and one cited passage (the learner
+                    # services serve only versions that pass the type's schema)
                     "c": json.dumps(
-                        {"text": f"Source text of {node}", "body": f"Source text of {node}"}
+                        {
+                            "text": f"Source text of {node}",
+                            "body": f"Source text of {node}",
+                            "citations": [{"handle": "P1", "quote": f"Source text of {node}"}],
+                        }
                     ),
                 },
             )
@@ -317,6 +323,17 @@ async def seed_translations(session: AsyncSession, owner: str) -> dict[str, str]
     )
     await add_translation(session, version, "uk", "ready", ["ok"] * len(nodes), nodes)
     labs["translated"] = str(translated)
+    labs["translated_topic"] = str(
+        (
+            await session.execute(
+                sa.text(
+                    "SELECT t.id FROM topics t JOIN modules m ON m.id = t.module_id"
+                    " WHERE m.course_id = :c ORDER BY m.ordinal, t.ordinal LIMIT 1"
+                ),
+                {"c": str(translated)},
+            )
+        ).scalar_one()
+    )
     failed = await seed_planned_course(session, owner, "Translation failed lab")
     nodes = await give_content(session, failed)
     version = await snapshot_version(session, course_id=failed, publish=True)
