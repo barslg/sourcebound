@@ -1,17 +1,19 @@
 name: deploy
 
-# Deploys the API host from main after the ci workflow is green there. The
-# frontend is deployed by Cloudflare Workers Builds from the same branch
-# (README, Deploy). While the repository variable DEPLOY_HOST is unset the
-# job skips itself, so main stays deployable before the host exists.
+# Deploys from main after the ci workflow is green there: the frontend Worker
+# through wrangler, the API host through SSH and docker compose. Each job
+# skips itself while its repository variable is unset (CLOUDFLARE_ACCOUNT_ID,
+# DEPLOY_HOST), so main stays deployable before either side exists.
 #
 # Repository variables (Settings, Secrets and variables, Actions, Variables):
+#   CLOUDFLARE_ACCOUNT_ID (the account that owns the Worker `sourcebound`),
 #   DEPLOY_HOST, DEPLOY_USER, DEPLOY_KNOWN_HOSTS (the host's ssh-keyscan line),
 #   DEPLOY_DIR (default sourcebound), SITE_URL (default https://sourcebound.io).
 # Repository secrets:
-#   DEPLOY_SSH_KEY (private key of a deploy user that can run docker compose),
-#   SESSION_SECRET_KEY, MODEL_KEY_SECRET, GOOGLE_OAUTH_CLIENT_ID,
-#   GOOGLE_OAUTH_CLIENT_SECRET, SUPERADMIN_EMAILS.
+#   CLOUDFLARE_API_TOKEN (account token: Workers Scripts Edit, Workers Editor,
+#   Account Settings Read), DEPLOY_SSH_KEY (private key of a deploy user that
+#   can run docker compose), SESSION_SECRET_KEY, MODEL_KEY_SECRET,
+#   GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, SUPERADMIN_EMAILS.
 # The production .env is written from these on every deploy; nothing else on
 # the host holds a secret. scripts/check_deploy_env.py keeps the names below
 # equal to the settings catalogue (src/app/config.py, .env.example).
@@ -30,6 +32,33 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  frontend:
+    name: frontend worker
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success' && vars.CLOUDFLARE_ACCOUNT_ID != ''
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: cd frontend && npm ci && npm run build
+      - name: wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          : "${CLOUDFLARE_API_TOKEN:?secret CLOUDFLARE_API_TOKEN is not set}"
+          cd frontend && npx wrangler deploy
+      - name: the site serves the new build
+        env:
+          SITE_URL: ${{ vars.SITE_URL || 'https://sourcebound.io' }}
+        run: curl -fsS -o /dev/null -w '%{http_code} %{url_effective}\n' "$SITE_URL/"
+
   api:
     name: api host
     runs-on: ubuntu-latest

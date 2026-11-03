@@ -6,8 +6,9 @@ Format — [Keep a Changelog](https://keepachangelog.com/). Versioning — [SemV
 
 ### Added
 
-- Deploy of the API host from `main`: `.github/workflows/deploy.yml` runs after a
-  green `ci`, writes the production `.env` (Google OAuth client, session and key
+- Deploy from `main`: `.github/workflows/deploy.yml` runs after a green `ci`.
+  The `frontend` job builds the site and runs `wrangler deploy` with
+  `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; the `api` job writes the production `.env` (Google OAuth client, session and key
   secrets, superadmins, `OIDC_REDIRECT_URL` under `sourcebound.io`) from the
   repository secrets, ships the tracked tree over SSH, runs compose and checks
   `/api/v1/health` on the host and through the site; it skips itself until
