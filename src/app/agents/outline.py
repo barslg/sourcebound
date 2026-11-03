@@ -41,15 +41,68 @@ def build_prompt(
     return assemble(dynamic)
 
 
+def normalise_ids(payload: dict[str, Any]) -> dict[str, Any]:
+    """Renumber module and topic ids by position; ids are code's, never the model's.
+
+    The 2026-11-03 Python course outline restated three modules at its
+    end and was rejected for the repeated ids after $0.86. A verbatim
+    repeat is dropped; then modules become m1, m2, …; topics
+    m1-t1, m1-t2, …; each `requires` entry is mapped to the latest
+    earlier topic that carried the old id, so the model's references
+    survive the renumbering. Caller: runs/executor.py (the outline
+    check and the stored scenario).
+    """
+    import copy
+
+    out = copy.deepcopy(payload)
+    modules = out.get("modules")
+    if not isinstance(modules, list):
+        return out
+    # a verbatim repeat of an earlier module (same id, same sections: the
+    # 2026-11-03 reply restated three of its seven modules) is dropped, not renumbered
+    seen: set[tuple[str, tuple[str, ...]]] = set()
+    kept: list[Any] = []
+    for module in modules:
+        if isinstance(module, dict):
+            signature = (
+                str(module.get("plan_node_id", "")),
+                tuple(str(x) for x in module.get("sections", []) or []),
+            )
+            if signature in seen:
+                continue
+            seen.add(signature)
+        kept.append(module)
+    modules[:] = kept
+    old_to_new: dict[str, str] = {}
+    for m_index, module in enumerate(modules):
+        if not isinstance(module, dict):
+            continue
+        module_id = f"m{m_index + 1}"
+        module["plan_node_id"] = module_id
+        topics = module.get("topics")
+        if not isinstance(topics, list):
+            continue
+        for t_index, topic in enumerate(topics):
+            if not isinstance(topic, dict):
+                continue
+            new_id = f"{module_id}-t{t_index + 1}"
+            requires = topic.get("requires")
+            if isinstance(requires, list):
+                topic["requires"] = [old_to_new.get(str(r), str(r)) for r in requires]
+            old_to_new[str(topic.get("plan_node_id", ""))] = new_id
+            topic["plan_node_id"] = new_id
+    return out
+
+
 def check_output(payload: dict[str, Any], section_ids: list[str]) -> list[str]:
-    """Validate an outline reply in code.
+    """Validate an outline reply in code (ids renumbered first; see normalise_ids).
 
     Every section is placed in one module and, inside it, in one topic
     (or declared uncovered); topic ids are unique; `requires` names
     only earlier topics; question keys are unique.
     """
     try:
-        parsed = ScenarioOutput.model_validate(payload)
+        parsed = ScenarioOutput.model_validate(normalise_ids(payload))
     except PydanticValidationError as exc:
         return [f"schema: {error['loc']}: {error['msg']}" for error in exc.errors()]
     errors: list[str] = []

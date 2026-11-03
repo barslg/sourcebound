@@ -910,6 +910,7 @@ async def _plan_output(
         variant=variant,
         check=lambda reply: outline.check_output(reply, section_ids),
     )
+    plan = outline.normalise_ids(plan)
     scenario = outline.scenario_of(plan)
     by_handle = {str(p["handle"]): p for p in passages}
     for row in scenario.values():

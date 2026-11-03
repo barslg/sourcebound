@@ -11,6 +11,7 @@ import re
 _STEP_LABELS = {
     "researcher": "researcher",
     "architect": "planner",
+    "outline": "outline",
     "reader": "reader",
     "block": "block writer",
 }
@@ -35,7 +36,7 @@ def plain_stop(step_key: str, error_class: str, message: str) -> tuple[str, str 
     if error_class in {"LLMError", "ReadTimeout", "ConnectError", "HTTPStatusError"}:
         return MODEL_DOWN, "model_down"
     if _SCHEMA_TRACE.search(message):
-        if step_key.startswith("architect") and "modules" in message:
+        if step_key.startswith("architect") and "modules" in message and "at least 1" in message:
             return EMPTY_PLAN, "empty_plan"
         label = _label(step_key)
         return (
