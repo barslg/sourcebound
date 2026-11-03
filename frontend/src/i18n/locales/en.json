@@ -884,7 +884,8 @@
       "show": "Show the definition",
       "hide": "Hide the definition"
     },
-    "diagramFallback": "The diagram could not be drawn; the steps are listed in order instead."
+    "diagramFallback": "The diagram could not be drawn; the steps are listed in order instead.",
+    "tickAll": "Tick every option that applies."
   },
   "runs": {
     "title": "Runs",

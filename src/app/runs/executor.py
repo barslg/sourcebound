@@ -1766,6 +1766,8 @@ def _typed_content(
         key["correct"] = [
             i for i, o in enumerate(options) if isinstance(o, dict) and o.get("correct")
         ]
+        # "select all that apply" is part of the question, not of the key
+        content["multiple"] = len(key["correct"]) > 1
     elif block_type == "matching":
         raw_pairs: Any = output.get("pairs")
         pairs: list[Any] = raw_pairs if isinstance(raw_pairs, list) else []

@@ -9,7 +9,8 @@ export const ANSWERABLE = ['choice', 'matching', 'cloze', 'ordering', 'scenario_
 export const BLANK = '___'
 
 export interface Draft {
-  picked: number | null
+  /** One index for a single-answer question; the ticked indices when the block says `multiple`. */
+  picked: number | number[] | null
   blanks: string[]
   mapping: Record<string, string>
   /** Served step ids in the learner's order; empty until a step was moved. */
@@ -32,7 +33,7 @@ export function emptyDraft(type: string, content: Record<string, unknown>): Draf
 
 /** True when the learner has given the block anything to grade. */
 export function answered(type: string, d: Draft): boolean {
-  if (type === 'choice') return d.picked !== null
+  if (type === 'choice') return Array.isArray(d.picked) ? d.picked.length > 0 : d.picked !== null
   if (type === 'cloze') return d.blanks.some((b) => b.trim() !== '')
   if (type === 'matching') return Object.keys(d.mapping).length > 0
   if (type === 'ordering') return d.order.length > 0

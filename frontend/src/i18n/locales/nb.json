@@ -884,7 +884,8 @@
       "show": "Vis definisjonen",
       "hide": "Skjul definisjonen"
     },
-    "diagramFallback": "Diagrammet kunne ikke tegnes; trinnene står i rekkefølge i stedet."
+    "diagramFallback": "Diagrammet kunne ikke tegnes; trinnene står i rekkefølge i stedet.",
+    "tickAll": "Kryss av for alle alternativene som gjelder."
   },
   "runs": {
     "title": "Kjøringer",

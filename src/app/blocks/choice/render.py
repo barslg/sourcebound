@@ -1,4 +1,4 @@
-"""Learner render contract for choice blocks: stem plus options, never the key."""
+"""Learner render contract for choice blocks: stem, options, select-all flag; never the key."""
 
 from __future__ import annotations
 
@@ -10,4 +10,5 @@ def render_for_learner(content: dict[str, Any]) -> dict[str, Any]:
     return {
         "stem": str(content.get("stem", "")),
         "options": [str(item) for item in content.get("options", [])],
+        "multiple": bool(content.get("multiple", False)),
     }
