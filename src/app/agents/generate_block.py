@@ -61,8 +61,9 @@ def build_generation_prompt(
     previously: list[dict[str, Any]] | None = None,
     skeleton: dict[str, Any] | None = None,
     upstream_texts: list[dict[str, Any]] | None = None,
+    fix_list: list[str] | None = None,
 ) -> str:
-    """Full generator prompt with the binding input order."""
+    """Full generator prompt with the binding input order; a Fix list on a re-ask."""
     dynamic = "\n\n## Approved sources\n" + json.dumps(
         {"course_language": course_language, "sources": public_sources(list(sources or []))},
         ensure_ascii=False,
@@ -79,6 +80,16 @@ def build_generation_prompt(
     dynamic += "\n\n## Block skeleton\n" + json.dumps(
         dict(skeleton or {}), ensure_ascii=False, sort_keys=True
     )
+    if fix_list:
+        dynamic += "\n\n## Fix list\n" + json.dumps(
+            {
+                "held_for": list(fix_list),
+                "rule": "Your previous draft of this block failed these code checks."
+                " Keep what passed; change only what each line names.",
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
     _ = prompt_cache_key(agent, block_type, course_id)
     return assemble(dynamic)
 

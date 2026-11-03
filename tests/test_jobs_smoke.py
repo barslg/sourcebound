@@ -686,6 +686,7 @@ async def test_generation_resume_pays_nothing_twice(t03_session: AsyncSession) -
     assert stopped["status"] == "stopped"
     paid_before = await _gen_paid_calls(t03_session, run_id)
     assert paid_before >= 1
+    block_paid_before = await _gen_block_paid(t03_session, run_id)
 
     await t03_session.execute(
         sa.text("UPDATE runs SET status = 'running', stop_marker = NULL WHERE id = :run"),
@@ -696,9 +697,14 @@ async def test_generation_resume_pays_nothing_twice(t03_session: AsyncSession) -
     assert resumed["status"] == "done"
     paid_after = await _gen_paid_calls(t03_session, run_id)
     assert paid_after == paid_before + 1, "only the failed step pays on resume"
-    block_paid = int(
+    block_paid = await _gen_block_paid(t03_session, run_id)
+    assert block_paid == block_paid_before, "done block steps are never repaid"
+
+
+async def _gen_block_paid(session: AsyncSession, run_id: UUID) -> int:
+    return int(
         (
-            await t03_session.execute(
+            await session.execute(
                 sa.text(
                     "SELECT count(*) FROM llm_calls"
                     " WHERE run_id = :run AND agent = 'block_teach' AND cost_usd > 0"
@@ -707,7 +713,6 @@ async def test_generation_resume_pays_nothing_twice(t03_session: AsyncSession) -
             )
         ).scalar_one()
     )
-    assert block_paid == 1, "done block steps are never repaid"
 
 
 async def test_second_identical_generation_run_pays_zero(t03_session: AsyncSession) -> None:
@@ -2194,3 +2199,52 @@ async def test_resume_never_regenerates_a_block_this_run_already_wrote(
     accepted_before = {n for n, (status, _) in blocks_before.items() if status == "accepted"}
     blocks = await _smoke_blocks(t03_session, demo["course_id"])
     assert {n for n in accepted_before if blocks[n][0] == "accepted"} == accepted_before, blocks
+
+
+async def test_a_code_hold_is_fixed_inside_the_writer_step_before_the_reader_pays(
+    t03_session: AsyncSession,
+) -> None:
+    """A writer whose draft fails a code check is asked again with the lines, in the same step.
+
+    The Muse API course (2026-11-03) cycled hold → reader → rewrite → new
+    hold three times ($6) over checks code can state at once (a quote not
+    verbatim, a list item missing, two passages glued). The step now
+    returns the lines to the writer with a Fix list and only stores what
+    passes code; the reader judges meaning, never a line code already
+    knew. Mock: b1's first reply misquotes one character, its second is
+    verbatim.
+    """
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-reask")
+    inner = demo_t05.mock_demo_handler()
+    prompts: list[str] = []
+
+    def handler(request: Any) -> Any:
+        body = json.loads(request.content.decode("utf-8"))
+        system = str(body.get("instructions", ""))
+        response = inner(request)
+        if not system.startswith("# Teach writer"):
+            return response
+        prompt = str(body.get("input", ""))
+        if '"plan_node_id": "b1"' not in prompt.split("## Block skeleton", 1)[-1]:
+            return response
+        prompts.append(prompt)
+        if len(prompts) > 1:
+            return response
+        reply = json.loads(response.json()["output"][0]["content"][0]["text"])
+        quote = str(reply["citations"][0]["quote"])
+        reply["citations"][0]["quote"] = quote[:12] + "X" + quote[13:]
+        return httpx2.Response(200, json=demo_t05._completed(json.dumps(reply)))
+
+    final = await _smoke_run(t03_session, demo, dag, handler)
+    assert final["status"] == "done", final["stop_marker"]
+    blocks = await _smoke_blocks(t03_session, demo["course_id"])
+    assert blocks["b1"][0] == "accepted", blocks["b1"]
+    assert len(prompts) == 2, "the writer is asked once more, in the same step"
+    assert "## Fix list" in prompts[1] and "quote is not verbatim" in prompts[1]
+    assert "## Fix list" not in prompts[0]
+    paid = await demo_t05.paid_by_step(t03_session, run_id=UUID(str(final["id"])))
+    assert paid["block_teach:b1"]["paid"] == 2, paid["block_teach:b1"]
+    untouched = await _version_total(t03_session, demo["course_id"], "b3")
+    assert await _version_total(t03_session, demo["course_id"], "b1") == untouched, (
+        "the held draft is never stored: b1 has as many versions as a block never held"
+    )

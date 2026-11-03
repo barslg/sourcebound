@@ -14,7 +14,7 @@ import hashlib
 import json
 import re
 from collections.abc import Callable
-from typing import Any
+from typing import Any, NamedTuple
 from uuid import UUID
 
 import sqlalchemy as sa
@@ -1877,6 +1877,20 @@ async def _previous_handoffs(
     return [{"plan_node_id": str(node), "handoff": str(handoff or "")} for node, handoff in rows]
 
 
+CODE_REASKS = 2
+"""Re-asks a writer gets inside its step when a code check holds its draft."""
+
+
+class _CodeVerdict(NamedTuple):
+    holds: list[str]
+    resolved_citations: list[dict[str, Any]]
+    citation_pids: list[str]
+    content: dict[str, Any]
+    key: dict[str, Any] | None
+    text: str
+    handoff: str
+
+
 async def generate_block_step(
     session: AsyncSession,
     *,
@@ -1923,21 +1937,22 @@ async def generate_block_step(
         for u in upstream
         if u["step_key"].startswith("block_teach:") and u["plan_node_id"] not in own_nodes
     ]
-    prompt = generate_block.build_generation_prompt(
-        agent=agent,
-        block_type=block_type,
-        course_id=course_id,
-        course_language=str(entry.get("course_language", "en")),
-        sources=sources,
-        plan=dict(entry.get("plan", {})),
-        previously=previously,
-        skeleton=dict(entry.get("skeleton", {"plan_node_id": node_id})),
-        upstream_texts=[
+    prompt_input: dict[str, Any] = {
+        "agent": agent,
+        "block_type": block_type,
+        "course_id": course_id,
+        "course_language": str(entry.get("course_language", "en")),
+        "sources": sources,
+        "plan": dict(entry.get("plan", {})),
+        "previously": previously,
+        "skeleton": dict(entry.get("skeleton", {"plan_node_id": node_id})),
+        "upstream_texts": [
             {"plan_node_id": u["plan_node_id"], "text": u["text"]}
             for u in upstream
             if u["plan_node_id"] in own_nodes
         ],
-    )
+    }
+    prompt = generate_block.build_generation_prompt(**prompt_input)
     digest = step_digest(
         agent=agent,
         prompt=prompt,
@@ -1993,95 +2008,138 @@ async def generate_block_step(
             variant=int(claim["attempt"]) - 1 + int(entry.get("variant_offset", 0)),
             check=lambda reply: generate_block.check_block_output(reply, block_type),
         )
-        # code verdicts before acceptance: verbatim citations + language
-        text = str(output.get("text", ""))
-        stored = {
-            **await _stored_passage_texts(session, passage_ids=list(handle_to_passage.values())),
-            **{pid: merged for pid, merged in merged_texts.items() if merged},
-        }
-        holds: list[str] = []
-        resolved_citations: list[dict[str, Any]] = []
-        citation_pids: list[str] = []
-        cited_handles: list[str] = []
-        handle_of_pid = {pid: handle for handle, pid in handle_to_passage.items()}
-        for cit in output.get("citations", []):
-            handle = str(cit.get("passage_id", ""))
-            pid = handle_to_passage.get(handle, handle)
-            quote = str(cit.get("quote", ""))
-            passage_text = stored.get(pid, "")
-            span = locate_verbatim(passage_text, quote)
-            if span is None:
-                holds.append(
-                    _misplaced_quote_line(handle, quote, stored=stored, handle_of_pid=handle_of_pid)
-                )
-            else:
-                start, end = span
-                # stored content carries the public handle only, never a UUID;
-                # the quote is the passage's own span (whitespace as the passage has it)
-                resolved_citations.append(
-                    {
-                        "handle": handle,
-                        "quote": passage_text[start:end],
-                        "quote_start": start,
-                        "quote_end": end,
-                    }
-                )
-                citation_pids.append(pid)
-                cited_handles.append(handle)
-        # R1/R3: teach/example blocks carry the complete claim of every
-        # cited passage (its list items) and never join two passages
-        # into one paragraph without a handle marker between them.
-        role = str(dict(entry.get("skeleton", {})).get("role", ""))
-        is_reading = agent in ("block_teach", "block_example") or role in ("teach", "example")
-        if is_reading and block_type != "figure":
-            # a figure is drawn from a passage's numbers; its caption is not a reading
-            from app.course.grounding import adjacency_holds, assignment_holds, coverage_holds
 
-            cited_texts = {
-                handle: stored.get(pid, "")
-                for handle, pid in zip(cited_handles, citation_pids, strict=True)
+        # code verdicts before acceptance: verbatim citations, coverage,
+        # adjacency, assignment, language, shape. A draft that fails one is
+        # not stored: the writer gets the lines back in the same step (a
+        # Fix list) up to CODE_REASKS times; only what passes code reaches
+        # the reader, who judges meaning, never a line code already knew.
+        async def judge(output: dict[str, Any]) -> _CodeVerdict:
+            text = str(output.get("text", ""))
+            stored = {
+                **await _stored_passage_texts(
+                    session, passage_ids=list(handle_to_passage.values())
+                ),
+                **{pid: merged for pid, merged in merged_texts.items() if merged},
             }
-            holds += coverage_holds(text, cited_texts)
-            holds += adjacency_holds(text, resolved_citations)
-            holds += assignment_holds(
-                [str(h) for h in dict(entry.get("skeleton", {})).get("source_handles", [])],
-                cited=[str(c.get("passage_id", "")) for c in output.get("citations", [])],
-                leftovers=[x for x in output.get("leftovers", []) if isinstance(x, dict)],
-            )
-        if block_type == "figure":
-            from app.course.grounding import passage_kind
-
-            cited_kinds = {passage_kind(stored.get(pid, "")) for pid in citation_pids}
-            if cited_kinds and cited_kinds <= {"prose"}:
-                holds.append("figure: cited passage has no numbers or structure to draw")
-        if is_question and block_type != "spot_the_error":
-            from app.course.grounding import taught_holds
-
-            if taught_pids:
-                taught_texts = [stored.get(pid, "") for pid in taught_pids]
-                outside = sorted(
-                    {
-                        h
-                        for h, pid in zip(cited_handles, citation_pids, strict=True)
-                        if pid not in taught_pids
-                    }
-                )
-                if outside:
+            holds: list[str] = []
+            resolved_citations: list[dict[str, Any]] = []
+            citation_pids: list[str] = []
+            cited_handles: list[str] = []
+            handle_of_pid = {pid: handle for handle, pid in handle_to_passage.items()}
+            for cit in output.get("citations", []):
+                handle = str(cit.get("passage_id", ""))
+                pid = handle_to_passage.get(handle, handle)
+                quote = str(cit.get("quote", ""))
+                passage_text = stored.get(pid, "")
+                span = locate_verbatim(passage_text, quote)
+                if span is None:
                     holds.append(
-                        "not taught: cites passages outside what this topic taught"
-                        f" ({', '.join(outside)})"
+                        _misplaced_quote_line(
+                            handle, quote, stored=stored, handle_of_pid=handle_of_pid
+                        )
                     )
-            else:
-                taught_texts = [stored.get(pid, "") for pid in citation_pids]
-            holds += taught_holds(output, taught_texts, block_type)
-        holds += check_language(text, course_language=str(entry.get("course_language", "en")))
-        content, key, type_errors = _typed_content(
-            output, block_type=block_type, citations=resolved_citations
-        )
-        holds += type_errors
-        handoff = " ".join(str(output.get("handoff", "")).split())
-        if content:
-            content["handoff"] = handoff
+                else:
+                    start, end = span
+                    # stored content carries the public handle only, never a UUID;
+                    # the quote is the passage's own span (whitespace as the passage has it)
+                    resolved_citations.append(
+                        {
+                            "handle": handle,
+                            "quote": passage_text[start:end],
+                            "quote_start": start,
+                            "quote_end": end,
+                        }
+                    )
+                    citation_pids.append(pid)
+                    cited_handles.append(handle)
+            # R1/R3: teach/example blocks carry the complete claim of every
+            # cited passage (its list items) and never join two passages
+            # into one paragraph without a handle marker between them.
+            role = str(dict(entry.get("skeleton", {})).get("role", ""))
+            is_reading = agent in ("block_teach", "block_example") or role in ("teach", "example")
+            if is_reading and block_type != "figure":
+                # a figure is drawn from a passage's numbers; its caption is not a reading
+                from app.course.grounding import adjacency_holds, assignment_holds, coverage_holds
+
+                cited_texts = {
+                    handle: stored.get(pid, "")
+                    for handle, pid in zip(cited_handles, citation_pids, strict=True)
+                }
+                holds += coverage_holds(text, cited_texts)
+                holds += adjacency_holds(text, resolved_citations)
+                holds += assignment_holds(
+                    [str(h) for h in dict(entry.get("skeleton", {})).get("source_handles", [])],
+                    cited=[str(c.get("passage_id", "")) for c in output.get("citations", [])],
+                    leftovers=[x for x in output.get("leftovers", []) if isinstance(x, dict)],
+                )
+            if block_type == "figure":
+                from app.course.grounding import passage_kind
+
+                cited_kinds = {passage_kind(stored.get(pid, "")) for pid in citation_pids}
+                if cited_kinds and cited_kinds <= {"prose"}:
+                    holds.append("figure: cited passage has no numbers or structure to draw")
+            if is_question and block_type != "spot_the_error":
+                from app.course.grounding import taught_holds
+
+                if taught_pids:
+                    taught_texts = [stored.get(pid, "") for pid in taught_pids]
+                    outside = sorted(
+                        {
+                            h
+                            for h, pid in zip(cited_handles, citation_pids, strict=True)
+                            if pid not in taught_pids
+                        }
+                    )
+                    if outside:
+                        holds.append(
+                            "not taught: cites passages outside what this topic taught"
+                            f" ({', '.join(outside)})"
+                        )
+                else:
+                    taught_texts = [stored.get(pid, "") for pid in citation_pids]
+                holds += taught_holds(output, taught_texts, block_type)
+            holds += check_language(text, course_language=str(entry.get("course_language", "en")))
+            content, key, type_errors = _typed_content(
+                output, block_type=block_type, citations=resolved_citations
+            )
+            holds += type_errors
+            handoff = " ".join(str(output.get("handoff", "")).split())
+            if content:
+                content["handoff"] = handoff
+            return _CodeVerdict(
+                holds=holds,
+                resolved_citations=resolved_citations,
+                citation_pids=citation_pids,
+                content=content,
+                key=key,
+                text=text,
+                handoff=handoff,
+            )
+
+        verdict = await judge(output)
+        reasks = 0
+        while verdict.holds and reasks < CODE_REASKS:
+            reasks += 1
+            output = await provider.generate_json(
+                agent=agent,
+                prompt=generate_block.build_generation_prompt(
+                    **prompt_input, fix_list=list(verdict.holds)
+                ),
+                schema=generate_block.schema_for(block_type),
+                cache_key=cache_key(agent, block_type, course_id),
+                run_id=run_id,
+                step_id=claim["step_id"],
+                variant=int(claim["attempt"]) - 1 + int(entry.get("variant_offset", 0)) + reasks,
+                check=lambda reply: generate_block.check_block_output(reply, block_type),
+            )
+            verdict = await judge(output)
+        holds = verdict.holds
+        resolved_citations = verdict.resolved_citations
+        citation_pids = verdict.citation_pids
+        content, key, text, handoff = verdict.content, verdict.key, verdict.text, verdict.handoff
+        if reasks:
+            output = {**output, "reasks": reasks}
         if holds:
             await _persist_block(
                 session,
