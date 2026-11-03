@@ -2051,9 +2051,9 @@ async def test_rework_resume_reads_a_draft_the_failed_pass_left_unread(
     The 2026-11-03 Muse API course: the rework pass rewrote 23 blocks, then a
     reread timed out; on resume the rework recomputed its named list from the
     blocks held NOW, so the 23 drafts had no reader and the run could only
-    stop again on the no-draft gate. The reread set is every topic with a
-    draft block; the reader prompt carries the block text, so a reread of
-    changed content never reuses an older verdict.
+    stop again on the no-draft gate. A topic with a version newer than its
+    last reading is read again, once: by the main pass on resume, or by the
+    rework reread for the rewrites of its own pass.
     """
     demo, dag = await _smoke_course_and_dag(t03_session, "smoke-rework-resume")
     final = await _smoke_run(t03_session, demo, dag, demo_t05.mock_demo_handler())
@@ -2070,9 +2070,24 @@ async def test_rework_resume_reads_a_draft_the_failed_pass_left_unread(
             {"c": course},
         )
     ).scalar_one()
+    # b1 gets a new version this run wrote after its topic was read: a draft nobody read
     await t03_session.execute(
         sa.text(
-            "UPDATE blocks SET status = 'draft', hold_reason = NULL, accepted_version_id = NULL"
+            "INSERT INTO block_versions"
+            " (block_id, version_no, content, answer_key, schema_version, run_step_id)"
+            " SELECT bv.block_id, bv.version_no + 1, bv.content, bv.answer_key,"
+            " bv.schema_version, bv.run_step_id FROM blocks b"
+            " JOIN block_versions bv ON bv.id = b.current_version_id"
+            " JOIN topics t ON t.id = b.topic_id JOIN modules m ON m.id = t.module_id"
+            " WHERE m.course_id = :c AND b.plan_node_id = 'b1'"
+        ),
+        {"c": course},
+    )
+    await t03_session.execute(
+        sa.text(
+            "UPDATE blocks SET status = 'draft', hold_reason = NULL, accepted_version_id = NULL,"
+            " current_version_id = (SELECT id FROM block_versions"
+            "  WHERE block_id = blocks.id ORDER BY version_no DESC LIMIT 1)"
             " WHERE id IN (SELECT b.id FROM blocks b JOIN topics t ON t.id = b.topic_id"
             " JOIN modules m ON m.id = t.module_id"
             " WHERE m.course_id = :c AND b.plan_node_id = 'b1')"
@@ -2101,6 +2116,7 @@ async def test_rework_resume_reads_a_draft_the_failed_pass_left_unread(
     after = await demo_t05.paid_by_step(t03_session, run_id=run_id)
     blocks = await _smoke_blocks(t03_session, demo["course_id"])
     assert blocks["b1"] == ("accepted", ""), blocks["b1"]
+    # read exactly once more: by the main pass or the rework reread, never both
     reader_key = f"reader:{topic}"
     assert after[reader_key]["paid"] == before[reader_key]["paid"] + 1, (before, after)
     # the draft is read, not rewritten: only a still-held block may pay a writer again
@@ -2117,5 +2133,64 @@ async def test_rework_resume_reads_a_draft_the_failed_pass_left_unread(
             {"run": str(run_id)},
         )
     ).scalar_one()
-    assert str(topic) in rework["reread_topics"], rework
     assert sorted(rework["reworked"]) == held_before, (rework, held_before)
+
+
+async def test_resume_never_regenerates_a_block_this_run_already_wrote(
+    t03_session: AsyncSession,
+) -> None:
+    """A finished block stays finished on resume whatever happened to its step digest.
+
+    The 2026-11-03 resume of the Muse API course: the rework had rewritten
+    blocks under their main step keys (new digests, new outputs) and a code
+    change had moved the output budget out of the digest, so the main pass
+    would have regenerated 132 of 193 finished steps. A block written by a
+    step of this run is done; a topic read after its last version is read.
+    """
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-resume-digests")
+    final = await _smoke_run(t03_session, demo, dag, demo_t05.mock_demo_handler())
+    assert final["status"] == "done", final["stop_marker"]
+    run_id = UUID(str(final["id"]))
+    await t03_session.execute(
+        sa.text("UPDATE run_steps SET input_digest = 'stale' WHERE run_id = :run"),
+        {"run": str(run_id)},
+    )
+    await t03_session.execute(
+        sa.text(
+            "UPDATE run_steps SET status = 'failed', error = 'LLMError: polling timed out'"
+            " WHERE run_id = :run AND step_key = 'rework:named-blocks'"
+        ),
+        {"run": str(run_id)},
+    )
+    await t03_session.execute(
+        sa.text("UPDATE runs SET status = 'stopped' WHERE id = :run"), {"run": str(run_id)}
+    )
+    await t03_session.commit()
+    before = await demo_t05.paid_by_step(t03_session, run_id=run_id)
+    blocks_before = await _smoke_blocks(t03_session, demo["course_id"])
+    held_before = sorted(node for node, (status, _) in blocks_before.items() if status == "held")
+    resumed = await _smoke_drive(run_id, demo_t05.mock_demo_handler())
+    assert resumed["status"] == "done", resumed["stop_marker"]
+    after = await demo_t05.paid_by_step(t03_session, run_id=run_id)
+    paid_again = sorted(k for k in after if after[k]["paid"] != before.get(k, {}).get("paid"))
+    # only the rework may pay: a rewrite of a held block and the reread of its topic
+    held_topics = {
+        str(row[0])
+        for row in (
+            await t03_session.execute(
+                sa.text(
+                    "SELECT t.plan_node_id FROM blocks b JOIN topics t ON t.id = b.topic_id"
+                    " JOIN modules m ON m.id = t.module_id"
+                    " WHERE m.course_id = :c AND b.plan_node_id = ANY(:nodes)"
+                ),
+                {"c": str(demo["course_id"]), "nodes": held_before},
+            )
+        ).all()
+    }
+    allowed = {f"reader:{t}" for t in held_topics} | {
+        k for k in after if k.partition(":")[2] in held_before
+    }
+    assert not set(paid_again) - allowed, (paid_again, allowed)
+    accepted_before = {n for n, (status, _) in blocks_before.items() if status == "accepted"}
+    blocks = await _smoke_blocks(t03_session, demo["course_id"])
+    assert {n for n in accepted_before if blocks[n][0] == "accepted"} == accepted_before, blocks

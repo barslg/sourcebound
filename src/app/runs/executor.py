@@ -1315,6 +1315,49 @@ async def write_plan_citations(
     return count
 
 
+async def _written_by_this_run(session: AsyncSession, *, run_id: UUID, node_id: str) -> bool:
+    """True when the block's current version was written by a done step of this run.
+
+    Resume semantics: a block this run already wrote is finished for the main
+    pass, whatever happened to its step digest since (a rework rewrote it under
+    the same step key, a prompt or budget changed). Only the rework pays again.
+    """
+    row = (
+        await session.execute(
+            sa.text(
+                "SELECT 1 FROM blocks b JOIN block_versions bv ON bv.id = b.current_version_id"
+                " JOIN run_steps rs ON rs.id = bv.run_step_id AND rs.run_id = :run"
+                " AND rs.status = 'done'"
+                " JOIN topics t ON t.id = b.topic_id JOIN modules m ON m.id = t.module_id"
+                " JOIN runs r ON r.id = rs.run_id AND r.course_id = m.course_id"
+                " WHERE b.plan_node_id = :n LIMIT 1"
+            ),
+            {"run": str(run_id), "n": node_id},
+        )
+    ).first()
+    return row is not None
+
+
+async def _read_after_last_version(
+    session: AsyncSession, *, run_id: UUID, step_key: str, topic_id: str
+) -> bool:
+    """True when this run's done reader step finished after every current version of the topic."""
+    row = (
+        await session.execute(
+            sa.text(
+                "SELECT 1 FROM run_steps rs JOIN runs r ON r.id = rs.run_id"
+                " WHERE rs.run_id = :run AND rs.step_key = :key AND rs.status = 'done'"
+                " AND rs.finished_at >= COALESCE((SELECT max(bv.created_at) FROM blocks b"
+                "  JOIN block_versions bv ON bv.id = b.current_version_id"
+                "  JOIN topics t ON t.id = b.topic_id JOIN modules m ON m.id = t.module_id"
+                "  WHERE m.course_id = r.course_id AND t.plan_node_id = :t), rs.finished_at)"
+            ),
+            {"run": str(run_id), "key": step_key, "t": topic_id},
+        )
+    ).first()
+    return row is not None
+
+
 async def _upstream_outputs(
     session: AsyncSession, *, run_id: UUID, entry: dict[str, Any]
 ) -> list[dict[str, Any]]:
@@ -1844,6 +1887,10 @@ async def generate_block_step(
 
     step_key = str(entry["step_key"])
     agent, _, node_id = step_key.partition(":")
+    if not entry.get("rewrite") and await _written_by_this_run(
+        session, run_id=run_id, node_id=node_id
+    ):
+        return
     block_type = str(entry.get("block_type", "reading"))
     course_id = str(entry.get("course_id", ""))
     upstream = await _upstream_outputs(session, run_id=run_id, entry=entry)
@@ -2162,6 +2209,8 @@ async def read_topic_step(
 
     step_key = str(entry["step_key"])
     _, _, topic_id = step_key.partition(":")
+    if await _read_after_last_version(session, run_id=run_id, step_key=step_key, topic_id=topic_id):
+        return
     upstream = await _upstream_outputs(session, run_id=run_id, entry=entry)
     course_id = str(entry.get("course_id", ""))
     if not course_id:
@@ -2315,6 +2364,10 @@ async def saboteur_step(
 
     step_key = str(entry["step_key"])
     _, _, node_id = step_key.partition(":")
+    if not entry.get("rewrite") and await _written_by_this_run(
+        session, run_id=run_id, node_id=node_id
+    ):
+        return
     sources = generate_block.ordered_sources(list(entry.get("sources", [])))
     handle_to_passage: dict[str, str] = handle_map(sources)
     cited_ids = {str(pid) for pid in entry.get("cited_passage_ids", [])}
