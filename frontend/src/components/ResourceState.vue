@@ -4,10 +4,11 @@ import { useI18n } from 'vue-i18n'
 import type { ApiError } from '@/api/client'
 import ActionButton from '@/components/ActionButton.vue'
 
-const props = defineProps<{ loading: boolean; error: ApiError | null; empty: boolean; emptyText?: string }>()
+const props = defineProps<{ loading: boolean; error: ApiError | null; empty: boolean; emptyText?: string; notFoundText?: string }>()
 const emit = defineEmits<{ retry: [] }>()
 const { t } = useI18n()
 const denied = computed(() => props.error !== null && props.error.status === 403)
+const notFound = computed(() => props.error !== null && props.error.status === 404 && !!props.notFoundText)
 </script>
 
 <template>
@@ -21,6 +22,11 @@ const denied = computed(() => props.error !== null && props.error.status === 403
     <h2>{{ t('common.deniedTitle') }}</h2>
     <p>{{ error?.message }}</p>
     <router-link to="/" data-testid="denied-home">{{ t('common.deniedHome') }}</router-link>
+  </div>
+  <div v-else-if="notFound" class="state" role="status" data-view="not-found">
+    <h2>{{ t('common.notFoundTitle') }}</h2>
+    <p>{{ notFoundText }}</p>
+    <slot name="not-found-actions" />
   </div>
   <div v-else-if="error" class="state state-error" role="alert" data-view="error">
     <h2>{{ t('common.errorTitle') }}</h2>

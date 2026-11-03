@@ -44,7 +44,8 @@
     "running": "Running",
     "breadcrumb": "You are here",
     "deniedHome": "Go to the first page you can use",
-    "dismissToast": "Close message"
+    "dismissToast": "Close message",
+    "notFoundTitle": "Nothing to read here"
   },
   "shell": {
     "theme": "Theme",
@@ -910,7 +911,9 @@
     "backToList": "Back to my courses",
     "language": "Language",
     "languageHelp": "The language you read in. Blocks not yet translated show the source text with a notice.",
-    "moduleTest": "Module test"
+    "moduleTest": "Module test",
+    "notPublished": "This course is not published, or you are not enrolled in it. An author reads an unpublished course in its preview.",
+    "authorPreview": "Open the author preview"
   },
   "learnTopic": {
     "nextLine": "Next: {note}",

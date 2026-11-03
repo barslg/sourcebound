@@ -44,8 +44,12 @@ function open(): void { if (resume.value) void router.push(topicLink(resume.valu
 
 <template>
   <PageHeader class="hero" :course="outline.data.value" />
-  <ResourceState :loading="outline.loading.value" :error="outline.error.value" :empty="outline.data.value !== null && topics.length === 0" :empty-text="t('learnCourse.empty')" @retry="outline.reload()">
+  <ResourceState :loading="outline.loading.value" :error="outline.error.value" :empty="outline.data.value !== null && topics.length === 0" :empty-text="t('learnCourse.empty')" :not-found-text="t('learnCourse.notPublished')" @retry="outline.reload()">
     <template #empty-actions><router-link to="/learn" data-testid="back-to-learn">{{ t('learnCourse.backToList') }}</router-link></template>
+    <template #not-found-actions>
+      <router-link to="/learn" data-testid="back-to-learn">{{ t('learnCourse.backToList') }}</router-link>
+      <router-link :to="`/courses/${route.params.id}/preview`" data-testid="author-preview">{{ t('learnCourse.authorPreview') }}</router-link>
+    </template>
     <div v-if="outline.data.value" class="stack">
       <div class="stack" data-testid="hero">
         <p v-if="audience" class="hero-for" data-testid="hero-for">{{ t('learnCourse.forWhom', { audience }) }}</p>

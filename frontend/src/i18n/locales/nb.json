@@ -44,7 +44,8 @@
     "running": "Pågår",
     "breadcrumb": "Du er her",
     "deniedHome": "Gå til første side du har tilgang til",
-    "dismissToast": "Lukk melding"
+    "dismissToast": "Lukk melding",
+    "notFoundTitle": "Ingenting å lese her"
   },
   "shell": {
     "theme": "Tema",
@@ -910,7 +911,9 @@
     "backToList": "Tilbake til mine kurs",
     "language": "Språk",
     "languageHelp": "Språket du leser på. Blokker som ikke er oversatt ennå vises på kildespråket med et varsel.",
-    "moduleTest": "Modultest"
+    "moduleTest": "Modultest",
+    "notPublished": "Dette kurset er ikke publisert, eller du er ikke påmeldt. En forfatter leser et upublisert kurs i forhåndsvisningen.",
+    "authorPreview": "Åpne forfatterens forhåndsvisning"
   },
   "learnTopic": {
     "nextLine": "Neste: {note}",
