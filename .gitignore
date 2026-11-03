@@ -34,3 +34,7 @@ prompts/
 AGENTS.md
 var/
 !tests/fixtures/**/*.md
+
+# Claude Code kit (local; backed up by the assistant-memory repo)
+.claude/
+CLAUDE.md
