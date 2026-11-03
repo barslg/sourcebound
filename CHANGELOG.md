@@ -6,6 +6,12 @@ Format — [Keep a Changelog](https://keepachangelog.com/). Versioning — [SemV
 
 ### Added
 
+- Deploy path: a Cloudflare Pages Function (`frontend/functions/api/[[path]].ts`)
+  proxies `/api/*` to `API_ORIGIN`, so the static frontend, the session cookie
+  and the CSRF token share one origin; compose passes `APP_ENV` from `.env`
+  and binds Postgres to the host's loopback. README gains a Deploy section.
+  (2026-11-04)
+
 ### Changed
 
 - `README.md`, `docs/` (the manifest, principles and third-party table),

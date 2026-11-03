@@ -1,4 +1,5 @@
-# Local: docker compose up -d --build. Postgres also reachable at localhost:5434.
+# Local and production: docker compose up -d --build. Postgres reachable on the host's loopback at 5434 only;
+# APP_ENV comes from .env (default local). See README, Deploy.
 services:
   db:
     image: postgres:16
@@ -8,7 +9,7 @@ services:
       POSTGRES_PASSWORD: muse
       POSTGRES_DB: muse
     ports:
-      - "5434:5432"
+      - "127.0.0.1:5434:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -34,7 +35,7 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
-      APP_ENV: local
+      APP_ENV: ${APP_ENV:-local}
       DATABASE_URL: postgresql+asyncpg://muse:muse@db:5432/muse
     env_file:
       - .env

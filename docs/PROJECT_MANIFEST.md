@@ -20,12 +20,12 @@ sources (every claim has an address in a source), and when the model is wrong th
   only for dev replays on synthetic data).
 - Frontend: Vue 3 + TypeScript + Vite + PrimeVue, by the admin-app shape in `docs/PRINCIPLES.md`.
 - Auth: Google OIDC sign-in (provider-generic design; GitHub/Apple may follow), backend session cookie, CSRF on unsafe methods.
-- Delivery: one Docker image, compose with postgres + one-shot migrate + api + worker, health-gated. Local now; own host and domain later.
+- Delivery: one Docker image, compose with postgres + one-shot migrate + api + worker, health-gated. The frontend on Cloudflare Pages at `sourcebound.io`, with a Pages Function proxying `/api` to the API host (README, Deploy).
 
 ## How it runs and deploys
 
 - Local: `docker compose up -d --build`; Postgres on host port 5434 (5432/5433 are taken on this machine).
-- Branches: `main` (deploys to the server later) and `dev`; work on feature branches merged into `dev` with clean rollbacks. Remote: GitHub `barslg/sourcebound`; CI on GitHub Actions, replayed locally by `make ci-local` before every push.
+- Branches: `main` (what Cloudflare Pages builds) and `dev`; work on feature branches merged into `dev` with clean rollbacks. Remote: GitHub `barslg/sourcebound`; CI on GitHub Actions, replayed locally by `make ci-local` before every push.
 - Secrets only in `.env` (gitignored): `MODEL_API_KEY` (server fallback, local/test only), `MODEL_KEY_SECRET` (encrypts the per-user keys), `SESSION_SECRET_KEY`, Google OAuth client id/secret, `DATABASE_URL`. Per-user Meta keys live encrypted in `user_model_keys` (migration 0025). Map: `.claude/knowledge/credentials-map.md`.
 
 ## Decisions and why
@@ -55,11 +55,11 @@ sources (every claim has an address in a source), and when the model is wrong th
 
 ## Not built
 
-Day-1 backend harness is landed and hardened (packaging, compose, `src/app` skeleton, migration 0001, LLM layer, live smoke, session-automatic transport guard; tests isolated on `muse_test`, ledger writes autonomous and committed, timeouts go to background, per-unit registry prices). T02 is landed: RBAC catalogue/principal/require/`ctx`, provider-generic OIDC with backend sessions, user ban/delete, invites, operations with Procrastinate plus SSE (migration 0002, routes under `/api/v1`). Landed in T03: `runs/`, `course/`, `agents/` packages, prompt files under `prompts/`, sources with FTS retrieval, and plan runs. T05/T05b landed: block type packages, methodology pipelines, and the real generation pipeline (submit_generate -> compiled DAG -> worker -> done, verified citations, reader holds, code-planted spot-the-error). Landed since: the Vue frontend (author and learner UIs with route registry, grammar, states, reachability, contract and permission gates), CI on GitHub Actions (`make ci-local` replays it), identity and design system, two-level planning, translation, per-user keys, nine block types. Still ahead: the demo course build and read-through (Python basics, 2026-11-03/04), the video, the submission, a public host.
+Day-1 backend harness is landed and hardened (packaging, compose, `src/app` skeleton, migration 0001, LLM layer, live smoke, session-automatic transport guard; tests isolated on `muse_test`, ledger writes autonomous and committed, timeouts go to background, per-unit registry prices). T02 is landed: RBAC catalogue/principal/require/`ctx`, provider-generic OIDC with backend sessions, user ban/delete, invites, operations with Procrastinate plus SSE (migration 0002, routes under `/api/v1`). Landed in T03: `runs/`, `course/`, `agents/` packages, prompt files under `prompts/`, sources with FTS retrieval, and plan runs. T05/T05b landed: block type packages, methodology pipelines, and the real generation pipeline (submit_generate -> compiled DAG -> worker -> done, verified citations, reader holds, code-planted spot-the-error). Landed since: the Vue frontend (author and learner UIs with route registry, grammar, states, reachability, contract and permission gates), CI on GitHub Actions (`make ci-local` replays it), identity and design system, two-level planning, translation, per-user keys, nine block types. Still ahead: the demo course build and read-through (Python basics, 2026-11-03/04), the video, the submission, the API host behind `sourcebound.io`.
 
 ## Unconfirmed
 
 - Final product name (judges must not read it as "AI for education chatbot").
-- Which host and domain serve the demo; Google OAuth client (owner creates it; redirect URI depends on the domain).
+- Which host serves the API image behind `sourcebound.io`; the Google OAuth client's redirect URI follows it (owner creates the client).
 - What the 3-minute video must show beyond: source → plan edited by the author → generation with progress → typed blocks with
   source addresses → learner check graded by code → "find the AI error" → teacher report.
