@@ -75,6 +75,10 @@ test('learner topic: the topic\'s term is marked once and opens its definition b
   await expect(marks).toHaveCount(1)
   await marks.first().click()
   await expect(page.getByTestId('companion-term')).toContainText('An alcohol rub takes twenty seconds')
+  // the review deck is built from the same terms: the back of the card is the defining sentence
+  await page.getByTestId('flashcard-flip').first().click()
+  await expect(page.getByTestId('flashcard-definition').first()).toBeVisible()
+  await expect(page.getByTestId('flashcard-definition').first()).toContainText('An alcohol rub takes twenty seconds')
   await expect(page.getByTestId('companion-glossary')).toHaveAttribute('href', `/learn/courses/${ids().learn}/glossary`)
 })
 

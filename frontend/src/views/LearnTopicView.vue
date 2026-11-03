@@ -8,6 +8,7 @@ import { learnAnswer, learnCourse, learnSubmit, learnTopic } from '@/api/endpoin
 import type { AnswerResult, Chip, LearnOutline, LearnProgress, LearnTopic, SubmitResult, Term } from '@/api/types'
 import ActionButton from '@/components/ActionButton.vue'
 import CompanionPanel from '@/components/learner/CompanionPanel.vue'
+import FlashcardDeck from '@/components/learner/FlashcardDeck.vue'
 import LearnBlockCard from '@/components/learner/LearnBlockCard.vue'
 import LessonRail from '@/components/learner/LessonRail.vue'
 import TutorPanel from '@/components/learner/TutorPanel.vue'
@@ -133,6 +134,7 @@ function retake(): void {
         </div>
         <p v-if="topic.data.value.next_note" class="hint" data-testid="through-line">{{ t('learnTopic.nextLine', { note: topic.data.value.next_note }) }}</p>
         <LearnBlockCard v-for="(b, i) in topic.data.value.blocks" :key="b.id" v-model:draft="drafts[b.id] as Draft" :block="b" :index="i" :result="results[b.id] ?? null" :busy="busy[b.id]" :test-mode="isTest" :open-id="openId" :open-term="openTerm?.term ?? null" :terms="topic.data.value.terms ?? []" @check="check(b.id, b.block_type)" @open="open" @term="openTermOf" />
+        <FlashcardDeck v-if="!isTest" :terms="topic.data.value.terms ?? []" :uid="id" />
         <div v-if="isTest && !submitted"><ActionButton accent action="submit-test" :label="t('learnTopic.submitTest')" :loading="submitting" :reason="submitReason" data-testid="submit-test" @click="submit" /></div>
         <section v-if="finished" class="done-card stack" data-testid="lesson-done">
           <h2>{{ t('learn.doneTitle') }}</h2>

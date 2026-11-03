@@ -876,7 +876,13 @@
     "moveStepDown": "Flytt trinn {n} ned",
     "alreadyFirst": "Allerede først",
     "alreadyLast": "Allerede sist",
-    "locked": "Svaret sjekkes"
+    "locked": "Svaret sjekkes",
+    "flashcards": {
+      "title": "Repeter begrepene",
+      "help": "Si definisjonen, og snu kortet for å sammenligne med setningen lesetekst brukte.",
+      "show": "Vis definisjonen",
+      "hide": "Skjul definisjonen"
+    }
   },
   "runs": {
     "title": "Kjøringer",

@@ -876,7 +876,13 @@
     "moveStepDown": "Move step {n} down",
     "alreadyFirst": "Already first",
     "alreadyLast": "Already last",
-    "locked": "The answer is being checked"
+    "locked": "The answer is being checked",
+    "flashcards": {
+      "title": "Review the terms",
+      "help": "Say the definition, then turn the card to compare with the sentence the reading used.",
+      "show": "Show the definition",
+      "hide": "Hide the definition"
+    }
   },
   "runs": {
     "title": "Runs",

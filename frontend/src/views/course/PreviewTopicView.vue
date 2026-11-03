@@ -7,6 +7,7 @@ import { request } from '@/api/client'
 import { coursePreview, coursePreviewPassage, previewTopic } from '@/api/endpoints'
 import type { Chip, LearnOutline, LearnTopic, Term } from '@/api/types'
 import CompanionPanel from '@/components/learner/CompanionPanel.vue'
+import FlashcardDeck from '@/components/learner/FlashcardDeck.vue'
 import LearnBlockCard from '@/components/learner/LearnBlockCard.vue'
 import LessonRail from '@/components/learner/LessonRail.vue'
 import FormField from '@/components/FormField.vue'
@@ -70,6 +71,7 @@ function openTermOf(term: Term): void { openId.value = null; openTerm.value = op
           <p v-if="b.status === 'held'" class="preview-notice" role="note" :data-block-id="b.id" data-testid="preview-held-block">{{ t('previewTopic.heldBlock', { reason: b.hold_reason }) }}</p>
           <LearnBlockCard v-model:draft="drafts[b.id] as Draft" :block="b" :index="i" :result="null" :test-mode="true" :open-id="openId" :open-term="openTerm?.term ?? null" :terms="topic.data.value.terms ?? []" @open="open" @term="openTermOf" />
         </template>
+        <FlashcardDeck v-if="topic.data.value.kind !== 'module_test'" :terms="topic.data.value.terms ?? []" :uid="topic.data.value.id" />
         <nav class="row" :aria-label="t('previewTopic.nav')" data-testid="preview-nav">
           <router-link :to="outlineLink" data-testid="back-to-preview">{{ t('previewTopic.backToOutline') }}</router-link>
           <router-link v-if="previous" :to="link(previous.id)" data-testid="previous-topic">{{ t('previewTopic.previous', { title: previous.title }) }}</router-link>
