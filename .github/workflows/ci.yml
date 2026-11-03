@@ -161,7 +161,5 @@ jobs:
         with:
           node-version: 22
       - run: uv sync
-      - name: stub the agent prompts (prompts/ is not in git; the fixtures are the public stand-ins)
-        run: cp -r tests/fixtures/agent_prompts prompts
       - run: cd frontend && npm ci && npx playwright install --with-deps chromium
       - run: cd frontend && npm run e2e

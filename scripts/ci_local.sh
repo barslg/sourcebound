@@ -88,7 +88,6 @@ fi
 step "job frontend e2e gates"
 # Same steps as the workflow job. Differences, by necessity: a throwaway database name and the
 # 8011/4174/9020/9030 ports, so the running dev stand and its database are never touched.
-cp -r tests/fixtures/agent_prompts prompts
 export E2E_DB_NAME="${DB}_e2e" E2E_BACKEND_PORT="${E2E_BACKEND_PORT:-8011}" E2E_PREVIEW_PORT="${E2E_PREVIEW_PORT:-4174}" E2E_OIDC_PORT="${E2E_OIDC_PORT:-9020}" E2E_MODEL_PORT="${E2E_MODEL_PORT:-9030}"
 export E2E_BASE_URL="${E2E_BASE_URL:-postgresql+asyncpg://${PG_ADMIN#postgresql://}}"
 E2E_STARTED=$(date +%s)

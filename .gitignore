@@ -9,8 +9,6 @@ tmp/
 .idea/
 .vscode/
 
-# Stack not chosen yet: language ignores arrive with the stack.
-
 # Python
 __pycache__/
 *.pyc
@@ -23,18 +21,21 @@ __pycache__/
 node_modules/
 frontend/dist/
 
-# Docs, prompts and agent definitions stay local until the final publish (owner 2026-10-31): only code goes to git now
-*.md
+# Planning papers (internal; the manifest, principles and third-party table are tracked)
+docs/BRIEF.md
+docs/PLAN-FINAL.md
+docs/HARNESS.md
+docs/VIDEO.md
 
-# Build runner state and logs (local)
+# Build runner state, logs, briefs and review notes (local)
 build/state.json
 build/logs/
-prompts/
+build/notes/
+build/tasks/
+var/
+
+# Agent kits (local; backed up by the assistant-memory repo)
 .agents/
 AGENTS.md
-var/
-!tests/fixtures/**/*.md
-
-# Claude Code kit (local; backed up by the assistant-memory repo)
 .claude/
 CLAUDE.md
