@@ -932,13 +932,16 @@ async def intake_url(
     ).first()
     title = page_title(page) or url
     if existing is not None:
-        # a re-crawl of an unchanged page repairs a title that was only its URL
+        # a re-crawl of an unchanged page repairs a title that was only its URL and
+        # writes the address the 2026-11 rows never kept (storage_path is the URL)
         await session.execute(
             sa.text(
-                "UPDATE sources SET title = :title WHERE id = :id AND kind = 'url'"
-                " AND (title = '' OR title LIKE 'http://%' OR title LIKE 'https://%')"
+                "UPDATE sources SET title = CASE WHEN title = '' OR title LIKE 'http://%'"
+                " OR title LIKE 'https://%' THEN :title ELSE title END,"
+                " storage_path = CASE WHEN storage_path = '' THEN :url ELSE storage_path END"
+                " WHERE id = :id AND kind = 'url'"
             ),
-            {"id": str(existing[0]), "title": title},
+            {"id": str(existing[0]), "title": title, "url": url},
         )
         if course_id is not None:
             await bind_source_to_course(
@@ -951,10 +954,10 @@ async def intake_url(
                 "INSERT INTO sources"
                 " (content_sha256, kind, media, title, licence, approval, storage_path,"
                 " ingest_status)"
-                " VALUES (:digest, 'url', 'text', :title, '', 'pending', '',"
+                " VALUES (:digest, 'url', 'text', :title, '', 'pending', :url,"
                 " 'ready') RETURNING id"
             ),
-            {"digest": digest, "title": title},
+            {"digest": digest, "title": title, "url": url},
         )
     ).one()
     source_id = UUID(str(row[0]))
