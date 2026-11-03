@@ -25,7 +25,7 @@ sources (every claim has an address in a source), and when the model is wrong th
 ## How it runs and deploys
 
 - Local: `docker compose up -d --build`; Postgres on host port 5434 (5432/5433 are taken on this machine).
-- Branches: `main` (what Cloudflare Workers Builds deploys) and `dev`; work on feature branches merged into `dev` with clean rollbacks. Remote: GitHub `barslg/sourcebound`; CI on GitHub Actions, replayed locally by `make ci-local` before every push.
+- Branches: `main` (what Cloudflare Workers Builds deploys; the `deploy` workflow ships the API host from it after a green `ci`, secrets and host in the repository settings, README Deploy) and `dev`; work on feature branches merged into `dev` with clean rollbacks. Remote: GitHub `barslg/sourcebound`; CI on GitHub Actions, replayed locally by `make ci-local` before every push.
 - Secrets only in `.env` (gitignored): `MODEL_API_KEY` (server fallback, local/test only), `MODEL_KEY_SECRET` (encrypts the per-user keys), `SESSION_SECRET_KEY`, Google OAuth client id/secret, `DATABASE_URL`. Per-user Meta keys live encrypted in `user_model_keys` (migration 0025). Map: `.claude/knowledge/credentials-map.md`.
 
 ## Decisions and why
@@ -60,6 +60,6 @@ Day-1 backend harness is landed and hardened (packaging, compose, `src/app` skel
 ## Unconfirmed
 
 - Final product name (judges must not read it as "AI for education chatbot").
-- Which host serves the API image behind `sourcebound.io`; the Google OAuth client's redirect URI follows it (owner creates the client).
+- Which host serves the API image behind `sourcebound.io`: the deploy workflow is ready and skips itself until `DEPLOY_HOST` is set. The Google client already carries `https://sourcebound.io` and its callback (owner, 2026-11-04).
 - What the 3-minute video must show beyond: source → plan edited by the author → generation with progress → typed blocks with
   source addresses → learner check graded by code → "find the AI error" → teacher report.

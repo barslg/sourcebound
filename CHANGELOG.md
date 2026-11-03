@@ -6,6 +6,15 @@ Format — [Keep a Changelog](https://keepachangelog.com/). Versioning — [SemV
 
 ### Added
 
+- Deploy of the API host from `main`: `.github/workflows/deploy.yml` runs after a
+  green `ci`, writes the production `.env` (Google OAuth client, session and key
+  secrets, superadmins, `OIDC_REDIRECT_URL` under `sourcebound.io`) from the
+  repository secrets, ships the tracked tree over SSH, runs compose and checks
+  `/api/v1/health` on the host and through the site; it skips itself until
+  `DEPLOY_HOST` is set. The gate `check_deploy_env` keeps the names it writes
+  equal to the settings catalogue and to what production refuses to boot
+  without. (2026-11-04)
+
 - Public-repository hygiene: `SECURITY.md` (private vulnerability reporting),
   `.github/CODEOWNERS`, weekly Dependabot updates for uv, npm and GitHub
   Actions, and a read-only workflow token in CI. (2026-11-04)

@@ -1,0 +1,102 @@
+name: deploy
+
+# Deploys the API host from main after the ci workflow is green there. The
+# frontend is deployed by Cloudflare Workers Builds from the same branch
+# (README, Deploy). While the repository variable DEPLOY_HOST is unset the
+# job skips itself, so main stays deployable before the host exists.
+#
+# Repository variables (Settings, Secrets and variables, Actions, Variables):
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_KNOWN_HOSTS (the host's ssh-keyscan line),
+#   DEPLOY_DIR (default sourcebound), SITE_URL (default https://sourcebound.io).
+# Repository secrets:
+#   DEPLOY_SSH_KEY (private key of a deploy user that can run docker compose),
+#   SESSION_SECRET_KEY, MODEL_KEY_SECRET, GOOGLE_OAUTH_CLIENT_ID,
+#   GOOGLE_OAUTH_CLIENT_SECRET, SUPERADMIN_EMAILS.
+# The production .env is written from these on every deploy; nothing else on
+# the host holds a secret. scripts/check_deploy_env.py keeps the names below
+# equal to the settings catalogue (src/app/config.py, .env.example).
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+
+jobs:
+  api:
+    name: api host
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success' && vars.DEPLOY_HOST != ''
+    timeout-minutes: 20
+    env:
+      SITE_URL: ${{ vars.SITE_URL || 'https://sourcebound.io' }}
+      TARGET: ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}
+      APP_DIR: ${{ vars.DEPLOY_DIR || 'sourcebound' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: ssh key and host key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          : "${DEPLOY_SSH_KEY:?secret DEPLOY_SSH_KEY is not set}"
+          : "${DEPLOY_KNOWN_HOSTS:?variable DEPLOY_KNOWN_HOSTS is not set}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy "$TARGET" 'docker compose version'
+
+      - name: production .env from secrets
+        env:
+          SESSION_SECRET_KEY: ${{ secrets.SESSION_SECRET_KEY }}
+          MODEL_KEY_SECRET: ${{ secrets.MODEL_KEY_SECRET }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          SUPERADMIN_EMAILS: ${{ secrets.SUPERADMIN_EMAILS }}
+        run: |
+          : "${SESSION_SECRET_KEY:?secret SESSION_SECRET_KEY is not set}"
+          : "${MODEL_KEY_SECRET:?secret MODEL_KEY_SECRET is not set}"
+          : "${GOOGLE_OAUTH_CLIENT_ID:?secret GOOGLE_OAUTH_CLIENT_ID is not set}"
+          : "${GOOGLE_OAUTH_CLIENT_SECRET:?secret GOOGLE_OAUTH_CLIENT_SECRET is not set}"
+          : "${SUPERADMIN_EMAILS:?secret SUPERADMIN_EMAILS is not set}"
+          cat > "$RUNNER_TEMP/env" <<EOF
+          APP_ENV=prod
+          SESSION_SECRET_KEY=$SESSION_SECRET_KEY
+          MODEL_KEY_SECRET=$MODEL_KEY_SECRET
+          GOOGLE_OAUTH_CLIENT_ID=$GOOGLE_OAUTH_CLIENT_ID
+          GOOGLE_OAUTH_CLIENT_SECRET=$GOOGLE_OAUTH_CLIENT_SECRET
+          OIDC_ISSUER=https://accounts.google.com
+          OIDC_REDIRECT_URL=$SITE_URL/api/v1/auth/callback
+          OIDC_ALLOWED_DOMAINS=
+          SUPERADMIN_EMAILS=$SUPERADMIN_EMAILS
+          EOF
+          chmod 600 "$RUNNER_TEMP/env"
+
+      - name: ship the tracked tree and the .env
+        run: |
+          ssh -i ~/.ssh/deploy "$TARGET" "mkdir -p ~/$APP_DIR && cd ~/$APP_DIR && find . -mindepth 1 -maxdepth 1 ! -name .env ! -name var -exec rm -rf {} +"
+          git archive --format=tar HEAD | ssh -i ~/.ssh/deploy "$TARGET" "tar -x -C ~/$APP_DIR"
+          scp -i ~/.ssh/deploy "$RUNNER_TEMP/env" "$TARGET:~/$APP_DIR/.env"
+
+      - name: build and start
+        run: ssh -i ~/.ssh/deploy "$TARGET" "cd ~/$APP_DIR && docker compose up -d --build --remove-orphans && docker compose ps"
+
+      - name: health on the host, then through the site
+        run: |
+          for i in $(seq 1 30); do
+            if ssh -i ~/.ssh/deploy "$TARGET" 'curl -fsS http://localhost:8000/api/v1/health' >/dev/null 2>&1; then break; fi
+            sleep 5
+          done
+          ssh -i ~/.ssh/deploy "$TARGET" 'curl -fsS http://localhost:8000/api/v1/health'
+          curl -fsS "$SITE_URL/api/v1/health"
+          echo "deployed $(git rev-parse --short HEAD) behind $SITE_URL"
