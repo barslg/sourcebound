@@ -120,6 +120,7 @@ async def logout(ctx: RequestContext) -> None:
 async def me(ctx: RequestContext, *, locale: str = "en") -> dto.MeResponse:
     """The signed-in account with roles, permissions, and scope tags."""
     from app.i18n.privacy import signin_privacy_line
+    from app.services.model_keys import key_status
 
     principal = require_auth(ctx)
     row = (
@@ -128,6 +129,11 @@ async def me(ctx: RequestContext, *, locale: str = "en") -> dto.MeResponse:
             {"user": str(principal.user_id)},
         )
     ).first()
+    key = await key_status(ctx.db, principal.user_id)
+    server_key = ctx.settings.model_api_key
+    local_fallback = ctx.settings.app_env in ("local", "test") and bool(
+        server_key and server_key.get_secret_value()
+    )
     return dto.MeResponse(
         id=str(principal.user_id),
         email=principal.email,
@@ -138,7 +144,38 @@ async def me(ctx: RequestContext, *, locale: str = "en") -> dto.MeResponse:
         permissions=sorted(principal.permissions),
         scope_tags=list(principal.scope_tags),
         privacy_line=signin_privacy_line(locale),
+        model_key_ready=bool(key["is_set"])
+        or local_fallback
+        or bool(ctx.settings.model_replay_ledger),
     )
+
+
+async def model_key_status(ctx: RequestContext) -> dto.ModelKeyStatus:
+    """Whether the caller has a Meta key on file (its last four characters only)."""
+    from app.services.model_keys import key_status
+
+    principal = require_auth(ctx)
+    return dto.ModelKeyStatus(**await key_status(ctx.db, principal.user_id))
+
+
+async def set_model_key(ctx: RequestContext, *, key: str) -> dto.ModelKeyStatus:
+    """Store the caller's own Meta key, encrypted; the value is never echoed."""
+    from app.services.model_keys import set_key
+
+    principal = require_auth(ctx)
+    status = await set_key(ctx.db, ctx.settings, principal.user_id, key)
+    await ctx.db.commit()
+    return dto.ModelKeyStatus(**status)
+
+
+async def delete_model_key(ctx: RequestContext) -> dto.ModelKeyStatus:
+    """Forget the caller's Meta key."""
+    from app.services.model_keys import delete_key
+
+    principal = require_auth(ctx)
+    status = await delete_key(ctx.db, principal.user_id)
+    await ctx.db.commit()
+    return dto.ModelKeyStatus(**status)
 
 
 def public_config(*, locale: str) -> dict[str, str]:

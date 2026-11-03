@@ -17,6 +17,17 @@ class MeResponse(BaseModel):
     permissions: list[str]
     scope_tags: list[str]
     privacy_line: str = ""
+    model_key_ready: bool = False
+
+
+class ModelKeyStatus(BaseModel):
+    is_set: bool
+    hint: str = ""
+    updated_at: datetime | None = None
+
+
+class ModelKeyRequest(BaseModel):
+    key: str = Field(min_length=16, max_length=512)
 
 
 class CsrfResponse(BaseModel):

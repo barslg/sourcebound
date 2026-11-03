@@ -530,7 +530,7 @@ def test_0017_user_delete_cascades_answers_and_downgrade_drops_only_the_table() 
     before = set(_harness_tables(url))
     command.downgrade(_cfg(url), "0016")
     after = set(_harness_tables(url))
-    assert before - after == {"learner_answers", "learner_block_views"}
+    assert before - after == {"learner_answers", "learner_block_views", "user_model_keys"}
     command.upgrade(_cfg(url), "head")
     assert "learner_answers" in _harness_tables(url)
     with psycopg.connect(_m0017_sync(url), autocommit=True) as conn:

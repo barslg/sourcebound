@@ -102,6 +102,31 @@ async def csrf(ctx: RequestContext = Depends(get_ctx)) -> dto.CsrfResponse:  # n
     return dto.CsrfResponse(csrf_token=ctx.login_session.csrf_token)
 
 
+@router.get("/me/model-key", response_model=dto.ModelKeyStatus)
+async def model_key_status(
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dto.ModelKeyStatus:
+    """The caller's own Meta key status: set or not, last four characters."""
+    return await controller.model_key_status(ctx)
+
+
+@router.put("/me/model-key", response_model=dto.ModelKeyStatus)
+async def set_model_key(
+    body: dto.ModelKeyRequest,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dto.ModelKeyStatus:
+    """Store the caller's own Meta key; it is encrypted at rest and never returned."""
+    return await controller.set_model_key(ctx, key=body.key)
+
+
+@router.delete("/me/model-key", response_model=dto.ModelKeyStatus)
+async def delete_model_key(
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dto.ModelKeyStatus:
+    """Forget the caller's Meta key."""
+    return await controller.delete_model_key(ctx)
+
+
 @router.get("/me", response_model=dto.MeResponse)
 async def me(
     request: Request,

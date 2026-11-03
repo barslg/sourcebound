@@ -21,8 +21,12 @@ import { humanize } from '@/composables/labels'
 import { useQueued } from '@/composables/useQueued'
 import { sourceHandles, type PlanModule, type PlanOp, type PlanTopic, type PlanTree } from '@/composables/planTree'
 import { dropCached, useResource } from '@/composables/useResource'
+import { useSessionStore } from '@/stores/session'
 
 const { t, te } = useI18n()
+const session = useSessionStore()
+/** A paid run needs a Meta key: the account's own, or the stand's local one. */
+const noKey = computed(() => (session.me?.model_key_ready ? null : t('account.noKey')))
 const route = useRoute()
 const courseId = computed(() => String(route.params.id))
 const header = ref<InstanceType<typeof CourseHeader> | null>(null)
@@ -244,7 +248,7 @@ watch(() => route.hash, (hash) => {
           <Section :title="t('plan.stoppedTitle')" :help="t('plan.stoppedHelp')" />
           <p class="mono danger-text" role="alert">{{ latestPlanRun.stop_marker ?? t('plan.buildStopped') }}</p>
           <div>
-            <ActionButton action="build-plan" :label="t('plan.buildAgain')" :reason="lacking('course.plan')" data-testid="plan-rebuild" @click="rebuildOpen = true" />
+            <ActionButton action="build-plan" :label="t('plan.buildAgain')" :reason="firstReason(noKey, lacking('course.plan'))" data-testid="plan-rebuild" @click="rebuildOpen = true" />
           </div>
           <PlanBuildForm v-if="rebuildOpen" v-model:methodologies="methodologies" v-model:queries-text="queriesText" :course-id="courseId" form-id="rebuild-plan" field-prefix="rb" choice-prefix="rb-m" card-testid="rebuild-card" submit-testid="plan-rebuild-submit" :submit-label="t('plan.buildAgain')" :building="building" :build-error="buildError" :no-sources="noSources" :op-queued="planQueue.queued.value" @submit="buildPlan" />
         </section>

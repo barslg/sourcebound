@@ -20,8 +20,12 @@ import { stepName, stepWord, stopBlockRef, stoppedLine, type RunDoc } from '@/co
 import { useQueued } from '@/composables/useQueued'
 import { useResource } from '@/composables/useResource'
 import { useOperationsStore } from '@/stores/operations'
+import { useSessionStore } from '@/stores/session'
 
 const { t, te } = useI18n()
+const session = useSessionStore()
+/** A paid run needs a Meta key: the account's own, or the stand's local one. */
+const noKey = computed(() => (session.me?.model_key_ready ? null : t('account.noKey')))
 const route = useRoute()
 const operations = useOperationsStore()
 const courseId = computed(() => String(route.params.id))
@@ -131,7 +135,7 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
 
           <div id="generate" class="stack generate-box">
             <div class="row">
-              <ActionButton action="generate" :label="alreadyGenerated ? t('generate.generateAgain') : t('plan.generate')" :loading="generating" :reason="firstReason(lacking('run.start'), noSources && t('generate.approveSources'), active && t('plan.alreadyQueued'), validation && (validation.blocking_questions ?? []).length > 0 && t('plan.questionsOpen'), validation && (validation.tree_errors ?? []).length > 0 && t('plan.treeInvalid'), genQueue.queued.value && t('plan.alreadyQueued'))" data-testid="generate" @click="alreadyGenerated ? (confirmRegenerate = true) : generate()" />
+              <ActionButton action="generate" :label="alreadyGenerated ? t('generate.generateAgain') : t('plan.generate')" :loading="generating" :reason="firstReason(noKey, lacking('run.start'), noSources && t('generate.approveSources'), active && t('plan.alreadyQueued'), validation && (validation.blocking_questions ?? []).length > 0 && t('plan.questionsOpen'), validation && (validation.tree_errors ?? []).length > 0 && t('plan.treeInvalid'), genQueue.queued.value && t('plan.alreadyQueued'))" data-testid="generate" @click="alreadyGenerated ? (confirmRegenerate = true) : generate()" />
               <router-link v-if="noSources" :to="`/courses/${courseId}/sources`" data-testid="go-sources">{{ t('generate.approveSources') }}</router-link>
               <router-link v-if="validation && (validation.blocking_questions ?? []).length > 0" :to="`/courses/${courseId}/plan#questions`" data-testid="go-questions">{{ t('generate.goQuestions') }}</router-link>
             </div>

@@ -54,7 +54,8 @@
     "signedInAs": "Signed in as {name}",
     "admin": "Administrator",
     "toDark": "Switch to dark theme",
-    "toLight": "Switch to light theme"
+    "toLight": "Switch to light theme",
+    "account": "Account"
   },
   "locale": {
     "en": "English",
@@ -1009,5 +1010,27 @@
     "noDefinition": "Named in the plan, not yet in the reading.",
     "introducedIn": "Introduced in {topic}",
     "open": "Open the glossary"
+  },
+  "account": {
+    "title": "Account",
+    "help": "Your sign-in and the Meta API key your course runs are billed to.",
+    "keyTitle": "Meta API key",
+    "keyWhy": "Planning, generating, translating and the tutor on your courses call the Meta Model API with this key. Without it those actions stay off.",
+    "keySet": "A key is on file, ending in …{hint}.",
+    "keyUpdated": "Added {date}",
+    "keyNotSet": "No key on file yet.",
+    "keyLabel": "Key",
+    "keyReplace": "New key (replaces the one on file)",
+    "keyHelp": "Paste the key from your Meta developer dashboard. It is stored encrypted and never shown again.",
+    "keyTooShort": "Paste the whole key first.",
+    "keySave": "Save key",
+    "keySaved": "Key saved.",
+    "keyRemove": "Remove key",
+    "keyRemoveTitle": "Remove the key?",
+    "keyRemoveBody": "Runs you start afterwards are refused until you add a key again.",
+    "keyRemoved": "Key removed.",
+    "keyPrivacy": "The key is encrypted at rest with a server secret, never logged and never returned by any request.",
+    "busy": "Wait for the current save.",
+    "noKey": "Add your Meta API key on your account page first."
   }
 }

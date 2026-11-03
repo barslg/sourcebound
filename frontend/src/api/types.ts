@@ -7,7 +7,10 @@ export interface Me {
   roles: string[]
   permissions: string[]
   scope_tags: string[]
+  /** True when a run started by this account has a Meta key to bill: their own, or the local stand's. */
+  model_key_ready?: boolean
 }
+export interface ModelKeyStatus { is_set: boolean; hint: string; updated_at: string | null }
 export interface UserRow {
   id: string
   email: string

@@ -4,6 +4,7 @@ export const ENDPOINTS = {
   health: `${API}/health`,
   csrf: `${API}/auth/csrf`,
   me: `${API}/auth/me`,
+  modelKey: `${API}/auth/me/model-key`,
   logout: `${API}/auth/logout`,
   users: `${API}/users`,
   roles: `${API}/roles`,

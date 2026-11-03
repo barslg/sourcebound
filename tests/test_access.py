@@ -107,6 +107,7 @@ async def test_every_guarded_route_refuses_the_role(role: str, t03_session: Asyn
     cookies, csrf = await cookie_for(t03_session, user)
     own_scope = {
         "/api/v1/auth/me",
+        "/api/v1/auth/me/model-key",
         "/api/v1/notifications",
         "/api/v1/operations/{operation_id}",
         "/api/v1/notifications/{notification_id}/read",

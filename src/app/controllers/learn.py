@@ -137,11 +137,12 @@ async def ask(
     ctx: RequestContext, *, course_id: str, question: str, language: str | None
 ) -> dict[str, Any]:
     from app.services import planruns
+    from app.services.model_keys import settings_for_course_owner
     from app.services.tutor import ask as ask_use_case
 
     actor = require_auth(ctx)
     require(actor, "learn.ask")
-    settings = ctx.settings
+    settings = await settings_for_course_owner(ctx.db, ctx.settings, UUID(course_id))
     reply = await ask_use_case(
         ctx.db,
         actor,

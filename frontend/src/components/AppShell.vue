@@ -48,6 +48,7 @@ async function signOut(): Promise<void> {
     <header class="shell-top">
       <router-link v-if="session.can('user.list')" class="muted row-end" data-testid="whoami" :to="`/users?q=${encodeURIComponent(session.me?.email ?? '')}`">{{ t('shell.signedInAs', { name: session.me?.display_name || session.me?.email || '' }) }}</router-link>
       <span v-else class="muted row-end" data-testid="whoami">{{ t('shell.signedInAs', { name: session.me?.display_name || session.me?.email || '' }) }}</span>
+      <router-link class="muted" to="/account" data-testid="account-link">{{ t('shell.account') }}</router-link>
       <Select v-model="current" :options="localeOptions" option-label="label" option-value="code" :aria-label="t('shell.language')" data-testid="locale" />
       <ActionButton action="theme" icon-only :label="theme === 'dark' ? t('shell.toLight') : t('shell.toDark')" data-testid="theme" @click="toggle" />
       <BellMenu />

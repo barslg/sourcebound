@@ -228,7 +228,13 @@ async def execute_operation(
                 require(actor, OPERATION_CODES.get(str(kind), required_code))
                 await _set_status(session, operation_id, status="running", progress=0.5)
                 await session.commit()
-                detail = await _run_kind(session, str(kind), operation_id, factory=factory)
+                detail = await _run_kind(
+                    session,
+                    str(kind),
+                    operation_id,
+                    factory=factory,
+                    actor_id=UUID(str(actor_id)) if actor_id is not None else None,
+                )
                 await _set_status(session, operation_id, status="done", progress=1.0, result=detail)
                 target = UUID(str(actor_id)) if actor_id is not None else None
                 if target is not None:
@@ -292,15 +298,27 @@ async def _run_kind(
     operation_id: UUID,
     *,
     factory: async_sessionmaker[AsyncSession] | None = None,
+    actor_id: UUID | None = None,
 ) -> dict[str, Any]:
-    """Do the kind-specific work; echo returns its submitted message."""
+    """Do the kind-specific work; echo returns its submitted message.
+
+    Paid kinds run on the actor's own Meta key (services/model_keys);
+    an actor without a key fails the operation with the account-page
+    message before any call is made.
+    """
+    from app.services.model_keys import settings_for_user
+
+    # every kind but echo calls the model; echo never builds a provider
+    settings = (
+        await settings_for_user(session, get_settings(), actor_id) if kind != "echo" else None
+    )
     if kind == "submit_plan":
         from app.services.planruns import real_provider_factory, run_plan_operation
 
         return await run_plan_operation(
             session,
             operation_id,
-            provider_factory=real_provider_factory(get_settings()),
+            provider_factory=real_provider_factory(settings),
             session_factory=factory,
         )
     if kind == "submit_generate":
@@ -309,7 +327,7 @@ async def _run_kind(
         return await run_generate_operation(
             session,
             operation_id,
-            provider_factory=real_provider_factory(get_settings()),
+            provider_factory=real_provider_factory(settings),
             session_factory=factory,
         )
     if kind == "submit_translate":
@@ -318,7 +336,7 @@ async def _run_kind(
         return await run_translate_operation(
             session,
             operation_id,
-            provider_factory=real_provider_factory(get_settings()),
+            provider_factory=real_provider_factory(settings),
             session_factory=factory,
         )
     if kind == "resume_run":
@@ -327,7 +345,7 @@ async def _run_kind(
         return await run_resume_operation(
             session,
             operation_id,
-            provider_factory=real_provider_factory(get_settings()),
+            provider_factory=real_provider_factory(settings),
             session_factory=factory,
         )
     if kind in ("rewrite_block", "rewrite_held_batch"):
@@ -336,7 +354,7 @@ async def _run_kind(
         return await run_rewrite_operation(
             session,
             operation_id,
-            provider_factory=real_provider_factory(get_settings()),
+            provider_factory=real_provider_factory(settings),
             session_factory=factory,
         )
     if kind == OPERATION_KIND_TRANSCRIBE_AUDIO:

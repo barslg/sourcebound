@@ -9,6 +9,7 @@ const modelPort = process.env.E2E_MODEL_PORT ?? '9030'
 const backendEnv = {
   MODEL_API_BASE_URL: `http://127.0.0.1:${modelPort}`,
   MODEL_API_KEY: 'fake-key-for-the-mock-model-server',
+  MODEL_KEY_SECRET: 'e2e-only-secret-for-encrypting-lab-keys',
   DATABASE_URL: e2eDb,
   APP_ENV: 'local',
   SUPERADMIN_EMAILS: 'admin@example.com',

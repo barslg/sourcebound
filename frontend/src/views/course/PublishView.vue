@@ -18,8 +18,12 @@ import { notify, notifyError } from '@/composables/notify'
 import type { PlanTree } from '@/composables/planTree'
 import { useQueued } from '@/composables/useQueued'
 import { dropCached, useResource } from '@/composables/useResource'
+import { useSessionStore } from '@/stores/session'
 
 const { t } = useI18n()
+const session = useSessionStore()
+/** A paid run needs a Meta key: the account's own, or the stand's local one. */
+const noKey = computed(() => (session.me?.model_key_ready ? null : t('account.noKey')))
 const route = useRoute()
 const courseId = computed(() => String(route.params.id))
 const header = ref<InstanceType<typeof CourseHeader> | null>(null)
@@ -91,7 +95,7 @@ async function publish(): Promise<void> {
           </div>
         </FormField>
         <div class="row">
-          <ActionButton action="translate" :label="t('translate.button')" :loading="translating" :reason="firstReason(lacking('course.generate'), !course?.current_version_id && t('translate.noVersion'), translation.queued.value && t('translate.alreadyQueued'), languages.length === 0 && t('translate.pickFirst'))" data-testid="translate-open" @click="translate" />
+          <ActionButton action="translate" :label="t('translate.button')" :loading="translating" :reason="firstReason(noKey, lacking('course.generate'), !course?.current_version_id && t('translate.noVersion'), translation.queued.value && t('translate.alreadyQueued'), languages.length === 0 && t('translate.pickFirst'))" data-testid="translate-open" @click="translate" />
           <Queued v-if="translation.queued.value" />
         </div>
         <Section :title="t('publish.share')" :help="t('publish.shareHelp')" />

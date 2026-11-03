@@ -65,6 +65,7 @@ export const REGISTRY = [
   row({ name: 'invite', path: '/invite/:token', titleKey: 'invite.title', purposeKey: 'invite.help', access: { kind: 'public' }, bare: true, object: 'invite', primaryAction: 'signin', entry: 'external' }),
   row({ name: 'waiting', path: '/waiting', titleKey: 'waiting.title', purposeKey: 'waiting.body', access: { kind: 'signedIn' }, bare: true, primaryAction: 'check-again' }),
   row({ name: 'home', path: '/', redirect: '/courses', access: { kind: 'signedIn' } }),
+  row({ name: 'account', path: '/account', titleKey: 'account.title', purposeKey: 'account.help', access: { kind: 'signedIn' }, states: ONE, primaryAction: 'save' }),
   row({ name: 'courses', path: '/courses', titleKey: 'courses.title', purposeKey: 'courses.help', access: courses, nav: { section: 'main', icon: 'courses', labelKey: 'nav.courses' }, states: LIST, primaryAction: 'create' }),
   stage('sources', LIST, 'create', courses),
   stage('plan', [...LIST, 'queued'], 'add-module', courses),

@@ -10,8 +10,8 @@ the check asserts:
 
 Exempt (never carry a code): /health, /config/public (signed-out privacy line),
 /auth/login, /auth/callback, /auth/csrf, and POST /invites/{token}/accept.
-Self-scoped (the caller's own session, principal, stream, or owner-scoped
-read): /auth/logout, /auth/me,
+Self-scoped (the caller's own session, principal, key, stream, or owner-scoped
+read): /auth/logout, /auth/me, /auth/me/model-key,
 /events, and GET /operations/{operation_id}.
 
 Usage: python scripts/check_routes.py
@@ -47,6 +47,8 @@ SELF_SCOPED = {
     "/api/v1/auth/logout": "own session",
     # Returns only the caller's own principal.
     "/api/v1/auth/me": "own principal",
+    # Reads, stores or forgets only the caller's own Meta key.
+    "/api/v1/auth/me/model-key": "own key",
     # Streams only the caller's own notifications.
     "/api/v1/events": "own stream",
     # Owner-scoped read; anyone else's operation answers 404.

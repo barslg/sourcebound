@@ -7,6 +7,7 @@ export const VIEWS: Record<Exclude<RouteName, 'home'>, Loader> = {
   signin: () => import('@/views/SignInView.vue'),
   invite: () => import('@/views/InviteAcceptView.vue'),
   waiting: () => import('@/views/WaitingView.vue'),
+  account: () => import('@/views/AccountView.vue'),
   courses: () => import('@/views/CoursesView.vue'),
   'course-sources': () => import('@/views/course/SourcesView.vue'),
   'course-plan': () => import('@/views/course/PlanView.vue'),

@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     database_url: str = DEFAULT_DATABASE_URL
     test_database_url: str = ""
     model_api_key: SecretStr | None = None
+    model_key_secret: SecretStr | None = None
     model_api_base_url: str = "https://api.meta.ai/v1"
     model_provider: Literal["meta", "anthropic"] = "meta"
     anthropic_api_key: SecretStr | None = None
@@ -95,5 +96,7 @@ def validate_runtime_settings(settings: Settings) -> None:
         raise ConfigurationError("DATABASE_URL must not be the default in this APP_ENV")
     if settings.session_secret_key is None or not settings.session_secret_key.get_secret_value():
         raise ConfigurationError("SESSION_SECRET_KEY must be set in this APP_ENV")
+    if settings.model_key_secret is None or not settings.model_key_secret.get_secret_value():
+        raise ConfigurationError("MODEL_KEY_SECRET must be set in this APP_ENV")
     if settings.llm_dev_mode:
         raise ConfigurationError("LLM_DEV_MODE=1 is only allowed when APP_ENV is local or test")

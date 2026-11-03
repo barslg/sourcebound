@@ -51,6 +51,7 @@ def app_settings() -> Settings:
         _env_file=None,
         database_url=test_database_url(),
         session_secret_key="t06a-session-secret",  # type: ignore[arg-type]
+        model_key_secret="t06a-model-key-secret",  # type: ignore[arg-type]
         session_secure_cookie=False,
         model_api_key="synthetic-test-key",  # type: ignore[arg-type]
         model_api_base_url="https://api.meta.ai/v1",

@@ -65,6 +65,7 @@ def test_only_meta_runs_outside_local_and_test() -> None:
         "app_env": "prod",
         "database_url": "postgresql+asyncpg://u:p@db/x",
         "session_secret_key": "s" * 32,
+        "model_key_secret": "k" * 32,
     }
     validate_runtime_settings(Settings(model_provider="meta", **common))
     with pytest.raises(ConfigurationError):

@@ -54,7 +54,8 @@
     "signedInAs": "Logget inn som {name}",
     "admin": "Administrator",
     "toDark": "Bytt til mørkt tema",
-    "toLight": "Bytt til lyst tema"
+    "toLight": "Bytt til lyst tema",
+    "account": "Konto"
   },
   "locale": {
     "en": "English",
@@ -1009,5 +1010,27 @@
     "noDefinition": "Nevnt i planen, ennå ikke i teksten.",
     "introducedIn": "Innført i {topic}",
     "open": "Åpne ordlisten"
+  },
+  "account": {
+    "title": "Konto",
+    "help": "Innloggingen din og Meta-API-nøkkelen kursene dine belastes.",
+    "keyTitle": "Meta-API-nøkkel",
+    "keyWhy": "Planlegging, generering, oversettelse og veilederen på kursene dine kaller Meta Model API med denne nøkkelen. Uten den er disse handlingene av.",
+    "keySet": "En nøkkel er lagret, slutter på …{hint}.",
+    "keyUpdated": "Lagt til {date}",
+    "keyNotSet": "Ingen nøkkel lagret ennå.",
+    "keyLabel": "Nøkkel",
+    "keyReplace": "Ny nøkkel (erstatter den lagrede)",
+    "keyHelp": "Lim inn nøkkelen fra Meta-utviklerpanelet. Den lagres kryptert og vises aldri igjen.",
+    "keyTooShort": "Lim inn hele nøkkelen først.",
+    "keySave": "Lagre nøkkel",
+    "keySaved": "Nøkkel lagret.",
+    "keyRemove": "Fjern nøkkel",
+    "keyRemoveTitle": "Fjerne nøkkelen?",
+    "keyRemoveBody": "Kjøringer du starter etterpå avvises til du legger til en nøkkel igjen.",
+    "keyRemoved": "Nøkkel fjernet.",
+    "keyPrivacy": "Nøkkelen krypteres med en serverhemmelighet, logges aldri og returneres aldri av noen forespørsel.",
+    "busy": "Vent på lagringen.",
+    "noKey": "Legg til Meta-API-nøkkelen din på kontosiden først."
   }
 }

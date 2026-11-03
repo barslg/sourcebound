@@ -11,6 +11,7 @@ interface Screen { name: string; row: string; path: () => string; api: string; e
 
 const SCREENS: Screen[] = [
   { name: 'courses', row: 'courses', path: () => '/courses', api: '**/api/v1/courses', emptyBody: [], emptyLink: /Create your first course/ },
+  { name: 'account', row: 'account', path: () => '/account', api: '**/api/v1/auth/me/model-key', emptyBody: null, emptyLink: /x/, noEmpty: true },
   { name: 'users', row: 'users', path: () => '/users', api: '**/api/v1/users', emptyBody: [], emptyLink: /Invite people|No accounts/ },
   { name: 'roles', row: 'roles', path: () => '/roles', api: '**/api/v1/roles', emptyBody: [], emptyLink: /No roles/ },
   { name: 'invites', row: 'invites', path: () => '/invites', api: '**/api/v1/invites', emptyBody: [], emptyLink: /Create the first invite/ },
