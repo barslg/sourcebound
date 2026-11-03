@@ -54,8 +54,6 @@ export interface Constraint {
   answer: Record<string, unknown> | null
 }
 export interface TranslationRow { language: string; status: 'ready' | 'partial' | 'failed'; ok: number; held: number; failed: number }
-export interface LearnerBlock { plan_node_id: string; block_type: string; content: Record<string, unknown>; language: string; fallback_notice: string | null }
-export interface LearnerDoc { course_id: string; language: string; source_language: string; available_languages: Array<{ language: string; status: string }>; blocks: LearnerBlock[] }
 export interface CourseDoc {
   id: string
   owner_id: string
@@ -88,12 +86,12 @@ export interface QueueItem { id: string; kind: string; url: string; reason: stri
 export interface Permission { code: string; category: string; label: string; description: string }
 export interface LearnProgress { blocks_total: number; blocks_attempted: number; completion: number; assessed: number; mastery: number | null; status: string }
 export interface LearnCourse { id: string; title: string; language: string; audience: string; progress: LearnProgress }
-export interface LearnTopicRef { id: string; kind: string; title: string; objectives: string[]; progress: LearnProgress }
+export interface LearnTopicRef { id: string; kind: string; title: string; objectives: string[]; progress: LearnProgress; held?: number }
 export interface LearnModule { id: string; title: string; purpose: string; topics: LearnTopicRef[] }
 export interface LearnOutline { id: string; title: string; language: string; source_language: string; available_languages: Array<{ language: string; status: string }>; progress: LearnProgress; modules: LearnModule[] }
 export interface Chip { handle: string; source_title: string; address_label: string; passage_id: string }
 export interface Attempts { count: number; best_score: number | null; last_score: number | null }
-export interface LearnBlockView { id: string; block_type: string; role: string; ordinal: number; content: Record<string, unknown>; citations: Chip[]; language: string; fallback_notice: string | null; attempts: Attempts; passage_options?: Chip[] }
+export interface LearnBlockView { id: string; block_type: string; role: string; ordinal: number; content: Record<string, unknown>; citations: Chip[]; language: string; fallback_notice: string | null; attempts: Attempts; passage_options?: Chip[]; status?: string; hold_reason?: string }
 export interface LearnTopic { id: string; course_id: string; module_id: string; kind: string; title: string; objectives: string[]; language: string; progress: LearnProgress; blocks: LearnBlockView[]; next_note?: string }
 export interface LearnPassage { id: string; text: string; address_label: string; source_title: string; as_of: string | null; course_id: string }
 export interface KindCounts { hits: number; false_alarms: number; misses: number }

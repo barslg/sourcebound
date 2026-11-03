@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Request, UploadFile
+from fastapi import APIRouter, Depends, UploadFile
 
 from app.auth.ctx import RequestContext, get_ctx
 from app.controllers import t03 as controller
@@ -13,8 +13,10 @@ from app.routes.ids import (
     candidate_id_param,
     course_id_param,
     item_id_param,
+    passage_id_param,
     run_id_param,
     source_id_param,
+    topic_id_param,
 )
 from app.schemas import t03 as dto
 
@@ -25,6 +27,7 @@ blocks_router = APIRouter(prefix="/blocks", tags=["blocks"])
 methodologies_router = APIRouter(prefix="/methodologies", tags=["methodologies"])
 human_queue_router = APIRouter(prefix="/human-queue", tags=["human-queue"])
 tags_router = APIRouter(prefix="/tags", tags=["tags"])
+preview_router = APIRouter(prefix="/preview", tags=["courses"])
 
 
 @courses_router.post("", status_code=201)
@@ -240,22 +243,37 @@ async def translate_course(
     )
 
 
-@courses_router.get("/{course_id}/learner")
-async def get_learner_course(
+@courses_router.get("/{course_id}/preview")
+async def preview_outline(
     course_id: Annotated[str, Depends(course_id_param)],
-    request: Request,
     lang: str | None = None,
     ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
 ) -> dict[str, Any]:
-    """Learner view in ?lang= / Accept-Language, with fallbacks."""
-    language = lang
-    if language is None:
-        header = (
-            str(request.headers.get("accept-language", "")) if hasattr(request, "headers") else ""
-        )
-        if header:
-            language = header.split(",")[0].strip().split("-")[0]
-    return await controller.get_learner_course(ctx, course_id=course_id, language=language or "en")
+    """The draft's outline as the learner will see it, in ?lang= (preview page)."""
+    return await controller.preview_outline(ctx, course_id=course_id, language=lang)
+
+
+@preview_router.get("/topics/{topic_id}")
+async def preview_topic(
+    topic_id: Annotated[str, Depends(topic_id_param)],
+    lang: str | None = None,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, Any]:
+    """One topic of the draft through the learner serializers (preview topic page)."""
+    return await controller.preview_topic(ctx, topic_id=topic_id, language=lang)
+
+
+@courses_router.get("/{course_id}/preview/passages/{passage_id}")
+async def preview_passage(
+    course_id: Annotated[str, Depends(course_id_param)],
+    passage_id: Annotated[str, Depends(passage_id_param)],
+    lang: str | None = None,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, Any]:
+    """Passage text for the preview's companion panel."""
+    return await controller.preview_passage(
+        ctx, course_id=course_id, passage_id=passage_id, language=lang
+    )
 
 
 @sources_router.patch("/{source_id}/language")

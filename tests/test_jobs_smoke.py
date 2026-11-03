@@ -12,7 +12,7 @@ import asyncio
 import json
 import uuid
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import demo_t05
 import httpx
@@ -1053,9 +1053,33 @@ async def test_submit_translate_operation_product_path(t03_session: AsyncSession
     version_id = await planruns._latest_version_id(t03_session, course_id=course_id)
     statuses = await _tr_statuses(t03_session, version_id)
     assert statuses and all(v[0] in ("ok", "held") for v in statuses.values()), statuses
-    view = await planruns.learner_course_view(t03_session, course_id=course_id, language="nb")
-    assert view["blocks"], view
-    assert view["available_languages"], view
+    outline, blocks = await _preview_blocks(t03_session, course_id, "nb")
+    assert blocks, outline
+    assert outline["available_languages"], outline
+
+
+async def _preview_blocks(
+    session: AsyncSession, course_id: UUID, language: str
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """The author's preview of a draft: its outline and every topic's blocks, flattened."""
+    from app.rbac.principal import load_principal
+    from app.services.learner import preview_outline, preview_topic
+
+    owner = (
+        await session.execute(
+            sa.text("SELECT owner_id FROM courses WHERE id = :c"), {"c": str(course_id)}
+        )
+    ).scalar_one()
+    actor = await load_principal(session, UUID(str(owner)))
+    outline = await preview_outline(session, actor, course_id, language=language, threshold=0.8)
+    blocks: list[dict[str, Any]] = []
+    for module in outline["modules"]:
+        for topic in module["topics"]:
+            page = await preview_topic(
+                session, actor, course_id, UUID(topic["id"]), language=language, threshold=0.8
+            )
+            blocks.extend(page["blocks"])
+    return outline, blocks
 
 
 AUD_BASE = "https://api.meta.ai/v1"
@@ -2293,3 +2317,53 @@ async def test_a_re_ask_that_returns_nothing_usable_keeps_the_held_draft_and_the
     assert step[0] == "done"
     assert dict(step[1]).get("held") is True
     assert "quote is not verbatim" in str(dict(step[1]).get("hold_reason", ""))
+
+
+async def test_the_author_preview_is_the_learner_reading_of_the_draft(
+    t03_session: AsyncSession,
+) -> None:
+    """A draft course previews as modules → topics → blocks with chips and held marks.
+
+    The owner opened the Muse API course's preview (2026-11-03) and saw
+    140 numbered blocks with no topic, module or title: the preview was a
+    flat dump through its own serializer. The preview now runs the
+    learner services over the draft; a learner's own route still answers
+    404 until the course is published.
+    """
+    from app.errors import NotFoundError
+    from app.rbac.principal import Principal, load_principal
+    from app.services.learner import course_outline, preview_passage
+
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-preview")
+    final = await _smoke_run(t03_session, demo, dag, demo_t05.mock_demo_handler())
+    assert final["status"] == "done", final["stop_marker"]
+    outline, blocks = await _preview_blocks(t03_session, demo["course_id"], "en")
+    titles = [t["title"] for m in outline["modules"] for t in m["topics"]]
+    assert outline["modules"] and titles and all(titles), outline
+    held_in_db = await _smoke_blocks(t03_session, demo["course_id"])
+    held_nodes = {node for node, (status, _) in held_in_db.items() if status == "held"}
+    assert sum(t["held"] for m in outline["modules"] for t in m["topics"]) == len(held_nodes)
+    assert len(blocks) == len(held_in_db), (len(blocks), len(held_in_db))
+    assert {b["status"] for b in blocks} <= {"accepted", "held", "draft"}
+    assert all(b["hold_reason"] for b in blocks if b["status"] == "held")
+    with_chips = next(b for b in blocks if b["citations"])
+    chip = with_chips["citations"][0]
+    passage = await preview_passage(
+        t03_session, demo["course_id"], UUID(chip["passage_id"]), language="en"
+    )
+    assert passage["text"] and passage["course_id"] == str(demo["course_id"])
+    owner = await load_principal(t03_session, demo["user_id"])
+    learner = Principal(
+        user_id=owner.user_id,
+        email=owner.email,
+        roles=("student",),
+        permissions=frozenset({"learn.read"}),
+        scope_tags=(str(demo["course_id"]),),
+        is_superadmin=False,
+    )
+    # the demo upload is content-addressed, so a second demo course shares the
+    # passage; a course that never bound it is the honest outsider
+    with pytest.raises(NotFoundError):
+        await preview_passage(t03_session, uuid4(), UUID(chip["passage_id"]), language="en")
+    with pytest.raises(NotFoundError):
+        await course_outline(t03_session, learner, demo["course_id"], language="en", threshold=0.8)

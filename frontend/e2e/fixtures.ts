@@ -6,7 +6,7 @@ import { test as base, expect, type BrowserContext, type Page } from '@playwrigh
 export interface Seeded { id: string; email: string; name: string; token: string; csrf: string }
 export type Who = 'admin' | 'waiting' | 'student' | 'other' | 'assignee' | 'banme' | 'deleteme' | 'inviteme' | 'author' | 'editonly'
 
-export interface Ids { course: string; editing: string; empty: string; run: string; sources: string; fix: string; live_run: string; conflict: string; dnd: string; publish: string; translated: string; translate_failed: string; no_version: string; learn: string; learn_topic: string; learn_test: string }
+export interface Ids { course: string; editing: string; empty: string; run: string; sources: string; fix: string; live_run: string; conflict: string; dnd: string; publish: string; translated: string; translate_failed: string; no_version: string; learn: string; learn_topic: string; learn_test: string; translated_topic: string }
 
 export function ids(): Ids {
   return (JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../tmp/e2e-sessions.json'), 'utf8')) as { ids: Ids }).ids

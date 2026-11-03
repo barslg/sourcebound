@@ -138,7 +138,9 @@ test('author path: create, source, plan, generate, fix one block, translate, pre
   await page.getByTestId('translate-open').click()
   await until(() => api<CourseApi>(admin, 'GET', `/courses/${courseId}`), (c) => c.translations.some((t) => t.language === 'nb' && t.status === 'ready'), 'nb translation')
   await page.goto(`/courses/${courseId}/preview?language=nb`)
-  await expect(page.getByTestId('preview-block').first()).toContainText('norsk tekst')
+  await page.getByTestId('topic-open').first().click()
+  await expect(page).toHaveURL(/\/preview\/topics\//)
+  await expect(page.getByTestId('learn-block').first()).toContainText('norsk tekst')
 
   await page.goto(`/courses/${courseId}/publish`)
   await page.getByTestId('publish-open').click()
@@ -147,9 +149,12 @@ test('author path: create, source, plan, generate, fix one block, translate, pre
   await expect(page.getByTestId('published-note')).toBeVisible()
   const published = await api<CourseApi>(admin, 'GET', `/courses/${courseId}`)
   expect(published.status).toBe('published')
-  const kept = await api<{ available_languages: Array<{ language: string; status: string }>; blocks: Array<{ language: string; fallback_notice: string | null }> }>(admin, 'GET', `/courses/${courseId}/learner?lang=nb`)
+  const kept = await api<{ available_languages: Array<{ language: string; status: string }>; modules: Array<{ topics: Array<{ id: string }> }> }>(admin, 'GET', `/courses/${courseId}/preview?lang=nb`)
   expect(kept.available_languages.some((l) => l.language === 'nb' && l.status === 'ready')).toBe(true)
-  expect(kept.blocks.every((b) => b.language === 'nb' && b.fallback_notice === null)).toBe(true)
+  for (const topic of kept.modules.flatMap((m) => m.topics)) {
+    const served = await api<{ blocks: Array<{ language: string; fallback_notice: string | null }> }>(admin, 'GET', `/preview/topics/${topic.id}?lang=nb`)
+    expect(served.blocks.every((b) => b.language === 'nb' && b.fallback_notice === null)).toBe(true)
+  }
 
   await page.goto(`/invites?course=${courseId}`)
   await page.getByTestId('invite-create').click()

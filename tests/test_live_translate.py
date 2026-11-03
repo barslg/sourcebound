@@ -363,11 +363,28 @@ async def test_live_translation_acceptance(t03_session: AsyncSession, capfd: Any
                     }
                 )
             report[language] = per_block
-            view = await planruns.learner_course_view(
-                t03_session, course_id=course_id, language=language
+            from app.services.learner import preview_outline, preview_topic
+
+            outline = await preview_outline(
+                t03_session, actor, course_id, language=language, threshold=0.8
             )
-            assert view["blocks"], language
-            for block in view["blocks"]:
+            served = [
+                block
+                for module in outline["modules"]
+                for topic in module["topics"]
+                for block in (
+                    await preview_topic(
+                        t03_session,
+                        actor,
+                        course_id,
+                        UUID(topic["id"]),
+                        language=language,
+                        threshold=0.8,
+                    )
+                )["blocks"]
+            ]
+            assert served, language
+            for block in served:
                 if block["language"] == language:
                     assert block["fallback_notice"] is None
                 else:

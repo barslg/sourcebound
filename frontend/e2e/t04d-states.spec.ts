@@ -25,7 +25,8 @@ const SCREENS: Screen[] = [
   { name: 'runs', row: 'course-runs', path: () => `/courses/${ids().course}/runs`, api: `**/api/v1/courses/${ids().course}/runs`, emptyBody: [], emptyLink: /No run yet/ },
   { name: 'run', row: 'run', path: () => `/runs/${ids().run}`, api: `**/api/v1/runs/${ids().run}`, emptyBody: null, emptyLink: /./, noEmpty: true },
   { name: 'publish', row: 'course-publish', path: () => `/courses/${ids().publish}/publish`, api: `**/api/v1/courses/${ids().publish}`, emptyBody: null, emptyLink: /./, noEmpty: true },
-  { name: 'preview', row: 'course-preview', path: () => `/courses/${ids().translated}/preview`, api: `**/api/v1/courses/${ids().translated}/learner*`, emptyBody: null, emptyLink: /./, noEmpty: true },
+  { name: 'preview', row: 'course-preview', path: () => `/courses/${ids().translated}/preview`, api: `**/api/v1/courses/${ids().translated}/preview?*`, emptyBody: { id: ids().translated, title: 'Translated lab', language: 'en', source_language: 'en', available_languages: [], progress: { blocks_total: 0, blocks_attempted: 0, completion: 0, assessed: 0, mastery: null, status: 'not_started' }, modules: [] }, emptyLink: /Go to Generate/ },
+  { name: 'preview topic', row: 'course-preview-topic', path: () => `/preview/topics/${ids().translated_topic}`, api: `**/api/v1/preview/topics/*`, emptyBody: { id: ids().translated_topic, course_id: ids().translated, module_id: 'm', kind: 'lesson', title: 'Empty topic', objectives: [], language: 'en', progress: { blocks_total: 0, blocks_attempted: 0, completion: 0, assessed: 0, mastery: null, status: 'not_started' }, blocks: [] }, emptyLink: /Back to the course outline/ },
 ]
 
 test('states: every state the registry declares for a route is exercised by a screen here', () => {

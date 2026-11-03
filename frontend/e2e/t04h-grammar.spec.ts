@@ -21,6 +21,7 @@ const INSTANCES: Record<string, Instance> = {
     before: async (page) => { await page.route(`**/api/v1/courses/${I().fix}/held`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ blocks: [{ id: 'b-1', topic_title: 'Basics', brief: 'Why?', hold_reason: 'Not in the passage.', passage: 'Alcohol rub takes twenty seconds.', address: 'para1' }], batch_quote_usd: '0.020000' }) })) },
   },
   'course-preview': { who: 'admin', path: () => `/courses/${I().translated}/preview` },
+  'course-preview-topic': { who: 'admin', path: () => `/preview/topics/${I().translated_topic}` },
   'course-publish': { who: 'admin', path: () => `/courses/${I().publish}/publish` },
   learn: { who: 'student', path: () => '/learn' },
   'learn-course': { who: 'student', path: () => `/learn/courses/${I().learn}` },
@@ -42,6 +43,11 @@ async function lookupTitles(page: Page, row: RouteRow, path: string): Promise<{ 
   if (row.object === 'course') {
     const id = path.split('/')[2] as string
     return { course: ((await (await page.request.get(`/api/v1/courses/${id}`)).json()) as { title: string }).title }
+  }
+  if (row.object === 'learn' && path.startsWith('/preview/topics/')) {
+    // the author's preview of a draft topic: its course is the draft, not an enrolment
+    const topic = (await (await page.request.get(`/api/v1${path}`)).json()) as { course_id: string }
+    return { course: ((await (await page.request.get(`/api/v1/courses/${topic.course_id}`)).json()) as { title: string }).title }
   }
   if (row.object === 'learn') {
     const parts = path.split('/')

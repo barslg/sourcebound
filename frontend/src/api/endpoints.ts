@@ -64,7 +64,9 @@ export const blockItem = (id: string): string => `${API}/blocks/${enc(id)}`
 export const blockRewrite = (id: string): string => `${blockItem(id)}/rewrite`
 export const blockAccept = (id: string): string => `${blockItem(id)}/accept`
 export const courseTranslate = (id: string): string => `${courseItem(id)}/translate`
-export const courseLearner = (id: string): string => `${courseItem(id)}/learner`
+export const coursePreview = (id: string): string => `${courseItem(id)}/preview`
+export const previewTopic = (topicId: string): string => `${API}/preview/topics/${enc(topicId)}`
+export const coursePreviewPassage = (id: string, passageId: string): string => `${coursePreview(id)}/passages/${enc(passageId)}`
 export const courseRewriteHeld = (id: string): string => `${courseItem(id)}/held/rewrite`
 export const courseRecheckHeld = (id: string): string => `${courseItem(id)}/held/recheck`
 

@@ -751,12 +751,15 @@
   },
   "preview": {
     "title": "Preview as learner",
-    "help": "How a learner sees the course. Held blocks show the source text with a notice.",
+    "help": "The course as a learner will read it: modules, topics and blocks, with held blocks marked.",
     "language": "Language",
     "languageHint": "The language the learner picks.",
     "empty": "This course has no written blocks yet.",
-    "block": "Block {n}",
-    "noText": "This block has no text to show."
+    "toGenerate": "Go to Generate",
+    "heldNote": "{n} blocks are still held; publishing waits for them. | {n} block is still held; publishing waits for it. | {n} blocks are still held; publishing waits for them.",
+    "readyNote": "Every block is accepted. The course reads as the learner will see it.",
+    "heldChip": "{n} held | {n} held | {n} held",
+    "blocks": "{n} blocks | {n} block | {n} blocks"
   },
   "language": {
     "en": "English",
@@ -962,5 +965,15 @@
     "goPublish": "Publish",
     "generateAgain": "Generate again",
     "approveSources": "Approve at least one source first"
+  },
+  "previewTopic": {
+    "title": "Preview a topic",
+    "help": "The topic as a learner reads it. Answers are not recorded here.",
+    "empty": "This topic has no written blocks yet.",
+    "backToOutline": "Back to the course outline",
+    "heldNote": "{n} blocks of this topic are held; the reason stands above each. | {n} block of this topic is held; the reason stands above it. | {n} blocks of this topic are held; the reason stands above each.",
+    "heldBlock": "Held: {reason}",
+    "previous": "Previous: {title}",
+    "nav": "Topic navigation"
   }
 }

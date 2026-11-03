@@ -116,29 +116,42 @@ test('translate: POST languages, 202, Queued line, bell, then the language statu
   expect(refetch.slice(refetch.findIndex((p) => p.includes('/operations/op-t04g'))).some((p) => p === `/api/v1/courses/${translated}`)).toBe(true)
 })
 
-test('preview as learner: language picker en/nb/uk, held blocks show the localized notice from the backend', async ({ page, context }) => {
+test('preview as learner: outline, language picker en/nb/uk, held translations show the localized notice from the backend', async ({ page, context }) => {
   await signInAs(context, 'admin')
   const { translated } = ids()
-  const docs: Array<{ language: string; blocks: Array<{ fallback_notice: string | null; plan_node_id: string }> }> = []
+  const docs: Array<{ language: string; blocks: Array<{ fallback_notice: string | null }> }> = []
   page.on('response', async (res) => {
     const url = new URL(res.url())
-    if (url.pathname === `/api/v1/courses/${translated}/learner`) docs.push({ ...(await res.json()), language: url.searchParams.get('lang') ?? '' })
+    if (url.pathname.startsWith('/api/v1/preview/topics/')) docs.push({ ...(await res.json()), language: url.searchParams.get('lang') ?? '' })
   })
   await page.goto(`/courses/${translated}/publish`)
   await page.getByTestId('preview-link').click()
   await expect(page).toHaveURL(new RegExp(`/courses/${translated}/preview`))
+  await expect(page.getByTestId('module').first()).toBeVisible()
   const picker = page.getByTestId('preview-language')
   await picker.click()
   await expect(page.getByRole('option')).toHaveText(['English', 'Norsk bokmål', 'Українська'])
   await page.getByRole('option', { name: 'Norsk bokmål' }).click()
-  await expect.poll(() => docs.some((d) => d.language === 'nb')).toBe(true)
-  const nb = docs.find((d) => d.language === 'nb')
-  const notices = (nb?.blocks ?? []).map((b) => b.fallback_notice).filter((n): n is string => n !== null)
-  expect(notices.length).toBeGreaterThanOrEqual(2)
-  for (const text of notices) await expect(page.getByTestId('preview-notice').filter({ hasText: text }).first()).toBeVisible()
-  await expect(page.getByTestId('preview-notice')).toHaveCount(notices.length)
-  await expect(page.getByTestId('preview-block').filter({ hasText: 'nb text of' }).first()).toBeVisible()
-  await picker.click()
+  // every topic page shows exactly the notices its own blocks carry; the held nb
+  // translations sit in whichever topic holds them, so walk them all
+  const topicCount = await page.getByTestId('topic-open').count()
+  let seen = 0
+  let translatedShown = false
+  for (let i = 0; i < topicCount; i += 1) {
+    await page.goto(`/courses/${translated}/preview?language=nb`)
+    docs.length = 0
+    await page.getByTestId('topic-open').nth(i).click()
+    await expect(page).toHaveURL(/\/preview\/topics\/.+language=nb/)
+    await expect.poll(() => docs.some((d) => d.language === 'nb')).toBe(true)
+    const notices = docs.flatMap((d) => (d.language === 'nb' ? d.blocks : [])).map((b) => b.fallback_notice).filter((n): n is string => n !== null)
+    for (const text of notices) await expect(page.getByTestId('fallback-notice').filter({ hasText: text }).first()).toBeVisible()
+    await expect(page.getByTestId('fallback-notice')).toHaveCount(notices.length)
+    seen += notices.length
+    if ((await page.getByTestId('learn-block').filter({ hasText: 'nb text of' }).count()) > 0) translatedShown = true
+  }
+  expect(seen).toBeGreaterThanOrEqual(2)
+  expect(translatedShown, 'a translated block is served in Norwegian on some topic page').toBe(true)
+  await page.getByTestId('preview-language').click()
   await page.getByRole('option', { name: 'English' }).click()
-  await expect(page.getByTestId('preview-notice')).toHaveCount(0)
+  await expect(page.getByTestId('fallback-notice')).toHaveCount(0)
 })

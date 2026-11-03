@@ -8,7 +8,7 @@ import type { LearnPassage } from '@/api/types'
 import ActionButton from '@/components/ActionButton.vue'
 import ResourceState from '@/components/ResourceState.vue'
 
-const props = defineProps<{ passageId: string | null; language: string }>()
+const props = defineProps<{ passageId: string | null; language: string; passagePath?: (id: string) => string }>()
 const emit = defineEmits<{ close: [] }>()
 const { t } = useI18n()
 const passage = ref<LearnPassage | null>(null)
@@ -23,7 +23,7 @@ async function load(): Promise<void> {
   const mine = ++ticket
   loading.value = true
   try {
-    const next = await request<LearnPassage>(learnPassage(id), { query: { lang: props.language } })
+    const next = await request<LearnPassage>((props.passagePath ?? learnPassage)(id), { query: { lang: props.language } })
     if (mine === ticket) { passage.value = next; error.value = null }
   } catch (cause) {
     if (mine === ticket) error.value = cause instanceof ApiError ? cause : new ApiError(0, String(cause))

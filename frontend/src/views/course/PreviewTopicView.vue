@@ -1,0 +1,91 @@
+<script setup lang="ts">
+import Select from 'primevue/select'
+import { computed, reactive, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
+import { request } from '@/api/client'
+import { coursePreview, coursePreviewPassage, previewTopic } from '@/api/endpoints'
+import type { Chip, LearnOutline, LearnTopic } from '@/api/types'
+import CitationChip from '@/components/learner/CitationChip.vue'
+import CompanionPanel from '@/components/learner/CompanionPanel.vue'
+import LearnBlockCard from '@/components/learner/LearnBlockCard.vue'
+import FormField from '@/components/FormField.vue'
+import PageHeader from '@/components/PageHeader.vue'
+import ResourceState from '@/components/ResourceState.vue'
+import Section from '@/components/Section.vue'
+import { emptyDraft, type Draft } from '@/composables/learnAnswer'
+import { COURSE_LANGUAGES } from '@/composables/languages'
+import { useReloading } from '@/composables/useReloading'
+import { useUrlParam } from '@/composables/useUrlState'
+
+const { t } = useI18n()
+const route = useRoute()
+const topicId = computed(() => String(route.params.id))
+const language = useUrlParam('language', 'en')
+const topic = useReloading<LearnTopic>(() => request<LearnTopic>(previewTopic(topicId.value), { query: { lang: language.value } }), () => [topicId.value, language.value])
+const courseId = computed(() => topic.data.value?.course_id ?? '')
+const outline = ref<LearnOutline | null>(null)
+const drafts = reactive<Record<string, Draft>>({})
+const openId = ref<string | null>(null)
+const served = computed(() => topic.data.value?.language ?? language.value)
+const courseRef = computed(() => (outline.value && topic.data.value ? { id: topic.data.value.course_id, title: outline.value.title } : null))
+const flat = computed(() => (outline.value?.modules ?? []).flatMap((m) => m.topics))
+const at = computed(() => flat.value.findIndex((x) => x.id === topicId.value))
+const next = computed(() => (at.value >= 0 ? (flat.value[at.value + 1] ?? null) : null))
+const previous = computed(() => (at.value > 0 ? (flat.value[at.value - 1] ?? null) : null))
+const held = computed(() => (topic.data.value?.blocks ?? []).filter((b) => b.status === 'held'))
+const lessonSources = computed(() => {
+  const seen = new Map<string, Chip>()
+  for (const b of topic.data.value?.blocks ?? []) for (const c of b.citations) seen.set(c.passage_id, c)
+  return [...seen.values()]
+})
+const link = (id: string): string => `/preview/topics/${id}?language=${language.value}`
+const outlineLink = computed(() => `/courses/${courseId.value}/preview?language=${language.value}`)
+const passagePath = (id: string): string => coursePreviewPassage(courseId.value, id)
+
+watch(() => topic.data.value, (doc) => {
+  if (!doc) return
+  for (const b of doc.blocks) if (!drafts[b.id]) drafts[b.id] = emptyDraft(b.block_type, b.content)
+  if (!outline.value || outline.value.id !== doc.course_id) void loadOutline()
+})
+watch(topicId, () => { openId.value = null })
+async function loadOutline(): Promise<void> {
+  try { outline.value = await request<LearnOutline>(coursePreview(courseId.value), { query: { lang: language.value } }) } catch { outline.value = null }
+}
+function open(chip: Chip): void { openId.value = openId.value === chip.passage_id ? null : chip.passage_id }
+</script>
+
+<template>
+  <PageHeader :course="courseRef" />
+  <ResourceState :loading="topic.loading.value" :error="topic.error.value" :empty="topic.data.value !== null && topic.data.value.blocks.length === 0" :empty-text="t('previewTopic.empty')" @retry="topic.reload()">
+    <template #empty-actions><router-link :to="outlineLink" data-testid="back-to-preview">{{ t('previewTopic.backToOutline') }}</router-link></template>
+    <div v-if="topic.data.value" class="learn-layout">
+      <div class="stack learn-main">
+        <Section id="topic" :title="topic.data.value.title" :help="t('previewTopic.help')" />
+        <ul v-if="topic.data.value.objectives.length > 0" class="hint" data-testid="objectives"><li v-for="o in topic.data.value.objectives" :key="o">{{ o }}</li></ul>
+        <FormField id="pt-lang" :label="t('preview.language')" :help="t('preview.languageHint')">
+          <Select v-model="language" input-id="pt-lang" :options="COURSE_LANGUAGES.map((code) => ({ code, label: t(`language.${code}`) }))" option-label="label" option-value="code" data-testid="preview-language" />
+        </FormField>
+        <p v-if="held.length > 0" class="preview-notice" role="note" data-testid="preview-held-note">{{ t('previewTopic.heldNote', held.length) }}</p>
+        <p v-if="topic.data.value.next_note" class="hint" data-testid="through-line">{{ t('learnTopic.nextLine', { note: topic.data.value.next_note }) }}</p>
+        <template v-for="(b, i) in topic.data.value.blocks" :key="b.id">
+          <p v-if="b.status === 'held'" class="preview-notice" role="note" :data-block-id="b.id" data-testid="preview-held-block">{{ t('previewTopic.heldBlock', { reason: b.hold_reason }) }}</p>
+          <LearnBlockCard v-model:draft="drafts[b.id] as Draft" :block="b" :index="i" :result="null" :test-mode="true" :open-id="openId" @open="open" />
+        </template>
+        <footer v-if="lessonSources.length > 0" class="sources-footer stack" data-testid="sources-footer">
+          <h2 class="tutor-head">{{ t('learn.sourcesFooter') }}</h2>
+          <p class="hint">{{ t('learn.checkedNote') }}</p>
+          <ul class="plain-list row"><li v-for="c in lessonSources" :key="c.passage_id"><CitationChip :chip="c" :open="openId === c.passage_id" @open="open" /></li></ul>
+        </footer>
+        <nav class="row" :aria-label="t('previewTopic.nav')" data-testid="preview-nav">
+          <router-link :to="outlineLink" data-testid="back-to-preview">{{ t('previewTopic.backToOutline') }}</router-link>
+          <router-link v-if="previous" :to="link(previous.id)" data-testid="previous-topic">{{ t('previewTopic.previous', { title: previous.title }) }}</router-link>
+          <router-link v-if="next" :to="link(next.id)" data-testid="next-topic">{{ t('learnTopic.next', { title: next.title }) }}</router-link>
+        </nav>
+      </div>
+      <div class="learn-side stack">
+        <CompanionPanel :passage-id="openId" :language="served" :passage-path="passagePath" @close="openId = null" />
+      </div>
+    </div>
+  </ResourceState>
+</template>

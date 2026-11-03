@@ -67,6 +67,27 @@ async def enrolled_course(
     }
 
 
+async def preview_course(session: AsyncSession, course_id: UUID) -> dict[str, Any]:
+    """The draft course in the snapshot shape the learner services read.
+
+    The author's preview is the learner's reading over the current
+    tree and block versions: one outline, one topic page, one passage
+    panel, through the same serializers. Access (learner.view and
+    ownership) is the controller's check; this builds the document.
+    """
+    from app.services.courses import get_course, read_tree
+
+    course = await get_course(session, course_id=course_id)
+    tree = await read_tree(session, course_id=course_id)
+    return {
+        "id": str(course_id),
+        "title": str(course.get("title", "")),
+        "language": str(course.get("language", "en")),
+        "snapshot": {"tree": tree, "profile": course.get("profile")},
+        "preview": True,
+    }
+
+
 async def list_enrolled(
     session: AsyncSession, principal: Principal, *, threshold: float
 ) -> list[dict[str, Any]]:
@@ -143,6 +164,8 @@ async def topic_entries(session: AsyncSession, course: dict[str, Any]) -> list[d
                         "plan_node_id": version["plan_node_id"],
                         "content": version["content"],
                         "answer_key": version["answer_key"],
+                        "status": str(block.get("status") or ""),
+                        "hold_reason": str(block.get("hold_reason") or ""),
                     }
                 )
             entries.append(
@@ -274,9 +297,34 @@ async def course_outline(
     threshold: float,
 ) -> dict[str, Any]:
     """Modules, topics and progress of the published version."""
+    course = await enrolled_course(session, principal, course_id, code="learn.read")
+    return await _outline(session, principal, course, language=language, threshold=threshold)
+
+
+async def preview_outline(
+    session: AsyncSession,
+    principal: Principal,
+    course_id: UUID,
+    *,
+    language: str | None,
+    threshold: float,
+) -> dict[str, Any]:
+    """The draft's modules and topics as the learner will see them, with held counts."""
+    course = await preview_course(session, course_id)
+    return await _outline(session, principal, course, language=language, threshold=threshold)
+
+
+async def _outline(
+    session: AsyncSession,
+    principal: Principal,
+    course: dict[str, Any],
+    *,
+    language: str | None,
+    threshold: float,
+) -> dict[str, Any]:
     from app.translation.variants import available_languages
 
-    course = await enrolled_course(session, principal, course_id, code="learn.read")
+    course_id = UUID(course["id"])
     topics = await topic_entries(session, course)
     attempts = await attempts_of(
         session, principal.user_id, [b["id"] for t in topics for b in t["blocks"]]
@@ -299,6 +347,7 @@ async def course_outline(
                 "title": topic["title"],
                 "objectives": topic["objectives"],
                 "progress": progress_of(topic["blocks"], attempts, threshold),
+                "held": sum(1 for b in topic["blocks"] if b.get("status") == "held"),
             }
         )
     return {
@@ -520,6 +569,8 @@ async def block_view(
         "language": resolved["language"],
         "fallback_notice": resolved["fallback_notice"],
         "attempts": attempts.get(block["id"], {"count": 0, "best_score": None, "last_score": None}),
+        "status": str(block.get("status") or ""),
+        "hold_reason": str(block.get("hold_reason") or ""),
     }
     if block["block_type"] == "spot_the_error":
         entry["passage_options"] = await _spot_options(session, course["id"], block, order, locale)
@@ -564,13 +615,50 @@ async def topic_view(
 ) -> dict[str, Any]:
     """One topic with its blocks through the learner serializers."""
     course, topic, _ = await find_topic(session, principal, topic_id, code="learn.read")
+    return await _topic(session, principal, course, topic, language=language, threshold=threshold)
+
+
+async def preview_topic(
+    session: AsyncSession,
+    principal: Principal,
+    course_id: UUID,
+    topic_id: UUID,
+    *,
+    language: str | None,
+    threshold: float,
+) -> dict[str, Any]:
+    """One topic of the draft as the learner will read it; nothing is recorded."""
+    course = await preview_course(session, course_id)
+    topic = next(
+        (t for t in await topic_entries(session, course) if t["id"] == str(topic_id)), None
+    )
+    if topic is None:
+        raise _not_found()
+    return await _topic(
+        session, principal, course, topic, language=language, threshold=threshold, record=False
+    )
+
+
+async def _topic(
+    session: AsyncSession,
+    principal: Principal,
+    course: dict[str, Any],
+    topic: dict[str, Any],
+    *,
+    language: str | None,
+    threshold: float,
+    record: bool = True,
+) -> dict[str, Any]:
     language = language or course["language"]
     attempts = await attempts_of(session, principal.user_id, [b["id"] for b in topic["blocks"]])
     blocks = [
         await block_view(session, course, b, language=language, attempts=attempts)
         for b in topic["blocks"]
     ]
-    await record_served_language(session, principal.user_id, [b["id"] for b in blocks], language)
+    if record:
+        await record_served_language(
+            session, principal.user_id, [b["id"] for b in blocks], language
+        )
     # Through-line: the handoff of this topic renders as one Next line.
     handoffs = (course["snapshot"].get("tree", {}).get("through_line") or {}).get("handoffs", [])
     note = next(
@@ -606,38 +694,58 @@ async def passage_view(
 ) -> dict[str, Any]:
     """Passage text for the companion panel, scoped to an enrolled course."""
     require(principal, "learn.read")
-    rows = (
-        await session.execute(
-            sa.text(
-                "SELECT p.id, p.text, p.address, p.address_key, s.title, s.as_of, cs.course_id"
-                " FROM passages p JOIN sources s ON s.id = p.source_id AND s.approval = 'approved'"
-                " JOIN course_sources cs ON cs.source_id = p.source_id AND cs.approval = 'approved'"
-                " WHERE p.id = :p"
-            ),
-            {"p": str(passage_id)},
-        )
-    ).all()
-    for row in rows:
+    for row in await _passage_rows(session, passage_id):
         try:
             await enrolled_course(session, principal, UUID(str(row[6])), code="learn.read")
         except NotFoundError:
             continue
-        label = chip(
-            "",
-            {
-                "passage_id": str(row[0]),
-                "address": dict(row[2] or {}),
-                "address_key": str(row[3]),
-                "title": str(row[4]),
-            },
-            locale_of(language),
-        )
-        return {
-            "id": str(row[0]),
-            "text": str(row[1]),
-            "address_label": label["address_label"],
-            "source_title": str(row[4]),
-            "as_of": row[5].isoformat() if row[5] else None,
-            "course_id": str(row[6]),
-        }
+        return _passage_entry(row, language)
     raise _not_found()
+
+
+async def preview_passage(
+    session: AsyncSession, course_id: UUID, passage_id: UUID, *, language: str
+) -> dict[str, Any]:
+    """Passage text for the author's preview panel, scoped to the draft course."""
+    for row in await _passage_rows(session, passage_id):
+        if str(row[6]) == str(course_id):
+            return _passage_entry(row, language)
+    raise _not_found()
+
+
+async def _passage_rows(session: AsyncSession, passage_id: UUID) -> list[Any]:
+    return list(
+        (
+            await session.execute(
+                sa.text(
+                    "SELECT p.id, p.text, p.address, p.address_key, s.title, s.as_of,"
+                    " cs.course_id FROM passages p"
+                    " JOIN sources s ON s.id = p.source_id AND s.approval = 'approved'"
+                    " JOIN course_sources cs ON cs.source_id = p.source_id"
+                    " AND cs.approval = 'approved' WHERE p.id = :p"
+                ),
+                {"p": str(passage_id)},
+            )
+        ).all()
+    )
+
+
+def _passage_entry(row: Any, language: str) -> dict[str, Any]:
+    label = chip(
+        "",
+        {
+            "passage_id": str(row[0]),
+            "address": dict(row[2] or {}),
+            "address_key": str(row[3]),
+            "title": str(row[4]),
+        },
+        locale_of(language),
+    )
+    return {
+        "id": str(row[0]),
+        "text": str(row[1]),
+        "address_label": label["address_label"],
+        "source_title": str(row[4]),
+        "as_of": row[5].isoformat() if row[5] else None,
+        "course_id": str(row[6]),
+    }

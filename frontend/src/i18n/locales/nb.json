@@ -751,12 +751,15 @@
   },
   "preview": {
     "title": "Forhåndsvis som elev",
-    "help": "Slik ser en elev kurset. Blokker som holdes tilbake viser kildeteksten med et varsel.",
+    "help": "Kurset slik en elev vil lese det: moduler, emner og blokker, med holdte blokker merket.",
     "language": "Språk",
     "languageHint": "Språket eleven velger.",
     "empty": "Dette kurset har ingen skrevne blokker ennå.",
-    "block": "Blokk {n}",
-    "noText": "Denne blokken har ingen tekst å vise."
+    "toGenerate": "Gå til Generer",
+    "heldNote": "{n} blokker holdes fortsatt; publisering venter på dem. | {n} blokk holdes fortsatt; publisering venter på den. | {n} blokker holdes fortsatt; publisering venter på dem.",
+    "readyNote": "Alle blokker er godkjent. Kurset leses slik eleven vil se det.",
+    "heldChip": "{n} holdt | {n} holdt | {n} holdt",
+    "blocks": "{n} blokker | {n} blokk | {n} blokker"
   },
   "language": {
     "en": "English",
@@ -962,5 +965,15 @@
     "goPublish": "Publiser",
     "generateAgain": "Generer igjen",
     "approveSources": "Godkjenn minst én kilde først"
+  },
+  "previewTopic": {
+    "title": "Forhåndsvis et emne",
+    "help": "Emnet slik en elev leser det. Svar lagres ikke her.",
+    "empty": "Dette emnet har ingen skrevne blokker ennå.",
+    "backToOutline": "Tilbake til kursoversikten",
+    "heldNote": "{n} blokker i dette emnet holdes; grunnen står over hver. | {n} blokk i dette emnet holdes; grunnen står over den. | {n} blokker i dette emnet holdes; grunnen står over hver.",
+    "heldBlock": "Holdt: {reason}",
+    "previous": "Forrige: {title}",
+    "nav": "Emnenavigasjon"
   }
 }

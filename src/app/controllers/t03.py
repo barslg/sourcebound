@@ -192,17 +192,66 @@ async def translate_course(
     return {"operation_id": str(operation_id)}
 
 
-async def get_learner_course(
-    ctx: RequestContext, *, course_id: str, language: str
-) -> dict[str, Any]:
+async def _own_draft(ctx: RequestContext, actor: Any, course_id: UUID) -> None:
+    """The author previews their own draft (or a superadmin does), else 404."""
     from app.services.courses import get_course as get_use_case
-    from app.services.planruns import learner_course_view
+
+    course = await get_use_case(ctx.db, course_id=course_id)
+    _owner_or_404(course, actor.user_id, actor.is_superadmin)
+
+
+async def preview_outline(
+    ctx: RequestContext, *, course_id: str, language: str | None
+) -> dict[str, Any]:
+    """The draft's outline as the learner will see it (preview page)."""
+    from app.services.learner import preview_outline as outline
 
     actor = require_auth(ctx)
     require(actor, "learner.view")
-    course = await get_use_case(ctx.db, course_id=UUID(course_id))
-    _owner_or_404(course, actor.user_id, actor.is_superadmin)
-    return await learner_course_view(ctx.db, course_id=UUID(course_id), language=language)
+    await _own_draft(ctx, actor, UUID(course_id))
+    return await outline(
+        ctx.db,
+        actor,
+        UUID(course_id),
+        language=language,
+        threshold=ctx.settings.mastery_threshold,
+    )
+
+
+async def preview_topic(
+    ctx: RequestContext, *, topic_id: str, language: str | None
+) -> dict[str, Any]:
+    """One topic of the draft through the learner serializers (preview topic page)."""
+    from app.services.learner import course_of_topic
+    from app.services.learner import preview_topic as topic
+
+    actor = require_auth(ctx)
+    require(actor, "learner.view")
+    topic_uuid = parse_uuid_or_404(topic_id)
+    course_id = await course_of_topic(ctx.db, topic_uuid)
+    await _own_draft(ctx, actor, course_id)
+    return await topic(
+        ctx.db,
+        actor,
+        course_id,
+        topic_uuid,
+        language=language,
+        threshold=ctx.settings.mastery_threshold,
+    )
+
+
+async def preview_passage(
+    ctx: RequestContext, *, course_id: str, passage_id: str, language: str | None
+) -> dict[str, Any]:
+    """Passage text for the preview's companion panel."""
+    from app.services.learner import preview_passage as passage
+
+    actor = require_auth(ctx)
+    require(actor, "learner.view")
+    await _own_draft(ctx, actor, UUID(course_id))
+    return await passage(
+        ctx.db, UUID(course_id), parse_uuid_or_404(passage_id), language=language or "en"
+    )
 
 
 async def set_source_language(
