@@ -53,6 +53,12 @@ def build_translated_answer_key(
             by_index = {str(i): i for i in range(len(pairs))}
         key["mapping_by_index"] = by_index
         return key
+    if block_type == "ordering":
+        stored_order = _list(answer_key.get("order_by_index"))
+        key["order_by_index"] = [int(i) for i in stored_order if str(i).isdigit()] or list(
+            range(len(_list(content.get("items"))))
+        )
+        return key
     if block_type == "cloze":
         blanks = []
         source_blanks = _list(answer_key.get("blanks"))

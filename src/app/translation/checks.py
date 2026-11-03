@@ -201,13 +201,13 @@ def verify_block_translation(
     elif block_type == "matching":
         if len(_as_list(translated.get("pairs"))) != len(_as_list(source.get("pairs"))):
             errors.append("pair count changed in translation")
-    elif block_type == "scenario_practice":
+    elif block_type in ("scenario_practice", "ordering"):
         if len(_as_list(translated.get("items"))) != len(_as_list(source.get("items"))):
             errors.append("item count changed in translation")
     elif block_type == "spot_the_error":
         if len(_as_list(translated.get("sentences"))) != len(_as_list(source.get("sentences"))):
             errors.append("sentence count changed in translation")
-    for key in ("body", "stem", "text", "scenario", "caption"):
+    for key in ("body", "stem", "text", "scenario", "prompt", "caption"):
         if key in source and not str(translated.get(key, "")).strip():
             errors.append(f"{key} translated to empty")
     return errors

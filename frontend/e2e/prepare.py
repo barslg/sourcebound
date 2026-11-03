@@ -466,6 +466,12 @@ async def seed_learn(session: AsyncSession, owner: str) -> dict[str, str]:
     content["blanks"] = ["___", "___"]
     key["blanks"] = ["hand", "hygiene"]
     add("cloze", "practice", "t1", content, key, chips[:1])
+    content, key = fx("ordering")
+    content["prompt"] = "Put the steps of hand hygiene in order."
+    content["items"] = ["Wet the hands", "Rub for twenty seconds", "Dry the hands"]
+    content["citations"] = public(chips[:1])
+    key["order_by_index"] = [0, 1, 2]
+    add("ordering", "practice", "t1", content, key, chips[:1])
     content, key = fx("scenario_practice")
     content["scenario"] = "Sort two ward situations into risk tiers."
     content["items"] = [

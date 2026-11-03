@@ -43,6 +43,15 @@ def extract_segments(block_type: str, content: dict[str, Any]) -> list[dict[str,
         return segments
     if block_type == "cloze":
         return [{"id": "text", "text": str(content["text"])}]
+    if block_type == "ordering":
+        items = content["items"]
+        if not isinstance(items, list):
+            raise ValidationError("ordering items must be a list")
+        segments = [{"id": "prompt", "text": str(content["prompt"])}]
+        segments += [
+            {"id": f"items[{index}]", "text": str(item)} for index, item in enumerate(items)
+        ]
+        return segments
     if block_type == "scenario_practice":
         segments = [{"id": "scenario", "text": str(content["scenario"])}]
         items = content["items"]
@@ -135,6 +144,9 @@ def reassemble(
         ]
     elif block_type == "cloze":
         rebuilt["text"] = take("text")
+    elif block_type == "ordering":
+        rebuilt["prompt"] = take("prompt")
+        rebuilt["items"] = [take(f"items[{i}]") for i in range(len(content["items"]))]
     elif block_type == "scenario_practice":
         rebuilt["scenario"] = take("scenario")
         rebuilt["items"] = [

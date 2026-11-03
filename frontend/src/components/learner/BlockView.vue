@@ -4,6 +4,7 @@ import ChoiceBlock from './ChoiceBlock.vue'
 import ClozeBlock from './ClozeBlock.vue'
 import FigureBlock from './FigureBlock.vue'
 import MatchingBlock from './MatchingBlock.vue'
+import OrderingBlock from './OrderingBlock.vue'
 import ReadingBlock from './ReadingBlock.vue'
 import ScenarioBlock from './ScenarioBlock.vue'
 import SpotErrorBlock from './SpotErrorBlock.vue'
@@ -15,6 +16,7 @@ const BY_TYPE: Record<string, Component> = {
   cloze: ClozeBlock,
   figure: FigureBlock,
   matching: MatchingBlock,
+  ordering: OrderingBlock,
   scenario_practice: ScenarioBlock,
   spot_the_error: SpotErrorBlock,
 }

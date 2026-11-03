@@ -389,7 +389,7 @@ def answer_key_claims(output: dict[str, Any], block_type: str = "") -> list[str]
     """The claims an exercise's key asserts.
 
     Choice: the correct options. Cloze: the blanks. Matching: the right
-    sides. Scenario practice: the items labelled correct and every
+    sides. Ordering: every step. Scenario practice: the items labelled correct and every
     clause of the free `answer` (that is where its key lives). Never a
     distractor (the exercise's own invention), a question item or a
     label: those assert nothing about the sources.
@@ -403,6 +403,8 @@ def answer_key_claims(output: dict[str, Any], block_type: str = "") -> list[str]
     for pair in output.get("pairs", []) if isinstance(output.get("pairs"), list) else []:
         if isinstance(pair, dict):
             claims.append(str(pair.get("right", "")))
+    for step in output.get("steps", []) if isinstance(output.get("steps"), list) else []:
+        claims.append(str(step))
     if block_type == "scenario_practice":
         for item in output.get("items", []) if isinstance(output.get("items"), list) else []:
             if isinstance(item, dict) and str(item.get("tier", "")).lower() in _CORRECT_TIERS:

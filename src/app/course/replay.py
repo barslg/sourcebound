@@ -67,6 +67,8 @@ def generator_output(block: dict[str, Any]) -> dict[str, Any]:
         out["blanks"] = list(key.get("blanks", []))
     elif block["block_type"] == "matching":
         out["pairs"] = list(content.get("pairs", []))
+    elif block["block_type"] == "ordering":
+        out["steps"] = [str(s) for s in content.get("items", [])]
     elif block["block_type"] == "scenario_practice":
         labels = dict(key.get("labels_by_index", {}))
         out["items"] = [
@@ -80,7 +82,7 @@ def generator_output(block: dict[str, Any]) -> dict[str, Any]:
 def block_text(block: dict[str, Any]) -> str:
     """The learner-facing text of a stored block, whichever field carries it."""
     content = block["content"]
-    for key in ("body", "stem", "text", "scenario", "caption"):
+    for key in ("body", "stem", "text", "scenario", "prompt", "caption"):
         if isinstance(content.get(key), str) and content[key]:
             return str(content[key])
     return ""

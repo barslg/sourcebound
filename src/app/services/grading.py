@@ -80,6 +80,29 @@ def _matching_submission(payload: dict[str, Any], content: dict[str, Any]) -> di
     return {"mapping_by_index": out}
 
 
+def _ordering_submission(payload: dict[str, Any], content: dict[str, Any]) -> dict[str, Any]:
+    """{order: [served step ids]} -> authored indices in the learner's order.
+
+    A learner never sees the authored order, so `order_by_index` is
+    refused; so is an id outside the served steps or one used twice.
+    """
+    from app.blocks.ordering.render import displayed_order, step_id
+
+    if "order_by_index" in payload:
+        raise UnprocessableError("answer ordering with the ids of the served steps: order")
+    order = payload.get("order")
+    if not isinstance(order, list):
+        raise UnprocessableError("order must list the served step ids in your order")
+    items = [str(item) for item in content.get("items", [])]
+    authored_of = {
+        step_id(shown): authored for shown, authored in enumerate(displayed_order(items))
+    }
+    picked = [str(item) for item in order]
+    if any(item not in authored_of for item in picked) or len(set(picked)) != len(picked):
+        raise UnprocessableError("order names a step that was not served, or a step twice")
+    return {"order_by_index": [authored_of[item] for item in picked]}
+
+
 def _normalise(
     block: dict[str, Any],
     payload: dict[str, Any],
@@ -92,6 +115,8 @@ def _normalise(
         return _spot_submission(payload, list(resolved["content"].get("sentences", [])), by_pid)
     if kind == "matching":
         return _matching_submission(payload, resolved["content"])
+    if kind == "ordering":
+        return _ordering_submission(payload, resolved["content"])
     if kind == "scenario_practice":
         passages = payload.get("passages")
         if isinstance(passages, dict):

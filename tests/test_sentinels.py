@@ -63,6 +63,20 @@ def _payloads(block: dict[str, Any], by_text: dict[str, str], chips: dict[str, s
             ("partial", {"mapping": {left[0]: good[left[0]], left[1]: good[left[0]]}}),
             ("right", {"mapping": good}),
         ]
+    if kind == "ordering":
+        ids = [item["id"] for item in block["content"].get("items", [])]
+        texts = {item["id"]: item["text"] for item in block["content"].get("items", [])}
+        authored = [
+            "Name the AI system in use",
+            "Train the staff who use it",
+            "Record the training",
+        ]
+        right = [next(i for i in ids if texts[i] == step) for step in authored]
+        return [
+            ("wrong", {"order": [right[2], right[0], right[1]]}),
+            ("partial", {"order": [right[0], right[2], right[1]]}),
+            ("right", {"order": right}),
+        ]
     if kind == "scenario_practice":
         cites = {"0": chips["P1"], "1": chips["P2"]}
         return [
@@ -116,9 +130,10 @@ async def test_no_key_value_leaves_any_learner_route_on_a_wrong_partial_or_right
             "choice",
             "matching",
             "cloze",
+            "ordering",
             "scenario_practice",
             "spot_the_error",
-        }, "all seven types were served"
+        }, "all eight types were served"
         for block in topics:
             by_text = {r["text"]: r["id"] for r in block["content"].get("right", [])}
             chips = {c["handle"]: c["passage_id"] for c in block["citations"]}
@@ -130,8 +145,10 @@ async def test_no_key_value_leaves_any_learner_route_on_a_wrong_partial_or_right
                 )
                 assert reply.status_code == 200, (block["block_type"], label, reply.text)
                 posts.append((block["id"], label, reply.text))
-                if block["block_type"] == "matching" and label == "right":
+                if block["block_type"] in ("matching", "ordering") and label == "right":
                     assert reply.json()["score"] == 1.0, "displayed ids grade by displayed ids"
+                if block["block_type"] == "ordering" and label == "partial":
+                    assert 0.0 < reply.json()["score"] < 1.0, "one misplaced step is partial"
     joined_gets = "\n".join(gets)
     for value in KEY_ONLY_VALUES:
         assert value not in joined_gets, value

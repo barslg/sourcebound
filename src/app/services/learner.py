@@ -24,7 +24,9 @@ from app.rbac.require import require
 from app.rbac.tags import group_keys_of
 
 STUDENT_ROLE = "student"
-ASSESSED_TYPES = frozenset({"choice", "matching", "cloze", "scenario_practice", "spot_the_error"})
+ASSESSED_TYPES = frozenset(
+    {"choice", "matching", "cloze", "ordering", "scenario_practice", "spot_the_error"}
+)
 SPOT_OPTIONS = 4
 
 

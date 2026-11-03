@@ -215,7 +215,7 @@ test('learner path: enrolled student reads a topic, answers blocks, finds the er
 
   await page.getByTestId('continue').click()
   await expect(page).toHaveURL(new RegExp(`/learn/topics/${lab.learn_topic}`))
-  await expect(page.getByTestId('learn-block')).toHaveCount(7)
+  await expect(page.getByTestId('learn-block')).toHaveCount(8)
   const topicApi = (await (await page.request.get(`/api/v1/learn/topics/${lab.learn_topic}`)).json()) as TopicApi
   const blockOf = (type: string): TopicApi['blocks'][number] => topicApi.blocks.find((b) => b.block_type === type) as TopicApi['blocks'][number]
   expect(JSON.stringify(topicApi)).not.toMatch(/answer_key|planted|SENTINEL/)
@@ -250,6 +250,16 @@ test('learner path: enrolled student reads a topic, answers blocks, finds the er
   await card('cloze').getByTestId('check-answer').click()
   await expect(card('cloze').getByTestId('result-chip')).toHaveText(/Correct/)
 
+  // ordering: served shuffled; move the steps into the source's order, check, correct
+  const steps = card('ordering').locator('[data-step]')
+  const authored = ['Wet the hands', 'Rub for twenty seconds', 'Dry the hands']
+  expect(await steps.locator('.ordering-text').allTextContents()).not.toEqual(authored)
+  for (let want = 0; want < authored.length; want += 1) {
+    let at = (await steps.locator('.ordering-text').allTextContents()).indexOf(authored[want] as string)
+    for (; at > want; at -= 1) await steps.nth(at).getByTestId('step-up').click()
+  }
+  await card('ordering').getByTestId('check-answer').click()
+  await expect(card('ordering').getByTestId('result-chip')).toHaveText(/Correct/)
   // matching: ids as served, right column as served
   const rights = card('matching').getByTestId('match-select')
   await pick(page, rights.nth(0), 'twenty seconds')

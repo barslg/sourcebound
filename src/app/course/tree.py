@@ -32,12 +32,14 @@ BLOCK_TYPES: dict[str, tuple[str, ...]] = {
         "choice",
         "matching",
         "cloze",
+        "ordering",
         "scenario_practice",
     ),
     "module_test": (
         "choice",
         "matching",
         "cloze",
+        "ordering",
         "scenario_practice",
         "spot_the_error",
     ),
@@ -259,8 +261,8 @@ def validate_tree(tree: CourseTree, prescription: dict[str, list[str]]) -> list[
 
 
 TYPE_BY_PASSAGE = (
-    "matching for pairs, cloze for a procedure or a request's fields,"
-    " choice for a decision, scenario_practice for cases to classify"
+    "matching for pairs, ordering for a procedure's steps, cloze for a command"
+    " or a request's fields, choice for a decision, scenario_practice for cases to classify"
 )
 
 
@@ -580,6 +582,9 @@ BLOCK_GENERATOR_SCHEMAS: dict[str, dict[str, Any]] = {
         }
     ),
     "cloze": _generator({"blanks": _strings()}),
+    "ordering": _generator(
+        {"steps": _strings("The steps in their correct order; code shuffles them for the learner.")}
+    ),
     "scenario_practice": _generator(
         {
             "items": {

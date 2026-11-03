@@ -11,6 +11,7 @@ BLOCK_TYPES: tuple[str, ...] = (
     "choice",
     "matching",
     "cloze",
+    "ordering",
     "scenario_practice",
     "spot_the_error",
 )

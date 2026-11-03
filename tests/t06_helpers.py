@@ -1,4 +1,4 @@
-"""T06a test world: a published course with all seven block types and enrolled learners.
+"""T06a test world: a published course with all eight block types and enrolled learners.
 
 Everything is built through the production paths: write_tree and
 publish_course for the course, create_invite / accept_invite for
@@ -30,6 +30,7 @@ SENTINELS = (
     "SENTINEL_CHOICE_ANSWER_KEY_do_not_render",
     "SENTINEL_MATCHING_ANSWER_KEY_do_not_render",
     "SENTINEL_CLOZE_ANSWER_KEY_do_not_render",
+    "SENTINEL_ORDERING_ANSWER_KEY_do_not_render",
     "SENTINEL_SCENARIO_PRACTICE_ANSWER_KEY_do_not_render",
     "SENTINEL_SPOT_THE_ERROR_ANSWER_KEY_do_not_render",
 )
@@ -207,6 +208,9 @@ def block_specs(passages: list[dict[str, str]], prefix: str) -> list[dict[str, A
     content, key = fx("cloze")
     key["blanks"] = list(CLOZE_BLANKS)
     add("cloze", "practice", "t1", content, key, chips[:1])
+    content, key = fx("ordering")
+    content["citations"] = public(chips[:1])
+    add("ordering", "practice", "t1", content, key, chips[:1])
     content, key = fx("scenario_practice")
     content["items"] = [
         {"text": "CV screening", "handle": "P1"},

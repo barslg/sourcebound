@@ -839,6 +839,7 @@
       "choice": "Question",
       "matching": "Matching",
       "cloze": "Gap fill",
+      "ordering": "Put in order",
       "scenario_practice": "Scenario",
       "spot_the_error": "Find the error"
     },
@@ -869,7 +870,13 @@
       "done": "done",
       "open": "not tried yet",
       "held": "held for a fix"
-    }
+    },
+    "orderHelp": "Move each step until the list runs in the order the source states.",
+    "moveStepUp": "Move step {n} up",
+    "moveStepDown": "Move step {n} down",
+    "alreadyFirst": "Already first",
+    "alreadyLast": "Already last",
+    "locked": "The answer is being checked"
   },
   "runs": {
     "title": "Runs",

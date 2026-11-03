@@ -1763,6 +1763,11 @@ def _typed_content(
         blanks = [str(b) for b in raw_blanks] if isinstance(raw_blanks, list) else []
         content = {"text": text, "blanks": ["___"] * len(blanks)}
         key["blanks"] = blanks
+    elif block_type == "ordering":
+        raw_steps: Any = output.get("steps")
+        steps = [str(s) for s in raw_steps] if isinstance(raw_steps, list) else []
+        content = {"prompt": text, "items": steps, "citations": citations}
+        key["order_by_index"] = list(range(len(steps)))
     elif block_type == "scenario_practice":
         raw_items: Any = output.get("items")
         items: list[Any] = raw_items if isinstance(raw_items, list) else []
@@ -1832,6 +1837,14 @@ def _key_errors(block_type: str, content: dict[str, Any], key: dict[str, Any]) -
             or any(not str(b).strip() for b in blanks)
         ):
             return [f"cloze key: {gaps} gaps need {gaps} non-empty blanks"]
+    elif block_type == "ordering":
+        from app.blocks.ordering.schema import MIN_STEPS
+
+        steps = [str(s).strip() for s in content.get("items", [])]
+        if len(steps) < MIN_STEPS or len(set(steps)) != len(steps) or any(not s for s in steps):
+            return [f"ordering key: at least {MIN_STEPS} distinct non-empty steps are required"]
+        if key.get("order_by_index") != list(range(len(steps))):
+            return ["ordering key: the key must list every step once in authored order"]
     elif block_type == "scenario_practice":
         items = [i for i in content.get("items", []) if isinstance(i, dict)]
         labels = key.get("labels_by_index")

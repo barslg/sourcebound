@@ -839,6 +839,7 @@
       "choice": "Spørsmål",
       "matching": "Samsvar",
       "cloze": "Hullutfylling",
+      "ordering": "Sett i rekkefølge",
       "scenario_practice": "Scenario",
       "spot_the_error": "Finn feilen"
     },
@@ -869,7 +870,13 @@
       "done": "gjort",
       "open": "ikke prøvd ennå",
       "held": "holdt for retting"
-    }
+    },
+    "orderHelp": "Flytt hvert trinn til listen følger rekkefølgen kilden oppgir.",
+    "moveStepUp": "Flytt trinn {n} opp",
+    "moveStepDown": "Flytt trinn {n} ned",
+    "alreadyFirst": "Allerede først",
+    "alreadyLast": "Allerede sist",
+    "locked": "Svaret sjekkes"
   },
   "runs": {
     "title": "Kjøringer",
