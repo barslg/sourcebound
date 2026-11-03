@@ -66,7 +66,14 @@ async function remove(): Promise<void> {
         <span>{{ t('account.keySet', { hint: status.data.value.hint }) }}</span>
         <span v-if="status.data.value.updated_at" class="muted">{{ t('account.keyUpdated', { date: d(new Date(status.data.value.updated_at), 'short') }) }}</span>
       </p>
-      <p v-else class="muted" data-testid="key-status">{{ t('account.keyNotSet') }}</p>
+      <p v-else class="muted" data-testid="key-status">{{ t('account.keyNotSet') }} <span v-if="session.me?.model_key_ready">{{ t('account.keyFallback') }}</span></p>
+      <Section id="key-leads" :title="t('account.leadsTitle')" :help="t('account.leadsHelp')" />
+      <ul class="plain-list" data-testid="key-leads">
+        <li>{{ t('account.leadsBilled') }}</li>
+        <li>{{ t('account.leadsTutor') }}</li>
+        <li><a href="https://dev.meta.ai" target="_blank" rel="noopener">{{ t('account.leadsGet') }}</a></li>
+        <li><router-link to="/courses">{{ t('account.leadsCourses') }}</router-link></li>
+      </ul>
       <form class="stack" @submit.prevent="save">
         <FormField id="model-key-input" :label="isSet ? t('account.keyReplace') : t('account.keyLabel')" :help="t('account.keyHelp')" :error="error">
           <input id="model-key-input" v-model="draft" type="password" autocomplete="off" spellcheck="false" class="p-inputtext key-input" data-testid="key-input" />
