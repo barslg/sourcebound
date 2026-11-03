@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ApiError, request } from '@/api/client'
-import { coursePlan, coursePublish, courseTranslate } from '@/api/endpoints'
-import type { CourseDoc } from '@/api/types'
+import { coursePlan, coursePublish, courseTranslate, ENDPOINTS } from '@/api/endpoints'
+import type { CourseDoc, Invite } from '@/api/types'
 import CourseHeader from '@/components/CourseHeader.vue'
 import ActionButton from '@/components/ActionButton.vue'
 import Checkbox from 'primevue/checkbox'
@@ -25,6 +25,7 @@ const session = useSessionStore()
 /** A paid run needs a Meta key: the account's own, or the stand's local one. */
 const noKey = computed(() => (session.me?.model_key_ready ? null : t('account.noKey')))
 const route = useRoute()
+const router = useRouter()
 const courseId = computed(() => String(route.params.id))
 const header = ref<InstanceType<typeof CourseHeader> | null>(null)
 const plan = useResource<PlanTree>(`plan:${courseId.value}`, (signal) => request<PlanTree>(coursePlan(courseId.value), { signal }))
@@ -48,6 +49,27 @@ async function translate(): Promise<void> {
   } finally {
     translating.value = false
   }
+}
+
+const studentLink = ref<string | null>(null)
+const linking = ref(false)
+/** One invite for this course, unlimited seats, no expiry: the address a learner opens, signs in and is enrolled. */
+async function makeStudentLink(): Promise<void> {
+  linking.value = true
+  try {
+    const invite = await request<Invite>(ENDPOINTS.invites, { method: 'POST', body: { course_tags: [courseId.value] } })
+    studentLink.value = new URL(router.resolve(`/invite/${encodeURIComponent(invite.token)}`).href, window.location.origin).toString()
+    notify('success', t('invites.created'))
+  } catch (cause) {
+    notifyError(cause, () => void makeStudentLink())
+  } finally {
+    linking.value = false
+  }
+}
+async function copyStudentLink(): Promise<void> {
+  if (!studentLink.value) return
+  await navigator.clipboard.writeText(studentLink.value)
+  notify('success', t('invites.copied'))
 }
 
 async function publish(): Promise<void> {
@@ -99,7 +121,14 @@ async function publish(): Promise<void> {
           <Queued v-if="translation.queued.value" />
         </div>
         <Section :title="t('publish.share')" :help="t('publish.shareHelp')" />
-        <router-link :to="`/invites?course=${courseId}`" data-testid="share-link">{{ t('publish.shareLink') }}</router-link>
+        <div class="row">
+          <ActionButton action="create" :label="t('publish.makeLink')" :loading="linking" :reason="firstReason(lacking('invite.create'), !course?.published_version_id && t('publish.publishFirst'))" data-testid="make-student-link" @click="makeStudentLink" />
+          <router-link :to="`/invites?course=${courseId}`" data-testid="share-link">{{ t('publish.shareLink') }}</router-link>
+        </div>
+        <p v-if="studentLink" class="row" data-testid="student-link">
+          <code class="mono">{{ studentLink }}</code>
+          <ActionButton action="copy-link" size="small" :label="t('invites.copy')" @click="copyStudentLink" />
+        </p>
       </section>
       <ConfirmDialog v-model:visible="review" :title="t('publish.reviewTitle', { name: course?.title ?? '' })" action="publish" :label="t('publish.confirm')" :busy="busy" :error="error" :solid="false" @confirm="publish">
         <ul class="stack">

@@ -590,7 +590,7 @@
     "help": "Publishing freezes a version that invited learners will see.",
     "questions": "Open questions: {count}",
     "share": "Share with learners",
-    "shareHelp": "Invite links are made on the Invites page, with this course already chosen.",
+    "shareHelp": "A student link opens the course to anyone who signs in with it. Seats and expiry are set on the Invites page.",
     "shareLink": "Create an invite link for this course",
     "summary": "Summary",
     "summaryHelp": "What you are about to publish.",
@@ -598,7 +598,9 @@
     "unread": "{count} are written but not read yet.",
     "unreadFirst": "{count} are not read yet. Finish the generation first.",
     "translationsKept": "Existing translations ({languages}) are carried over: every block whose source text did not change keeps its translation.",
-    "translationHeld": "Translation {language}: {held} held and {failed} failed blocks. They stay as they are until you translate again."
+    "translationHeld": "Translation {language}: {held} held and {failed} failed blocks. They stay as they are until you translate again.",
+    "makeLink": "Create a student link",
+    "publishFirst": "Publish the course first."
   },
   "notification": {
     "kind": {

@@ -590,7 +590,7 @@
     "help": "Publisering fryser en versjon som inviterte deltakere ser.",
     "questions": "Åpne spørsmål: {count}",
     "share": "Del med deltakere",
-    "shareHelp": "Invitasjonslenker lages på Invitasjoner-siden, med dette kurset allerede valgt.",
+    "shareHelp": "En elevlenke åpner kurset for alle som logger inn med den. Plasser og utløp settes på Invitasjoner-siden.",
     "shareLink": "Opprett en invitasjonslenke for dette kurset",
     "summary": "Oppsummering",
     "summaryHelp": "Det du er i ferd med å publisere.",
@@ -598,7 +598,9 @@
     "unread": "{count} er skrevet, men ikke lest ennå.",
     "unreadFirst": "{count} er ikke lest ennå. Fullfør genereringen først.",
     "translationsKept": "Eksisterende oversettelser ({languages}) tas med: hver blokk hvis kildetekst ikke er endret beholder oversettelsen.",
-    "translationHeld": "Oversettelse {language}: {held} holdt tilbake og {failed} mislykkede blokker. De blir stående til du oversetter på nytt."
+    "translationHeld": "Oversettelse {language}: {held} holdt tilbake og {failed} mislykkede blokker. De blir stående til du oversetter på nytt.",
+    "makeLink": "Lag en elevlenke",
+    "publishFirst": "Publiser kurset først."
   },
   "notification": {
     "kind": {

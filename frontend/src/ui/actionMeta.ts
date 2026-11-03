@@ -19,7 +19,7 @@ const a = (id: string, kind: ActionKind, where: string[], extra: { confirm?: boo
 })
 
 export const ACTIONS = [
-  a('create', 'primary', ['courses', 'roles', 'invites', 'sources']),
+  a('create', 'primary', ['courses', 'roles', 'invites', 'sources', 'publish']),
   a('save', 'primary', ['plan', 'fix', 'roles', 'sources'], { shortcut: 'Ctrl+S' }),
   a('cancel', 'secondary', ['dialogs', 'drawers'], { shortcut: 'Esc' }),
   a('edit', 'secondary', ['roles', 'fix']),
@@ -46,7 +46,7 @@ export const ACTIONS = [
   a('ban', 'destructive', ['users'], { confirm: true }),
   a('unban', 'secondary', ['users'], { confirm: true }),
   a('revoke', 'destructive', ['invites'], { confirm: true }),
-  a('copy-link', 'secondary', ['invites']),
+  a('copy-link', 'secondary', ['invites', 'publish']),
   a('reload-theirs', 'secondary', ['plan']),
   a('keep-mine', 'secondary', ['plan']),
   a('keep-editing', 'secondary', ['plan', 'roles']),
