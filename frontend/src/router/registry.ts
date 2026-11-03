@@ -72,6 +72,8 @@ export const REGISTRY = [
   stage('fix', [...LIST, 'queued'], 'rewrite', courses),
   row({ name: 'course-preview', path: '/courses/:id/preview', titleKey: 'preview.title', purposeKey: 'preview.help', parent: 'course-publish', access: { kind: 'perm', code: 'learner.view' }, object: 'course', states: LIST }),
   row({ name: 'course-preview-topic', path: '/preview/topics/:id', titleKey: 'previewTopic.title', purposeKey: 'previewTopic.help', parent: 'course-preview', access: { kind: 'perm', code: 'learner.view' }, object: 'learn', heading: 'object', states: LIST }),
+  row({ name: 'course-preview-sources', path: '/courses/:id/preview/sources', titleKey: 'learnSources.title', purposeKey: 'learnSources.help', parent: 'course-preview', access: { kind: 'perm', code: 'learner.view' }, object: 'course', states: LIST }),
+  row({ name: 'course-preview-glossary', path: '/courses/:id/preview/glossary', titleKey: 'glossary.title', purposeKey: 'glossary.help', parent: 'course-preview', access: { kind: 'perm', code: 'learner.view' }, object: 'course', states: LIST }),
   stage('publish', [...ONE, 'queued'], 'publish', courses),
   row({ name: 'course-runs', path: '/courses/:id/runs', titleKey: 'runs.title', purposeKey: 'runs.help', parent: 'course-plan', access: { kind: 'perm', code: 'run.start' }, object: 'course', heading: 'page', states: LIST }),
   row({ name: 'run', path: '/runs/:runId', titleKey: 'run.title', purposeKey: 'run.help', parent: 'course-plan', access: { kind: 'perm', code: 'run.start' }, object: 'run', states: ONE, primaryAction: 'resume', entry: 'operation' }),
@@ -81,6 +83,8 @@ export const REGISTRY = [
   row({ name: 'learn', path: '/learn', titleKey: 'learn.title', purposeKey: 'learn.help', access: { kind: 'perm', code: 'learn.read' }, nav: { section: 'main', icon: 'learn', labelKey: 'nav.learn' }, states: LIST }),
   row({ name: 'learn-course', path: '/learn/courses/:id', titleKey: 'learnCourse.title', purposeKey: 'learnCourse.help', parent: 'learn', access: { kind: 'perm', code: 'learn.read' }, object: 'learn', heading: 'object', states: [...LIST, 'notFound'], primaryAction: 'continue' }),
   row({ name: 'learn-topic', path: '/learn/topics/:id', titleKey: 'learnTopic.title', purposeKey: 'learnTopic.help', parent: 'learn-course', access: { kind: 'perm', code: 'learn.read' }, object: 'learn', states: LIST }),
+  row({ name: 'learn-course-sources', path: '/learn/courses/:id/sources', titleKey: 'learnSources.title', purposeKey: 'learnSources.help', parent: 'learn-course', access: { kind: 'perm', code: 'learn.read' }, object: 'learn', states: LIST }),
+  row({ name: 'learn-course-glossary', path: '/learn/courses/:id/glossary', titleKey: 'glossary.title', purposeKey: 'glossary.help', parent: 'learn-course', access: { kind: 'perm', code: 'learn.read' }, object: 'learn', states: LIST }),
   row({ name: 'course-report', path: '/courses/:id/report', titleKey: 'report.title', purposeKey: 'report.help', parent: 'course-publish', access: courses, object: 'course', heading: 'object', states: LIST, primaryAction: 'export' }),
   row({ name: 'not-found', path: '/:rest(.*)*', titleKey: 'notFound.title', purposeKey: 'notFound.help', access: { kind: 'signedIn' }, bare: false, entry: 'external' }),
 ] as const satisfies readonly RouteRow[]

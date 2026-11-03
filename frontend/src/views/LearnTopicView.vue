@@ -5,9 +5,8 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { request } from '@/api/client'
 import { learnAnswer, learnCourse, learnSubmit, learnTopic } from '@/api/endpoints'
-import type { AnswerResult, Chip, LearnOutline, LearnProgress, LearnTopic, SubmitResult } from '@/api/types'
+import type { AnswerResult, Chip, LearnOutline, LearnProgress, LearnTopic, SubmitResult, Term } from '@/api/types'
 import ActionButton from '@/components/ActionButton.vue'
-import CitationChip from '@/components/learner/CitationChip.vue'
 import CompanionPanel from '@/components/learner/CompanionPanel.vue'
 import LearnBlockCard from '@/components/learner/LearnBlockCard.vue'
 import LessonRail from '@/components/learner/LessonRail.vue'
@@ -36,6 +35,7 @@ const progress = ref<LearnProgress | null>(null)
 const submitted = ref<SubmitResult | null>(null)
 const submitting = ref(false)
 const openId = ref<string | null>(null)
+const openTerm = ref<Term | null>(null)
 const served = computed(() => topic.data.value?.language ?? (language.value || 'en'))
 const isTest = computed(() => topic.data.value?.kind === 'module_test')
 const denied = lacking('learn.answer')
@@ -49,7 +49,7 @@ watch(() => topic.data.value?.course_id, async (courseId) => {
   if (!courseId) return
   try { outline.value = await request<LearnOutline>(learnCourse(courseId)) } catch { outline.value = null }
 }, { immediate: true })
-watch(id, () => { submitted.value = null; openId.value = null; for (const k of Object.keys(results)) Reflect.deleteProperty(results, k) })
+watch(id, () => { submitted.value = null; openId.value = null; openTerm.value = null; for (const k of Object.keys(results)) Reflect.deleteProperty(results, k) })
 
 const courseRef = computed(() => (topic.data.value ? { id: topic.data.value.course_id, title: outline.value?.title ?? topic.data.value.course_title ?? '' } : null))
 const languages = computed(() => {
@@ -65,15 +65,11 @@ const submitReason = computed(() => denied ?? (answeredCount.value === 0 ? t('le
 const ticked = (blockId: string): boolean => results[blockId] !== undefined || (topic.data.value?.blocks.find((b) => b.id === blockId)?.attempts.count ?? 0) > 0
 const finished = computed(() => progress.value !== null && (progress.value.status === 'complete' || progress.value.status === 'mastered'))
 const ratio = computed(() => { const p = progress.value; return p && p.blocks_total > 0 ? Math.round((p.blocks_attempted / p.blocks_total) * 100) : 0 })
-const lessonSources = computed(() => {
-  const seen = new Map<string, Chip>()
-  for (const b of topic.data.value?.blocks ?? []) for (const c of b.citations) seen.set(c.passage_id, c)
-  return [...seen.values()]
-})
 const nextLink = computed(() => (next.value ? `/learn/topics/${next.value.id}${language.value ? `?language=${language.value}` : ''}` : null))
 const tone = (status: string): 'ok' | 'info' => (status === 'mastered' || status === 'complete' ? 'ok' : 'info')
 
-function open(chip: Chip): void { openId.value = openId.value === chip.passage_id ? null : chip.passage_id }
+function open(chip: Chip): void { openTerm.value = null; openId.value = openId.value === chip.passage_id ? null : chip.passage_id }
+function openTermOf(term: Term): void { openId.value = null; openTerm.value = openTerm.value?.term === term.term ? null : term }
 function setLanguage(code: string): void { language.value = code === outline.value?.source_language ? '' : code }
 
 async function check(blockId: string, type: string): Promise<void> {
@@ -136,13 +132,8 @@ function retake(): void {
           <ActionButton action="retake" :label="t('learnTopic.retake')" data-testid="retake" @click="retake" />
         </div>
         <p v-if="topic.data.value.next_note" class="hint" data-testid="through-line">{{ t('learnTopic.nextLine', { note: topic.data.value.next_note }) }}</p>
-        <LearnBlockCard v-for="(b, i) in topic.data.value.blocks" :key="b.id" v-model:draft="drafts[b.id] as Draft" :block="b" :index="i" :result="results[b.id] ?? null" :busy="busy[b.id]" :test-mode="isTest" :open-id="openId" @check="check(b.id, b.block_type)" @open="open" />
+        <LearnBlockCard v-for="(b, i) in topic.data.value.blocks" :key="b.id" v-model:draft="drafts[b.id] as Draft" :block="b" :index="i" :result="results[b.id] ?? null" :busy="busy[b.id]" :test-mode="isTest" :open-id="openId" :open-term="openTerm?.term ?? null" :terms="topic.data.value.terms ?? []" @check="check(b.id, b.block_type)" @open="open" @term="openTermOf" />
         <div v-if="isTest && !submitted"><ActionButton accent action="submit-test" :label="t('learnTopic.submitTest')" :loading="submitting" :reason="submitReason" data-testid="submit-test" @click="submit" /></div>
-        <footer v-if="lessonSources.length > 0" class="sources-footer stack" data-testid="sources-footer">
-          <h2 class="tutor-head">{{ t('learn.sourcesFooter') }}</h2>
-          <p class="hint">{{ t('learn.checkedNote') }}</p>
-          <ul class="plain-list row"><li v-for="c in lessonSources" :key="c.passage_id"><CitationChip :chip="c" :open="openId === c.passage_id" @open="open" /></li></ul>
-        </footer>
         <section v-if="finished" class="done-card stack" data-testid="lesson-done">
           <h2>{{ t('learn.doneTitle') }}</h2>
           <template v-if="topic.data.value.objectives.length > 0">
@@ -157,7 +148,7 @@ function retake(): void {
         <p v-else-if="finished" class="muted">{{ t('learn.lastLesson') }}</p>
       </div>
       <div class="learn-side stack">
-        <CompanionPanel :passage-id="openId" :language="served" @close="openId = null">
+        <CompanionPanel :passage-id="openId" :term="openTerm" :language="served" :sources-path="`/learn/courses/${topic.data.value.course_id}/sources`" :glossary-path="`/learn/courses/${topic.data.value.course_id}/glossary`" @close="openId = null; openTerm = null">
           <TutorPanel :course-id="topic.data.value.course_id" :language="served" :open-id="openId" @open="open" />
         </CompanionPanel>
       </div>

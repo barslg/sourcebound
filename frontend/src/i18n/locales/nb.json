@@ -768,8 +768,6 @@
   },
   "learn": {
     "rail": "Leksjonens innhold",
-    "sourcesFooter": "Kilder for denne leksjonen",
-    "checkedNote": "Kontrollert mot disse kildene før den nådde deg.",
     "attemptsNever": "Forsøk låser aldri leksjonen.",
     "readPassage": "Les avsnittet:",
     "next": "Neste",
@@ -854,7 +852,9 @@
       "title": "Kilde",
       "hint": "Velg en henvisning for å lese kildeavsnittet her.",
       "asOf": "per {date}",
-      "close": "Lukk kilden"
+      "close": "Lukk kilden",
+      "allSources": "Alle kildene i kurset",
+      "glossary": "Ordliste"
     },
     "tutor": {
       "title": "Spør om materialet",
@@ -903,8 +903,6 @@
     "outcomes": "Dette kan du etterpå",
     "youAreHere": "Du er her",
     "today": "25 minutter i dag er nok.",
-    "sources": "Kildene til kurset",
-    "sourcesNote": "Hver leksjon avsluttes med kildene den er kontrollert mot. Åpne en henvisning for å lese avsnittet.",
     "title": "Kursoversikt",
     "help": "Moduler og emner med din fremdrift. Velg et emne eller fortsett der du slapp.",
     "empty": "Dette kurset har ingen emner å lese ennå.",
@@ -913,7 +911,9 @@
     "languageHelp": "Språket du leser på. Blokker som ikke er oversatt ennå vises på kildespråket med et varsel.",
     "moduleTest": "Modultest",
     "notPublished": "Dette kurset er ikke publisert, eller du er ikke påmeldt. En forfatter leser et upublisert kurs i forhåndsvisningen.",
-    "authorPreview": "Åpne forfatterens forhåndsvisning"
+    "authorPreview": "Åpne forfatterens forhåndsvisning",
+    "sourcesLink": "{n} kilder | {n} kilde | {n} kilder",
+    "glossaryLink": "{n} begreper i ordlisten | {n} begrep i ordlisten | {n} begreper i ordlisten"
   },
   "learnTopic": {
     "nextLine": "Neste: {note}",
@@ -972,5 +972,26 @@
     "heldBlock": "Holdt: {reason}",
     "previous": "Forrige: {title}",
     "nav": "Emnenavigasjon"
+  },
+  "learnSources": {
+    "title": "Kilder",
+    "help": "Hver kilde kurset er skrevet fra, under nummeret henvisningene bærer i teksten.",
+    "empty": "Kurset har ingen godkjent kilde ennå.",
+    "kind": {
+      "url": "Nettside",
+      "upload": "Opplastet dokument"
+    },
+    "licence": "Lisens: {licence}",
+    "asOf": "Hentet {date}",
+    "cited": "Sitert i {passages} avsnitt i {blocks} blokker",
+    "uncited": "Godkjent, ikke sitert ennå"
+  },
+  "glossary": {
+    "title": "Ordliste",
+    "help": "Begrepene kurset innfører, hvert med setningen som innfører det og emnet der det først dukker opp.",
+    "empty": "Kurset innfører ingen begreper ennå.",
+    "noDefinition": "Nevnt i planen, ennå ikke i teksten.",
+    "introducedIn": "Innført i {topic}",
+    "open": "Åpne ordlisten"
   }
 }

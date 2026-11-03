@@ -47,6 +47,8 @@ export const runResume = (id: string): string => `${runItem(id)}/resume`
 export const learnCourses = `${API}/learn/courses`
 export const learnCourse = (id: string): string => `${learnCourses}/${enc(id)}`
 export const learnAsk = (id: string): string => `${learnCourse(id)}/ask`
+export const learnSources = (id: string): string => `${learnCourse(id)}/sources`
+export const learnGlossary = (id: string): string => `${learnCourse(id)}/glossary`
 export const learnTopic = (id: string): string => `${API}/learn/topics/${enc(id)}`
 export const learnSubmit = (id: string): string => `${learnTopic(id)}/submit`
 export const learnPassage = (id: string): string => `${API}/learn/passages/${enc(id)}`
@@ -67,6 +69,8 @@ export const courseTranslate = (id: string): string => `${courseItem(id)}/transl
 export const coursePreview = (id: string): string => `${courseItem(id)}/preview`
 export const previewTopic = (topicId: string): string => `${API}/preview/topics/${enc(topicId)}`
 export const coursePreviewPassage = (id: string, passageId: string): string => `${coursePreview(id)}/passages/${enc(passageId)}`
+export const coursePreviewSources = (id: string): string => `${coursePreview(id)}/sources`
+export const coursePreviewGlossary = (id: string): string => `${coursePreview(id)}/glossary`
 export const courseRewriteHeld = (id: string): string => `${courseItem(id)}/held/rewrite`
 export const courseRecheckHeld = (id: string): string => `${courseItem(id)}/held/recheck`
 

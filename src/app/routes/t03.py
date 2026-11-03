@@ -263,6 +263,24 @@ async def preview_topic(
     return await controller.preview_topic(ctx, topic_id=topic_id, language=lang)
 
 
+@courses_router.get("/{course_id}/preview/sources")
+async def preview_sources(
+    course_id: Annotated[str, Depends(course_id_param)],
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, Any]:
+    """The draft's numbered sources (preview sources page)."""
+    return await controller.preview_sources(ctx, course_id=course_id)
+
+
+@courses_router.get("/{course_id}/preview/glossary")
+async def preview_glossary(
+    course_id: Annotated[str, Depends(course_id_param)],
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, Any]:
+    """The draft's glossary (preview glossary page)."""
+    return await controller.preview_glossary(ctx, course_id=course_id)
+
+
 @courses_router.get("/{course_id}/preview/passages/{passage_id}")
 async def preview_passage(
     course_id: Annotated[str, Depends(course_id_param)],

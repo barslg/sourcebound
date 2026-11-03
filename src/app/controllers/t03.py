@@ -240,6 +240,26 @@ async def preview_topic(
     )
 
 
+async def preview_sources(ctx: RequestContext, *, course_id: str) -> dict[str, Any]:
+    """The draft's numbered sources as the learner will see them (preview sources page)."""
+    from app.services.learner_reference import preview_sources as sources
+
+    actor = require_auth(ctx)
+    require(actor, "learner.view")
+    await _own_draft(ctx, actor, UUID(course_id))
+    return await sources(ctx.db, UUID(course_id))
+
+
+async def preview_glossary(ctx: RequestContext, *, course_id: str) -> dict[str, Any]:
+    """The draft's glossary as the learner will see it (preview glossary page)."""
+    from app.services.learner_reference import preview_glossary as glossary
+
+    actor = require_auth(ctx)
+    require(actor, "learner.view")
+    await _own_draft(ctx, actor, UUID(course_id))
+    return await glossary(ctx.db, UUID(course_id))
+
+
 async def preview_passage(
     ctx: RequestContext, *, course_id: str, passage_id: str, language: str | None
 ) -> dict[str, Any]:

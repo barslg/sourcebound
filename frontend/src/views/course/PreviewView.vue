@@ -36,6 +36,10 @@ const topicLink = (topic: LearnTopicRef): string => `/preview/topics/${topic.id}
       <template #empty-actions><router-link :to="`/courses/${courseId}/generate`" data-testid="preview-to-generate">{{ t('preview.toGenerate') }}</router-link></template>
       <div v-if="outline.data.value" class="stack">
         <p class="hint" data-testid="preview-note">{{ heldTotal > 0 ? t('preview.heldNote', heldTotal) : t('preview.readyNote') }}</p>
+        <p class="row hint" data-testid="course-reference">
+          <router-link :to="`/courses/${courseId}/preview/sources?language=${language}`" data-testid="to-sources">{{ t('learnCourse.sourcesLink', outline.data.value.source_count ?? 0) }}</router-link>
+          <router-link :to="`/courses/${courseId}/preview/glossary?language=${language}`" data-testid="to-glossary">{{ t('learnCourse.glossaryLink', outline.data.value.term_count ?? 0) }}</router-link>
+        </p>
         <section v-for="m in outline.data.value.modules" :key="m.id" class="syllabus-card" data-testid="module">
           <h3>{{ m.title }}</h3>
           <p v-if="m.purpose" class="hint module-purpose">{{ m.purpose }}</p>

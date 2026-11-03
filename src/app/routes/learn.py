@@ -39,6 +39,24 @@ async def get_course(
     )
 
 
+@router.get("/courses/{course_id}/sources")
+async def get_sources(
+    course_id: Annotated[str, Depends(course_id_param)],
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, Any]:
+    """The course's sources under their citation numbers (sources page)."""
+    return await controller.get_sources(ctx, course_id=course_id)
+
+
+@router.get("/courses/{course_id}/glossary")
+async def get_glossary(
+    course_id: Annotated[str, Depends(course_id_param)],
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, Any]:
+    """The course's terms with their introducing sentence (glossary page)."""
+    return await controller.get_glossary(ctx, course_id=course_id)
+
+
 @router.get("/topics/{topic_id}")
 async def get_topic(
     topic_id: Annotated[str, Depends(topic_id_param)],

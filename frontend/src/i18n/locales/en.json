@@ -768,8 +768,6 @@
   },
   "learn": {
     "rail": "Lesson outline",
-    "sourcesFooter": "Sources of this lesson",
-    "checkedNote": "Checked against these sources before it reached you.",
     "attemptsNever": "Attempts never lock the lesson.",
     "readPassage": "Read the passage:",
     "next": "Next",
@@ -854,7 +852,9 @@
       "title": "Source",
       "hint": "Select a citation to read the source passage here.",
       "asOf": "as of {date}",
-      "close": "Close source"
+      "close": "Close source",
+      "allSources": "All sources of the course",
+      "glossary": "Glossary"
     },
     "tutor": {
       "title": "Ask about the materials",
@@ -903,8 +903,6 @@
     "outcomes": "What you will be able to do",
     "youAreHere": "You are here",
     "today": "25 minutes today is enough.",
-    "sources": "Sources of the course",
-    "sourcesNote": "Every lesson ends with the sources it was checked against. Open any citation to read the passage.",
     "title": "Course outline",
     "help": "Modules and topics with your progress. Pick a topic or continue where you left off.",
     "empty": "This course has no topics to read yet.",
@@ -913,7 +911,9 @@
     "languageHelp": "The language you read in. Blocks not yet translated show the source text with a notice.",
     "moduleTest": "Module test",
     "notPublished": "This course is not published, or you are not enrolled in it. An author reads an unpublished course in its preview.",
-    "authorPreview": "Open the author preview"
+    "authorPreview": "Open the author preview",
+    "sourcesLink": "{n} sources | {n} source | {n} sources",
+    "glossaryLink": "{n} terms in the glossary | {n} term in the glossary | {n} terms in the glossary"
   },
   "learnTopic": {
     "nextLine": "Next: {note}",
@@ -972,5 +972,26 @@
     "heldBlock": "Held: {reason}",
     "previous": "Previous: {title}",
     "nav": "Topic navigation"
+  },
+  "learnSources": {
+    "title": "Sources",
+    "help": "Every source this course was written from, under the number its citations carry in the text.",
+    "empty": "This course has no approved source yet.",
+    "kind": {
+      "url": "Web page",
+      "upload": "Uploaded document"
+    },
+    "licence": "Licence: {licence}",
+    "asOf": "Fetched {date}",
+    "cited": "Cited in {passages} passages across {blocks} blocks",
+    "uncited": "Approved, not cited yet"
+  },
+  "glossary": {
+    "title": "Glossary",
+    "help": "The terms this course introduces, each with the sentence that introduces it and the topic where it first appears.",
+    "empty": "This course introduces no terms yet.",
+    "noDefinition": "Named in the plan, not yet in the reading.",
+    "introducedIn": "Introduced in {topic}",
+    "open": "Open the glossary"
   }
 }

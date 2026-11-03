@@ -49,6 +49,24 @@ async def get_course(
     )
 
 
+async def get_sources(ctx: RequestContext, *, course_id: str) -> dict[str, Any]:
+    """The course's numbered sources (sources page)."""
+    from app.services.learner_reference import course_sources
+
+    actor = require_auth(ctx)
+    require(actor, "learn.read")
+    return await course_sources(ctx.db, actor, UUID(course_id))
+
+
+async def get_glossary(ctx: RequestContext, *, course_id: str) -> dict[str, Any]:
+    """The course's terms with the sentence that introduces each (glossary page)."""
+    from app.services.learner_reference import course_glossary
+
+    actor = require_auth(ctx)
+    require(actor, "learn.read")
+    return await course_glossary(ctx.db, actor, UUID(course_id))
+
+
 async def get_topic(ctx: RequestContext, *, topic_id: str, language: str | None) -> dict[str, Any]:
     from app.services.learner import topic_view
 

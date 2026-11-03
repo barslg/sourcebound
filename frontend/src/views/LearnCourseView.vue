@@ -75,10 +75,10 @@ function open(): void { if (resume.value) void router.push(topicLink(resume.valu
       <FormField v-if="languages.length > 1" id="learn-lang" :label="t('learnCourse.language')" :help="t('learnCourse.languageHelp')">
         <Select :model-value="language || outline.data.value.source_language" input-id="learn-lang" :options="languages" option-label="label" option-value="code" data-testid="learn-language" @update:model-value="setLanguage" />
       </FormField>
-      <section class="stack" data-testid="course-sources">
-        <h2>{{ t('learnCourse.sources') }}</h2>
-        <p class="muted">{{ t('learnCourse.sourcesNote') }}</p>
-      </section>
+      <p class="row hint" data-testid="course-reference">
+        <router-link :to="`/learn/courses/${id}/sources`" data-testid="to-sources">{{ t('learnCourse.sourcesLink', outline.data.value.source_count ?? 0) }}</router-link>
+        <router-link :to="`/learn/courses/${id}/glossary`" data-testid="to-glossary">{{ t('learnCourse.glossaryLink', outline.data.value.term_count ?? 0) }}</router-link>
+      </p>
       <section v-for="m in outline.data.value.modules" :key="m.id" class="syllabus-card" data-testid="module">
         <h3>{{ m.title }}</h3>
         <p v-if="m.purpose" class="hint module-purpose">{{ m.purpose }}</p>
