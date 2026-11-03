@@ -21,6 +21,15 @@ const both = {
   navigation: { item: { focusBackground: v('surface-2'), activeBackground: v('surface-2'), color: v('fg'), focusColor: v('fg'), activeColor: v('fg'), icon: { color: v('muted'), focusColor: v('fg'), activeColor: v('fg') } } },
 }
 
+const buttonScheme = {
+  root: {
+    secondary: { background: v('surface-2'), hoverBackground: v('border'), activeBackground: v('border'), borderColor: v('border-strong'), hoverBorderColor: v('border-strong'), activeBorderColor: v('border-strong'), color: v('fg'), hoverColor: v('fg'), activeColor: v('fg'), focusRing: { color: v('focus'), shadow: 'none' } },
+    contrast: { background: v('primary'), hoverBackground: v('primary-hover'), activeBackground: v('primary-hover'), borderColor: v('primary'), hoverBorderColor: v('primary-hover'), activeBorderColor: v('primary-hover'), color: v('primary-fg'), hoverColor: v('primary-fg'), activeColor: v('primary-fg'), focusRing: { color: v('focus'), shadow: 'none' } },
+  },
+  outlined: { secondary: { hoverBackground: v('surface-2'), activeBackground: v('surface-2'), borderColor: v('border-strong'), color: v('fg') } },
+  text: { secondary: { hoverBackground: v('surface-2'), activeBackground: v('surface-2'), color: v('fg') } },
+}
+
 export const preset = definePreset(Aura, {
   semantic: {
     primary: ink,
@@ -31,7 +40,10 @@ export const preset = definePreset(Aura, {
     colorScheme: { light: both, dark: both },
   },
   components: {
-    button: { root: { borderRadius: '10px', paddingX: '1rem', paddingY: '0.6rem', label: { fontWeight: '500' } } },
+    button: {
+      root: { borderRadius: '10px', paddingX: '1rem', paddingY: '0.6rem', label: { fontWeight: '500' } },
+      colorScheme: { light: buttonScheme, dark: buttonScheme },
+    },
     dialog: { root: { borderRadius: '14px', background: v('surface'), borderColor: v('border'), color: v('fg') }, title: { fontSize: '1.5rem', fontWeight: '500' } },
     drawer: { root: { background: v('surface'), borderColor: v('border'), color: v('fg') }, title: { fontSize: '1.5rem', fontWeight: '500' } },
     datatable: { headerCell: { background: v('surface'), color: v('muted'), borderColor: v('border') }, bodyCell: { borderColor: v('border') }, row: { background: v('surface'), hoverBackground: v('surface-2'), color: v('fg'), hoverColor: v('fg') } },

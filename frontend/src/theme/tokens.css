@@ -238,7 +238,6 @@ fieldset.field legend { font-weight: 500; padding: 0 var(--sb-space-1); }
 .p-button.p-button-sm { min-height: 36px; }
 .p-button.p-button-icon-only { min-width: 42px; }
 .p-button.p-button-icon-only.p-button-sm { min-width: 36px; }
-.p-button.p-button-secondary:not(.p-button-text):not(.p-button-outlined), .p-button.p-button-secondary.p-button-text { color: var(--sb-fg); }
 .p-button.p-button-danger.p-button-outlined { color: var(--sb-danger); border-color: var(--sb-danger); }
 .p-button.btn-accent { background: var(--sb-accent); border-color: var(--sb-accent); color: var(--sb-accent-fg); font-weight: 600; }
 .p-button.btn-accent:not(:disabled):hover { background: #f5b95e; border-color: #f5b95e; color: var(--sb-accent-fg); }
