@@ -250,10 +250,60 @@ def validate_tree(tree: CourseTree, prescription: dict[str, list[str]]) -> list[
                         f"block {block.plan_node_id}: a {block.role} block is a reading,"
                         f" not {block.block_type!r}"
                     )
+        errors += _variety_errors(module)
     node_ids = [module.plan_node_id for module in tree.modules]
     node_ids += [topic.plan_node_id for module in tree.modules for topic in module.topics]
     if len(set(node_ids)) != len(node_ids):
         errors.append("duplicate module/topic plan_node_id")
+    return errors
+
+
+TYPE_BY_PASSAGE = (
+    "matching for pairs, cloze for a procedure or a request's fields,"
+    " choice for a decision, scenario_practice for cases to classify"
+)
+
+
+def _variety_errors(module: ModuleNode) -> list[str]:
+    """Exercise types follow the passages, never one habit; the test covers every lesson.
+
+    The 2026-11-03 Meta API course (direct instruction) planned 54 exercises
+    in two types and one-question module tests; matching and cloze stayed
+    registered and unused. A module's exercises use more than one type
+    once there are three of them, its test has at least one block per
+    lesson, and a test block type never repeats while an allowed type
+    is still unused.
+    """
+    errors: list[str] = []
+    lessons = [topic for topic in module.topics if topic.kind == "lesson"]
+    exercises = [
+        block for topic in lessons for block in topic.blocks if block.role in QUESTION_ROLES
+    ]
+    types = {block.block_type for block in exercises}
+    if len(exercises) >= 3 and len(types) == 1:
+        errors.append(
+            f"module {module.plan_node_id}: all {len(exercises)} exercises are"
+            f" {exercises[0].block_type!r}; choose each type by what its passages hold"
+            f" ({TYPE_BY_PASSAGE})"
+        )
+    for topic in module.topics:
+        if topic.kind != "module_test":
+            continue
+        if lessons and len(topic.blocks) < len(lessons):
+            errors.append(
+                f"topic {topic.plan_node_id}: {len(topic.blocks)} test block for"
+                f" {len(lessons)} lessons; one test block per lesson, on that lesson's objective"
+            )
+        allowed = set(BLOCK_TYPES["module_test"])
+        seen: set[str] = set()
+        for block in topic.blocks:
+            if block.block_type in seen and not (allowed <= seen):
+                errors.append(
+                    f"topic {topic.plan_node_id}: the test repeats {block.block_type!r}"
+                    f" while {sorted(allowed - seen)} are unused ({TYPE_BY_PASSAGE})"
+                )
+                break
+            seen.add(block.block_type)
     return errors
 
 
