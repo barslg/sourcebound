@@ -2000,3 +2000,36 @@ async def test_recheck_releases_a_hold_the_current_checks_no_longer_find(
     assert blocks["b3"] == ("held", old), blocks["b3"]
     assert blocks["b1"] == ("held", dropped), blocks["b1"]
     assert result == {"rechecked": 3, "released": 0, "held": 3}, result
+
+
+async def test_generation_keeps_a_writer_leftover_with_the_block(
+    t03_session: AsyncSession,
+) -> None:
+    """A passage the writer declares in `leftovers` is stored with the block, reason and all.
+
+    The prompt promises the author sees what was left out; without storage
+    the declaration died with the reply.
+    """
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-leftovers")
+    leftover = {"handle": "P9", "reason": "page metadata, not a claim"}
+
+    def declare(prompt: str, reply: dict[str, Any]) -> dict[str, Any]:
+        skeleton = prompt.rsplit("## Block skeleton", 1)[-1]
+        if '"plan_node_id": "b1"' in skeleton and "citations" in reply:
+            reply["leftovers"] = [leftover]
+        return reply
+
+    final = await _smoke_run(t03_session, demo, dag, _edited(demo_t05.mock_demo_handler(), declare))
+    assert final["status"] == "done", final["stop_marker"]
+    stored = (
+        await t03_session.execute(
+            sa.text(
+                "SELECT bv.content -> 'leftovers' FROM blocks b"
+                " JOIN block_versions bv ON bv.id = b.current_version_id"
+                " JOIN topics t ON t.id = b.topic_id JOIN modules m ON m.id = t.module_id"
+                " WHERE m.course_id = :c AND b.plan_node_id = 'b1'"
+            ),
+            {"c": str(demo["course_id"])},
+        )
+    ).scalar_one()
+    assert stored == [leftover], stored

@@ -1670,7 +1670,16 @@ def _typed_content(
     if str(output.get("block_type", "")) not in ("", block_type):
         return {}, {}, [f"reply block_type {output.get('block_type')!r} != {block_type!r}"]
     if block_type == "reading":
-        content = {"body": text, "citations": citations}
+        # leftovers travel with the block: the author sees what the writer left out and why
+        content = {
+            "body": text,
+            "citations": citations,
+            "leftovers": [
+                {"handle": str(x.get("handle", "")), "reason": str(x.get("reason", ""))}
+                for x in output.get("leftovers", [])
+                if isinstance(x, dict) and x.get("handle")
+            ],
+        }
     elif block_type == "figure":
         numbers = [n for n in output.get("numbers", []) if isinstance(n, (int, float))]
         content = {
