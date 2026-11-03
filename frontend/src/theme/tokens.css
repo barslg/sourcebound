@@ -317,8 +317,8 @@ kbd { border: 1px solid var(--sb-border); border-radius: var(--sb-radius-sm); pa
 .cite-chip { cursor: pointer; font: inherit; background: var(--sb-surface); color: var(--sb-link); border: 1px solid var(--sb-border); border-radius: 999px; display: inline-flex; gap: var(--sb-space-2); align-items: center; padding: var(--sb-space-1) var(--sb-space-3); min-height: 32px; text-align: left; }
 .cite-chip[aria-expanded='true'] { border-color: var(--sb-link); }
 .cite-chip { font-size: var(--sb-fs-sm); }
-.cite-chip .cite-title { max-width: 18ch; }
-.cite-chip .cite-where { max-width: 16ch; }
+.cite-chip .cite-title { max-width: 14ch; }
+.cite-chip .cite-where { max-width: 14ch; }
 .cite-chip .cite-title, .cite-chip .cite-where { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cite-chip .mono { flex: none; }
 .cloze-line { line-height: 2.4; font-family: var(--sb-font-serif); font-size: var(--sb-read-size); }
