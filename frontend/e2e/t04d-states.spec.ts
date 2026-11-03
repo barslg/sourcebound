@@ -49,7 +49,7 @@ for (const s of SCREENS) {
     await signInAs(context, 'admin')
     await page.route(s.api, async (route) => {
       await new Promise((r) => setTimeout(r, 700))
-      await route.continue()
+      await route.continue().catch(() => undefined)
     })
     await page.goto(s.path())
     await expect(page.locator('[data-view="loading"]').first()).toBeVisible()
