@@ -1734,6 +1734,27 @@ def _typed_content(
             "citation": citations[0] if citations else {},
         }
         key["source_numbers"] = numbers
+    elif block_type == "diagram":
+        raw_nodes: Any = output.get("nodes")
+        nodes = [n for n in raw_nodes if isinstance(n, dict)] if isinstance(raw_nodes, list) else []
+        node_id = {str(n.get("id", "")): f"n{i}" for i, n in enumerate(nodes)}
+        raw_edges: Any = output.get("edges")
+        edges = [e for e in raw_edges if isinstance(e, dict)] if isinstance(raw_edges, list) else []
+        content = {
+            "caption": text,
+            "nodes": [
+                {"id": f"n{i}", "label": str(n.get("label", ""))} for i, n in enumerate(nodes)
+            ],
+            "edges": [
+                {
+                    "from": node_id.get(str(e.get("from", "")), str(e.get("from", ""))),
+                    "to": node_id.get(str(e.get("to", "")), str(e.get("to", ""))),
+                    "label": str(e.get("label", "")),
+                }
+                for e in edges
+            ],
+            "citations": citations,
+        }
     elif block_type == "choice":
         raw_options: Any = output.get("options")
         options: list[Any] = raw_options if isinstance(raw_options, list) else []
@@ -2071,8 +2092,12 @@ async def generate_block_step(
             # into one paragraph without a handle marker between them.
             role = str(dict(entry.get("skeleton", {})).get("role", ""))
             is_reading = agent in ("block_teach", "block_example") or role in ("teach", "example")
-            if is_reading and block_type != "figure":
-                # a figure is drawn from a passage's numbers; its caption is not a reading
+            if is_reading and block_type == "diagram":
+                from app.course.grounding import diagram_holds
+
+                holds += diagram_holds(output, [stored.get(pid, "") for pid in citation_pids])
+            if is_reading and block_type not in ("figure", "diagram"):
+                # a figure or a diagram is drawn from a passage; its caption is not a reading
                 from app.course.grounding import adjacency_holds, assignment_holds, coverage_holds
 
                 cited_texts = {

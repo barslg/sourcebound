@@ -836,6 +836,7 @@
     "type": {
       "reading": "Lesetekst",
       "figure": "Figur",
+      "diagram": "Diagram",
       "choice": "Spørsmål",
       "matching": "Samsvar",
       "cloze": "Hullutfylling",
@@ -882,7 +883,8 @@
       "help": "Si definisjonen, og snu kortet for å sammenligne med setningen lesetekst brukte.",
       "show": "Vis definisjonen",
       "hide": "Skjul definisjonen"
-    }
+    },
+    "diagramFallback": "Diagrammet kunne ikke tegnes; trinnene står i rekkefølge i stedet."
   },
   "runs": {
     "title": "Kjøringer",

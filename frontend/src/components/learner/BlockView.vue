@@ -2,6 +2,7 @@
 import { computed, type Component } from 'vue'
 import ChoiceBlock from './ChoiceBlock.vue'
 import ClozeBlock from './ClozeBlock.vue'
+import DiagramBlock from './DiagramBlock.vue'
 import FigureBlock from './FigureBlock.vue'
 import MatchingBlock from './MatchingBlock.vue'
 import OrderingBlock from './OrderingBlock.vue'
@@ -15,6 +16,7 @@ const BY_TYPE: Record<string, Component> = {
   choice: ChoiceBlock,
   cloze: ClozeBlock,
   figure: FigureBlock,
+  diagram: DiagramBlock,
   matching: MatchingBlock,
   ordering: OrderingBlock,
   scenario_practice: ScenarioBlock,

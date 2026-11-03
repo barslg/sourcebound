@@ -127,13 +127,14 @@ async def test_no_key_value_leaves_any_learner_route_on_a_wrong_partial_or_right
         assert {b["block_type"] for b in topics} == {
             "reading",
             "figure",
+            "diagram",
             "choice",
             "matching",
             "cloze",
             "ordering",
             "scenario_practice",
             "spot_the_error",
-        }, "all eight types were served"
+        }, "all nine types were served"
         for block in topics:
             by_text = {r["text"]: r["id"] for r in block["content"].get("right", [])}
             chips = {c["handle"]: c["passage_id"] for c in block["citations"]}

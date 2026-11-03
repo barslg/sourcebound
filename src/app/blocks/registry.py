@@ -8,6 +8,7 @@ from typing import Any
 BLOCK_TYPES: tuple[str, ...] = (
     "reading",
     "figure",
+    "diagram",
     "choice",
     "matching",
     "cloze",

@@ -75,6 +75,8 @@ test('learner topic: the topic\'s term is marked once and opens its definition b
   await expect(marks).toHaveCount(1)
   await marks.first().click()
   await expect(page.getByTestId('companion-term')).toContainText('An alcohol rub takes twenty seconds')
+  // the diagram is drawn by the browser from the typed graph; a node label is in the svg
+  await expect(page.locator('[data-block="diagram"] [data-testid="diagram-svg"] svg')).toContainText('alcohol rub')
   // the review deck is built from the same terms: the back of the card is the defining sentence
   await page.getByTestId('flashcard-flip').first().click()
   await expect(page.getByTestId('flashcard-definition').first()).toBeVisible()

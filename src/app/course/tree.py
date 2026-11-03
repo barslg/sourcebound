@@ -23,12 +23,14 @@ TOPIC_KINDS = ("lesson", "module_test")
 TS_CONFIGS = {"en": "english", "nb": "norwegian", "uk": "simple"}
 # Block-type registry per topic kind (item 14): block_type is not free
 # text. Lessons teach with readings and examples and check with
-# exercises; module tests only assess. A figure is never planned: the
+# exercises (a flow passage may be shown as a diagram the browser
+# draws from labelled nodes); module tests only assess. A figure is never planned: the
 # 2026-11-02 big course drew invented numbers in 18 of 18 figures, and
 # the type stays registered only to render courses that already hold one.
 BLOCK_TYPES: dict[str, tuple[str, ...]] = {
     "lesson": (
         "reading",
+        "diagram",
         "choice",
         "matching",
         "cloze",
@@ -246,7 +248,7 @@ def validate_tree(tree: CourseTree, prescription: dict[str, list[str]]) -> list[
                     errors.append(
                         f"block {block.plan_node_id}: {block.role} brief is a topic, not a question"
                     )
-                if block.role in READING_ROLES and block.block_type != "reading":
+                if block.role in READING_ROLES and block.block_type not in ("reading", "diagram"):
                     # the 2026-11-02 Muse API plan typed 24 of 30 examples as exercises
                     errors.append(
                         f"block {block.plan_node_id}: a {block.role} block is a reading,"
@@ -565,6 +567,18 @@ GENERATOR_SCHEMA: dict[str, Any] = _generator()
 BLOCK_GENERATOR_SCHEMAS: dict[str, dict[str, Any]] = {
     "reading": _generator(),
     "figure": _generator({"numbers": {"type": "array", "items": {"type": "number"}}}),
+    "diagram": _generator(
+        {
+            "nodes": {
+                "type": "array",
+                "items": _strict_object({"id": _string(), "label": _string()}),
+            },
+            "edges": {
+                "type": "array",
+                "items": _strict_object({"from": _string(), "to": _string(), "label": _string()}),
+            },
+        }
+    ),
     "choice": _generator(
         {
             "options": {

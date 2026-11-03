@@ -386,6 +386,8 @@ span.cite-mark { cursor: default; color: var(--sb-muted); }
 .syllabus-card { border: 1px solid var(--sb-border); border-radius: var(--sb-radius-card); background: var(--sb-surface); overflow: hidden; }
 .syllabus-card > h3 { margin: 0; padding: var(--sb-space-3) var(--sb-space-4); border-bottom: 1px solid var(--sb-border); font-size: var(--sb-fs-lg); }
 .sources-of-course { display: flex; flex-wrap: wrap; gap: var(--sb-space-2); list-style: none; padding: 0; margin: 0; }
+.diagram { margin: 0; max-width: var(--sb-read-measure); }
+.diagram-canvas svg { max-width: 100%; height: auto; }
 .flashcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--sb-space-3); }
 .flashcard { border: 1px solid var(--sb-border); border-radius: var(--sb-radius-card); background: var(--sb-surface); padding: var(--sb-space-3); display: flex; flex-direction: column; gap: var(--sb-space-2); }
 .flashcard-face { font: inherit; text-align: left; border: 0; background: none; padding: 0; cursor: pointer; display: flex; flex-direction: column; gap: var(--sb-space-1); color: inherit; }

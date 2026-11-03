@@ -69,6 +69,9 @@ def generator_output(block: dict[str, Any]) -> dict[str, Any]:
         out["pairs"] = list(content.get("pairs", []))
     elif block["block_type"] == "ordering":
         out["steps"] = [str(s) for s in content.get("items", [])]
+    elif block["block_type"] == "diagram":
+        out["nodes"] = list(content.get("nodes", []))
+        out["edges"] = list(content.get("edges", []))
     elif block["block_type"] == "scenario_practice":
         labels = dict(key.get("labels_by_index", {}))
         out["items"] = [

@@ -446,6 +446,15 @@ async def seed_learn(session: AsyncSession, owner: str) -> dict[str, str]:
     content["citation"] = public(chips[1:2])[0]
     key["source_numbers"] = [20, 40]
     add("figure", "example", "t1", content, key, chips[1:2])
+    content, key = fx("diagram")
+    content["caption"] = "Hand hygiene as the passage orders it."
+    content["nodes"] = [
+        {"id": "n0", "label": "alcohol rub"},
+        {"id": "n1", "label": "soap and water"},
+    ]
+    content["edges"] = [{"from": "n0", "to": "n1", "label": "when hands are soiled"}]
+    content["citations"] = public(chips[:1])
+    add("diagram", "example", "t1", content, key, chips[:1])
     content, key = fx("choice")
     content["stem"] = "How long does an alcohol rub take?"
     content["options"] = ["Twenty seconds", "Forty seconds", "One minute"]

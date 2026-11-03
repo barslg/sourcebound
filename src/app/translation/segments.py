@@ -23,6 +23,20 @@ def extract_segments(block_type: str, content: dict[str, Any]) -> list[dict[str,
         return segments
     if block_type == "figure":
         return [{"id": "caption", "text": str(content["caption"])}]
+    if block_type == "diagram":
+        nodes, edges = content["nodes"], content["edges"]
+        if not isinstance(nodes, list) or not isinstance(edges, list):
+            raise ValidationError("diagram nodes and edges must be lists")
+        segments = [{"id": "caption", "text": str(content["caption"])}]
+        segments += [
+            {"id": f"nodes[{i}].label", "text": str(n["label"])} for i, n in enumerate(nodes)
+        ]
+        segments += [
+            {"id": f"edges[{i}].label", "text": str(e["label"])}
+            for i, e in enumerate(edges)
+            if str(e.get("label", "")).strip()
+        ]
+        return segments
     if block_type == "choice":
         segments = [{"id": "stem", "text": str(content["stem"])}]
         options = content["options"]
@@ -130,6 +144,15 @@ def reassemble(
             rebuilt["text"] = rebuilt["body"] if same else take("text")
     elif block_type == "figure":
         rebuilt["caption"] = take("caption")
+    elif block_type == "diagram":
+        rebuilt["caption"] = take("caption")
+        rebuilt["nodes"] = [
+            {**n, "label": take(f"nodes[{i}].label")} for i, n in enumerate(content["nodes"])
+        ]
+        rebuilt["edges"] = [
+            {**e, "label": take(f"edges[{i}].label") if str(e.get("label", "")).strip() else ""}
+            for i, e in enumerate(content["edges"])
+        ]
     elif block_type == "choice":
         rebuilt["stem"] = take("stem")
         rebuilt["options"] = [take(f"options[{i}]") for i in range(len(content["options"]))]

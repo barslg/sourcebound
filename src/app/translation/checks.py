@@ -207,6 +207,11 @@ def verify_block_translation(
     elif block_type == "spot_the_error":
         if len(_as_list(translated.get("sentences"))) != len(_as_list(source.get("sentences"))):
             errors.append("sentence count changed in translation")
+    elif block_type == "diagram":
+        if len(_as_list(translated.get("nodes"))) != len(_as_list(source.get("nodes"))) or len(
+            _as_list(translated.get("edges"))
+        ) != len(_as_list(source.get("edges"))):
+            errors.append("node or edge count changed in translation")
     for key in ("body", "stem", "text", "scenario", "prompt", "caption"):
         if key in source and not str(translated.get(key, "")).strip():
             errors.append(f"{key} translated to empty")

@@ -448,6 +448,29 @@ def quoted_from(claim: str, taught_words: list[str]) -> bool:
     )
 
 
+def diagram_holds(output: dict[str, Any], cited_texts: list[str]) -> list[str]:
+    """Hold a diagram whose node or edge label is not quoted from a cited passage.
+
+    The browser draws from labels only, so a label is the whole claim:
+    each one is a run of QUOTED_SPAN_WORDS words from a passage the
+    block cites, or the whole label when shorter. The writer prompts
+    state the same rule.
+    """
+    cited_words = words_of(" \n ".join(cited_texts))
+    labels: list[str] = []
+    for node in output.get("nodes", []) if isinstance(output.get("nodes"), list) else []:
+        if isinstance(node, dict):
+            labels.append(str(node.get("label", "")))
+    for edge in output.get("edges", []) if isinstance(output.get("edges"), list) else []:
+        if isinstance(edge, dict):
+            labels.append(str(edge.get("label", "")))
+    return [
+        f"diagram: the label {label[:80]!r} is not quoted from a cited passage"
+        for label in labels
+        if label.strip() and not quoted_from(label, cited_words)
+    ]
+
+
 def taught_holds(
     output: dict[str, Any], taught_texts: list[str], block_type: str = ""
 ) -> list[str]:

@@ -215,7 +215,7 @@ test('learner path: enrolled student reads a topic, answers blocks, finds the er
 
   await page.getByTestId('continue').click()
   await expect(page).toHaveURL(new RegExp(`/learn/topics/${lab.learn_topic}`))
-  await expect(page.getByTestId('learn-block')).toHaveCount(8)
+  await expect(page.getByTestId('learn-block')).toHaveCount(9)
   const topicApi = (await (await page.request.get(`/api/v1/learn/topics/${lab.learn_topic}`)).json()) as TopicApi
   const blockOf = (type: string): TopicApi['blocks'][number] => topicApi.blocks.find((b) => b.block_type === type) as TopicApi['blocks'][number]
   expect(JSON.stringify(topicApi)).not.toMatch(/answer_key|planted|SENTINEL/)
