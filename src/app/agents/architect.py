@@ -29,8 +29,14 @@ def build_dynamic(
     source_languages: list[str] | None = None,
     module_scope: dict[str, Any] | None = None,
     scenario: list[dict[str, Any]] | None = None,
+    fix_list: list[str] | None = None,
 ) -> str:
-    """Typed dynamic part: language, passages (with kind and topic), profile, scope, scenario."""
+    """Typed dynamic part: language, passages (with kind and topic), profile, scope, scenario.
+
+    `fix_list` (a re-ask only) carries the code checks the previous
+    reply failed; the model keeps what passed and changes what each
+    line names.
+    """
     from app.blocks.registry import BLOCK_TYPES as _REGISTRY_TYPES
     from app.course.grounding import passage_kind
     from app.course.methodologies import METHODOLOGIES
@@ -67,6 +73,12 @@ def build_dynamic(
         ordered["scenario"] = scenario
     if module_scope is not None:
         ordered["module_scope"] = module_scope
+    if fix_list:
+        ordered["fix_list"] = {
+            "rejected_for": list(fix_list),
+            "rule": "Your previous plan of this module failed these code checks."
+            " Keep what passed; change only what each line names.",
+        }
     return json.dumps(ordered, ensure_ascii=False)
 
 
@@ -79,6 +91,7 @@ def build_prompt(
     source_languages: list[str] | None = None,
     module_scope: dict[str, Any] | None = None,
     scenario: list[dict[str, Any]] | None = None,
+    fix_list: list[str] | None = None,
 ) -> str:
     """Full architect prompt: the typed input (the system prompt travels as instructions)."""
     return assemble(
@@ -91,6 +104,7 @@ def build_prompt(
             source_languages,
             module_scope=module_scope,
             scenario=scenario,
+            fix_list=fix_list,
         )
     )
 

@@ -961,35 +961,56 @@ async def _plan_output(
         }
         own_handles = {str(p["handle"]) for p in own}
         # a module plan is 8–16k tokens of JSON: Spark with a 20k budget writes it in one
-        # go for a fifth of Wonder's price (Wonder cut 8 of 8 module replies at 8k)
-        reply = await provider.generate_json(
-            agent="architect",
-            max_output_tokens=MODULE_PLAN_OUTPUT_TOKENS,
-            prompt=architect.build_prompt(
-                profile,
-                constraints,
+        # go for a fifth of Wonder's price (Wonder cut 8 of 8 module replies at 8k).
+        # A rejected module plan is asked again with the failed checks as a Fix
+        # list, up to CODE_REASKS times, instead of stopping the whole run.
+        last_errors: list[str] = []
+
+        def _check(
+            reply: dict[str, Any],
+            scope: Any = scope,
+            own: Any = own,
+            own_handles: Any = own_handles,
+            sink: list[str] = last_errors,
+        ) -> list[str]:
+            sink[:] = _rejectable_architect_errors(
+                reply,
                 prescription,
-                own,
-                course_language=language,
-                source_languages=source_languages,
+                own_handles,
+                methodology_codes=codes,
+                passages=own,
                 module_scope=scope,
-                scenario=lines,
-            ),
-            schema=architect.schema(),
-            run_id=run_id,
-            step_id=step_id,
-            variant=variant,
-            check=lambda reply, scope=scope, own=own, own_handles=own_handles: (
-                _rejectable_architect_errors(
-                    reply,
-                    prescription,
-                    own_handles,
-                    methodology_codes=codes,
-                    passages=own,
-                    module_scope=scope,
+            )
+            return list(sink)
+
+        fix_list: list[str] | None = None
+        for reask in range(CODE_REASKS + 1):
+            try:
+                reply = await provider.generate_json(
+                    agent="architect",
+                    max_output_tokens=MODULE_PLAN_OUTPUT_TOKENS,
+                    prompt=architect.build_prompt(
+                        profile,
+                        constraints,
+                        prescription,
+                        own,
+                        course_language=language,
+                        source_languages=source_languages,
+                        module_scope=scope,
+                        scenario=lines,
+                        fix_list=fix_list,
+                    ),
+                    schema=architect.schema(),
+                    run_id=run_id,
+                    step_id=step_id,
+                    variant=variant,
+                    check=_check,
                 )
-            ),
-        )
+                break
+            except ValidationError:
+                if reask == CODE_REASKS or not last_errors:
+                    raise
+                fix_list = list(last_errors)[:12]
         for reply_module in reply.get("modules", []):
             if not isinstance(reply_module, dict):
                 continue
@@ -1087,6 +1108,95 @@ def _fill_handoffs_from_notes(reply: dict[str, Any], module_scope: dict[str, Any
             handoffs.append({"topic_plan_node_id": node, "note": note})
 
 
+def _block_signature(block: dict[str, Any]) -> tuple[str, str, tuple[str, ...]]:
+    refs = tuple(
+        sorted(
+            str(r.get("handle", "")) for r in block.get("source_refs", []) if isinstance(r, dict)
+        )
+    )
+    return (str(block.get("block_type", "")), " ".join(str(block.get("brief", "")).split()), refs)
+
+
+def _drop_restated_blocks(reply: dict[str, Any], module_scope: dict[str, Any] | None) -> None:
+    """A block restated in a topic that does not own its passages is dropped.
+
+    The 2026-11-03 Python plan wrote module 3's first lesson as the
+    whole module: the blocks of its three sibling lessons and of the
+    module test again, same briefs, same passages. A block whose
+    passages belong to another topic of the scope and whose type,
+    brief and passages equal a block of that topic is the echo; the
+    copy in the owning topic stays.
+    """
+    if not module_scope:
+        return
+    owner_of: dict[str, str] = {}
+    for row in module_scope.get("topics", []) if isinstance(module_scope, dict) else []:
+        for handle in row.get("handles", []) if isinstance(row, dict) else []:
+            owner_of[str(handle)] = str(row.get("plan_node_id", ""))
+    topics = [
+        t
+        for m in reply.get("modules", [])
+        if isinstance(m, dict)
+        for t in m.get("topics", [])
+        if isinstance(t, dict)
+    ]
+    signatures = {
+        str(t.get("plan_node_id", "")): {
+            _block_signature(b) for b in t.get("blocks", []) if isinstance(b, dict)
+        }
+        for t in topics
+    }
+    for topic in topics:
+        if str(topic.get("kind", "")) != "lesson":
+            continue  # a module test cites lesson passages by design
+        node = str(topic.get("plan_node_id", ""))
+        kept: list[Any] = []
+        for block in topic.get("blocks", []):
+            if not isinstance(block, dict):
+                continue
+            signature = _block_signature(block)
+            owners = {owner_of.get(h, "") for h in signature[2]} - {""}
+            elsewhere = [o for o in owners if o != node and signature in signatures.get(o, set())]
+            test_echo = str(topic.get("kind", "")) == "lesson" and any(
+                signature in sig and str(t.get("kind", "")) == "module_test"
+                for t in topics
+                for sig in [signatures.get(str(t.get("plan_node_id", "")), set())]
+            )
+            if (owners and node not in owners and elsewhere) or test_echo:
+                continue
+            kept.append(block)
+        if kept:
+            topic["blocks"] = kept
+
+
+_ROLE_BY_KIND = {
+    "lesson": {"test": "check"},
+    "module_test": {"check": "test", "practice": "test"},
+}
+
+
+def _repair_roles(reply: dict[str, Any]) -> None:
+    """A role follows its topic kind: a lesson's `test` is a check, a test's `check` a test.
+
+    The 2026-11-03 Python plan lost a $0.10 module reply to one lesson
+    block typed `test`; the block was a check in every other respect.
+    The prescription check still runs after this on what the model
+    left out.
+    """
+    for module in reply.get("modules", []):
+        if not isinstance(module, dict):
+            continue
+        for topic in module.get("topics", []):
+            if not isinstance(topic, dict):
+                continue
+            table = _ROLE_BY_KIND.get(str(topic.get("kind", "")), {})
+            for block in topic.get("blocks", []):
+                if isinstance(block, dict):
+                    block["role"] = table.get(
+                        str(block.get("role", "")), str(block.get("role", ""))
+                    )
+
+
 def _renumber_blocks(reply: dict[str, Any]) -> None:
     """Block ids are `<topic id>-b<n>` in order, written by code: a reply never duplicates one.
 
@@ -1160,7 +1270,9 @@ def _rejectable_architect_errors(
     from app.course.tree import ArchitectOutput
 
     _fill_handoffs_from_notes(reply, module_scope)
+    _drop_restated_blocks(reply, module_scope)
     _renumber_blocks(reply)
+    _repair_roles(reply)
     errors = architect.check_output(
         reply, prescription, handles, passages=passages, module_scope=module_scope
     )

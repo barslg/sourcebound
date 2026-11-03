@@ -42,14 +42,15 @@ def build_prompt(
 
 
 def normalise_ids(payload: dict[str, Any]) -> dict[str, Any]:
-    """Renumber module and topic ids by position; ids are code's, never the model's.
+    """Drop a restated module and give every colliding id a fresh one; ids are code's.
 
-    The 2026-11-03 Python course outline restated three modules at its
-    end and was rejected for the repeated ids after $0.86. A verbatim
-    repeat is dropped; then modules become m1, m2, …; topics
-    m1-t1, m1-t2, …; each `requires` entry is mapped to the latest
-    earlier topic that carried the old id, so the model's references
-    survive the renumbering. Caller: runs/executor.py (the outline
+    The 2026-11-03 Python course outline restated three of its seven
+    modules at its end and was rejected for the repeated ids after
+    $0.86. A verbatim repeat (same id, same sections) is dropped; a
+    module or topic whose id an earlier one already carries is renamed
+    by position (m<n>, m<n>-t<k>); every `requires` entry is mapped to
+    the latest earlier topic that carried the old id. Ids the model
+    kept unique stay as written. Caller: runs/executor.py (the outline
     check and the stored scenario).
     """
     import copy
@@ -58,8 +59,6 @@ def normalise_ids(payload: dict[str, Any]) -> dict[str, Any]:
     modules = out.get("modules")
     if not isinstance(modules, list):
         return out
-    # a verbatim repeat of an earlier module (same id, same sections: the
-    # 2026-11-03 reply restated three of its seven modules) is dropped, not renumbered
     seen: set[tuple[str, tuple[str, ...]]] = set()
     kept: list[Any] = []
     for module in modules:
@@ -73,11 +72,18 @@ def normalise_ids(payload: dict[str, Any]) -> dict[str, Any]:
             seen.add(signature)
         kept.append(module)
     modules[:] = kept
+    module_ids: set[str] = set()
+    topic_ids: set[str] = set()
     old_to_new: dict[str, str] = {}
     for m_index, module in enumerate(modules):
         if not isinstance(module, dict):
             continue
-        module_id = f"m{m_index + 1}"
+        module_id = str(module.get("plan_node_id", "")).strip()
+        if not module_id or module_id in module_ids:
+            module_id = f"m{m_index + 1}"
+            while module_id in module_ids:
+                module_id += "x"
+        module_ids.add(module_id)
         module["plan_node_id"] = module_id
         topics = module.get("topics")
         if not isinstance(topics, list):
@@ -85,11 +91,17 @@ def normalise_ids(payload: dict[str, Any]) -> dict[str, Any]:
         for t_index, topic in enumerate(topics):
             if not isinstance(topic, dict):
                 continue
-            new_id = f"{module_id}-t{t_index + 1}"
+            old_id = str(topic.get("plan_node_id", "")).strip()
+            new_id = old_id
+            if not new_id or new_id in topic_ids:
+                new_id = f"{module_id}-t{t_index + 1}"
+                while new_id in topic_ids:
+                    new_id += "x"
             requires = topic.get("requires")
             if isinstance(requires, list):
                 topic["requires"] = [old_to_new.get(str(r), str(r)) for r in requires]
-            old_to_new[str(topic.get("plan_node_id", ""))] = new_id
+            old_to_new[old_id] = new_id
+            topic_ids.add(new_id)
             topic["plan_node_id"] = new_id
     return out
 
