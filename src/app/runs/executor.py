@@ -2108,7 +2108,7 @@ async def generate_block_step(
             if content:
                 content["handoff"] = handoff
             return _CodeVerdict(
-                holds=holds,
+                holds=list(dict.fromkeys(holds)),
                 resolved_citations=resolved_citations,
                 citation_pids=citation_pids,
                 content=content,
@@ -2121,18 +2121,26 @@ async def generate_block_step(
         reasks = 0
         while verdict.holds and reasks < CODE_REASKS:
             reasks += 1
-            output = await provider.generate_json(
-                agent=agent,
-                prompt=generate_block.build_generation_prompt(
-                    **prompt_input, fix_list=list(verdict.holds)
-                ),
-                schema=generate_block.schema_for(block_type),
-                cache_key=cache_key(agent, block_type, course_id),
-                run_id=run_id,
-                step_id=claim["step_id"],
-                variant=int(claim["attempt"]) - 1 + int(entry.get("variant_offset", 0)) + reasks,
-                check=lambda reply: generate_block.check_block_output(reply, block_type),
-            )
+            try:
+                output = await provider.generate_json(
+                    agent=agent,
+                    prompt=generate_block.build_generation_prompt(
+                        **prompt_input, fix_list=list(verdict.holds)
+                    ),
+                    schema=generate_block.schema_for(block_type),
+                    cache_key=cache_key(agent, block_type, course_id),
+                    run_id=run_id,
+                    step_id=claim["step_id"],
+                    variant=int(claim["attempt"])
+                    - 1
+                    + int(entry.get("variant_offset", 0))
+                    + reasks,
+                    check=lambda reply: generate_block.check_block_output(reply, block_type),
+                )
+            except ValidationError:
+                # a re-ask that returns nothing usable never replaces the draft
+                # it was asked to fix: the draft stays, held by its own lines
+                break
             verdict = await judge(output)
         holds = verdict.holds
         resolved_citations = verdict.resolved_citations

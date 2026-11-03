@@ -2248,3 +2248,48 @@ async def test_a_code_hold_is_fixed_inside_the_writer_step_before_the_reader_pay
     assert await _version_total(t03_session, demo["course_id"], "b1") == untouched, (
         "the held draft is never stored: b1 has as many versions as a block never held"
     )
+
+
+async def test_a_re_ask_that_returns_nothing_usable_keeps_the_held_draft_and_the_run(
+    t03_session: AsyncSession,
+) -> None:
+    """A re-ask may answer with nothing: the draft stays held and the run goes on.
+
+    Rewrite 3 of the Muse API course (2026-11-03): the exercise writer's
+    re-ask came back with no citations, the schema check rejected it and
+    the whole rewrite run stopped. A re-ask can only improve a draft; the
+    rework path still gets its turn on the held block.
+    """
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-reask-empty")
+    inner = demo_t05.mock_demo_handler()
+
+    def handler(request: Any) -> Any:
+        body = json.loads(request.content.decode("utf-8"))
+        response = inner(request)
+        if not str(body.get("instructions", "")).startswith("# Teach writer"):
+            return response
+        prompt = str(body.get("input", ""))
+        if '"plan_node_id": "b1"' not in prompt.split("## Block skeleton", 1)[-1]:
+            return response
+        reply = json.loads(response.json()["output"][0]["content"][0]["text"])
+        if "## Fix list" in prompt:
+            reply["citations"] = []
+        else:
+            quote = str(reply["citations"][0]["quote"])
+            reply["citations"][0]["quote"] = quote[:12] + "X" + quote[13:]
+        return httpx2.Response(200, json=demo_t05._completed(json.dumps(reply)))
+
+    final = await _smoke_run(t03_session, demo, dag, handler)
+    assert final["status"] == "done", final["stop_marker"]
+    step = (
+        await t03_session.execute(
+            sa.text(
+                "SELECT status, output FROM run_steps"
+                " WHERE run_id = :run AND step_key = 'block_teach:b1'"
+            ),
+            {"run": str(final["id"])},
+        )
+    ).one()
+    assert step[0] == "done"
+    assert dict(step[1]).get("held") is True
+    assert "quote is not verbatim" in str(dict(step[1]).get("hold_reason", ""))
