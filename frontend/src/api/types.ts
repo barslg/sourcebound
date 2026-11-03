@@ -88,12 +88,17 @@ export interface LearnProgress { blocks_total: number; blocks_attempted: number;
 export interface LearnCourse { id: string; title: string; language: string; audience: string; progress: LearnProgress }
 export interface LearnTopicRef { id: string; kind: string; title: string; objectives: string[]; progress: LearnProgress; held?: number }
 export interface LearnModule { id: string; title: string; purpose: string; topics: LearnTopicRef[] }
-export interface LearnOutline { id: string; title: string; language: string; source_language: string; available_languages: Array<{ language: string; status: string }>; progress: LearnProgress; modules: LearnModule[] }
-export interface Chip { handle: string; source_title: string; address_label: string; address_short?: string; passage_id: string }
+export interface LearnOutline { id: string; title: string; language: string; source_language: string; available_languages: Array<{ language: string; status: string }>; progress: LearnProgress; modules: LearnModule[]; source_count?: number; term_count?: number }
+export interface Chip { handle: string; source_number: number; source_title: string; address_label: string; address_short?: string; passage_id: string }
+export interface Term { term: string; definition: string }
+export interface SourceEntry { number: number; id: string; title: string; kind: string; media: string; licence: string; as_of: string | null; address: string; passages_cited: number; blocks_cited: number }
+export interface SourcesPage { course_id: string; title: string; sources: SourceEntry[] }
+export interface GlossaryEntry { term: string; definition: string; topic_id: string; topic_title: string; passage_id: string | null; block_id: string | null }
+export interface GlossaryPage { course_id: string; title: string; terms: GlossaryEntry[] }
 export interface Attempts { count: number; best_score: number | null; last_score: number | null }
 export interface LearnBlockView { id: string; block_type: string; role: string; ordinal: number; content: Record<string, unknown>; citations: Chip[]; language: string; fallback_notice: string | null; attempts: Attempts; passage_options?: Chip[]; status?: string; hold_reason?: string }
-export interface LearnTopic { id: string; course_id: string; course_title?: string; module_id: string; kind: string; title: string; objectives: string[]; language: string; progress: LearnProgress; blocks: LearnBlockView[]; next_note?: string }
-export interface LearnPassage { id: string; text: string; address_label: string; source_title: string; as_of: string | null; course_id: string }
+export interface LearnTopic { id: string; course_id: string; course_title?: string; module_id: string; kind: string; title: string; objectives: string[]; language: string; progress: LearnProgress; blocks: LearnBlockView[]; next_note?: string; terms?: Term[] }
+export interface LearnPassage { id: string; text: string; address_label: string; source_title: string; source_number?: number; as_of: string | null; course_id: string }
 export interface KindCounts { hits: number; false_alarms: number; misses: number }
 export interface SpotFeedback { wrong_sentence: string; true_statement: string; passage: Chip | null; habit_line: string }
 export interface AnswerResult {

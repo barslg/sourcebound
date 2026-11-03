@@ -167,7 +167,8 @@ async def grade_and_store(
     rows = await learner.citation_rows(session, block["version_id"])
     handles, _ = learner.handle_maps(block, rows)
     locale = learner.locale_of(language)
-    chip_list = learner.chips_of(rows, handles, locale)
+    numbers = await learner.course_numbers(session, course)
+    chip_list = learner.chips_of(rows, handles, locale, numbers)
     chips_by_handle = {c["handle"]: c for c in chip_list if c["handle"]}
     submission = _normalise(block, payload, resolved, handles)
     check = import_module(f"app.blocks.{block['block_type']}.check").grade

@@ -3,11 +3,11 @@ import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ApiError, request } from '@/api/client'
 import { learnPassage } from '@/api/endpoints'
-import type { LearnPassage } from '@/api/types'
+import type { LearnPassage, Term } from '@/api/types'
 import ActionButton from '@/components/ActionButton.vue'
 import ResourceState from '@/components/ResourceState.vue'
 
-const props = defineProps<{ passageId: string | null; language: string; passagePath?: (id: string) => string }>()
+const props = defineProps<{ passageId: string | null; term: Term | null; language: string; passagePath?: (id: string) => string; sourcesPath: string; glossaryPath: string }>()
 const emit = defineEmits<{ close: [] }>()
 const { t } = useI18n()
 const passage = ref<LearnPassage | null>(null)
@@ -35,14 +35,23 @@ watch(() => [props.passageId, props.language], () => { void load() }, { immediat
 <template>
   <aside id="companion-panel" class="companion stack" :aria-label="t('learn.companion.title')" data-testid="companion">
     <h2>{{ t('learn.companion.title') }}</h2>
-    <p v-if="!passageId" class="muted" data-testid="companion-empty">{{ t('learn.companion.hint') }}</p>
+    <div v-if="term" class="stack" data-testid="companion-term">
+      <p class="muted"><strong>{{ term.term }}</strong></p>
+      <p class="passage-text">{{ term.definition || t('glossary.noDefinition') }}</p>
+      <router-link :to="glossaryPath" data-testid="companion-glossary">{{ t('glossary.open') }}</router-link>
+    </div>
+    <p v-else-if="!passageId" class="muted" data-testid="companion-empty">{{ t('learn.companion.hint') }}</p>
     <ResourceState v-else :loading="loading" :error="error" :empty="false" @retry="load">
       <div v-if="passage" class="stack" data-testid="passage">
-        <p class="muted"><strong>{{ passage.source_title }}</strong> · {{ passage.address_label }}<template v-if="passage.as_of"> · {{ t('learn.companion.asOf', { date: passage.as_of }) }}</template></p>
+        <p class="muted"><span v-if="passage.source_number" class="mono">[{{ passage.source_number }}]</span> <strong>{{ passage.source_title }}</strong> · {{ passage.address_label }}<template v-if="passage.as_of"> · {{ t('learn.companion.asOf', { date: passage.as_of }) }}</template></p>
         <blockquote class="passage-text" data-testid="passage-text">{{ passage.text }}</blockquote>
       </div>
     </ResourceState>
-    <ActionButton v-if="passageId" action="cancel" :label="t('learn.companion.close')" size="small" data-testid="companion-close" @click="emit('close')" />
+    <ActionButton v-if="passageId || term" action="cancel" :label="t('learn.companion.close')" size="small" data-testid="companion-close" @click="emit('close')" />
+    <p class="hint row" data-testid="companion-links">
+      <router-link :to="sourcesPath" data-testid="all-sources">{{ t('learn.companion.allSources') }}</router-link>
+      <router-link :to="glossaryPath" data-testid="all-terms">{{ t('learn.companion.glossary') }}</router-link>
+    </p>
     <slot />
   </aside>
 </template>

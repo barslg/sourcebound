@@ -178,6 +178,9 @@ async def topic_entries(session: AsyncSession, course: dict[str, Any]) -> list[d
                     "kind": topic.get("kind", "lesson"),
                     "title": topic.get("title", ""),
                     "objectives": topic.get("objectives", []),
+                    "terms": [
+                        str(t) for t in (topic.get("scenario") or {}).get("introduces_terms", [])
+                    ],
                     "blocks": blocks,
                 }
             )
@@ -350,6 +353,13 @@ async def _outline(
                 "held": sum(1 for b in topic["blocks"] if b.get("status") == "held"),
             }
         )
+    source_count = await session.scalar(
+        sa.text(
+            "SELECT count(*) FROM course_sources cs JOIN sources s ON s.id = cs.source_id"
+            " AND s.approval = 'approved' WHERE cs.course_id = :c AND cs.approval = 'approved'"
+        ),
+        {"c": course["id"]},
+    )
     return {
         "id": course["id"],
         "title": course["title"],
@@ -358,6 +368,8 @@ async def _outline(
         "available_languages": await available_languages(session, course_id=course_id),
         "progress": progress_of([b for t in topics for b in t["blocks"]], attempts, threshold),
         "modules": list(modules.values()),
+        "source_count": int(source_count or 0),
+        "term_count": sum(len(t["terms"]) for t in topics),
     }
 
 
@@ -440,7 +452,7 @@ async def citation_rows(session: AsyncSession, version_id: str) -> list[dict[str
     rows = (
         await session.execute(
             sa.text(
-                "SELECT c.passage_id, c.quote, p.address, p.address_key, s.title"
+                "SELECT c.passage_id, c.quote, p.address, p.address_key, s.title, s.id"
                 " FROM citations c JOIN passages p ON p.id = c.passage_id"
                 " JOIN sources s ON s.id = p.source_id AND s.approval = 'approved'"
                 " JOIN block_versions bv ON bv.id = c.block_version_id"
@@ -460,18 +472,22 @@ async def citation_rows(session: AsyncSession, version_id: str) -> list[dict[str
             "address": dict(r[2] or {}),
             "address_key": str(r[3]),
             "title": str(r[4]),
+            "source_id": str(r[5]),
         }
         for r in rows
     ]
 
 
-def chip(handle: str, row: dict[str, Any], locale: str) -> dict[str, str]:
-    """One citation chip: handle, reader-facing title, full and short address, passage id."""
+def chip(
+    handle: str, row: dict[str, Any], locale: str, numbers: dict[str, int] | None = None
+) -> dict[str, Any]:
+    """One citation chip: handle, source number, reader-facing title, addresses, passage id."""
     from app.i18n.citations import display_title, format_citation_address, format_citation_short
 
     address = {**row["address"], "address_key": row["address_key"]}
     return {
         "handle": handle,
+        "source_number": (numbers or {}).get(str(row.get("source_id", "")), 0),
         "source_title": display_title(str(row["title"]), address),
         "address_label": format_citation_address(address, locale),
         "address_short": format_citation_short(address, locale),
@@ -480,29 +496,34 @@ def chip(handle: str, row: dict[str, Any], locale: str) -> dict[str, str]:
 
 
 def chips_of(
-    rows: list[dict[str, Any]], handles: dict[str, str], locale: str
-) -> list[dict[str, str]]:
+    rows: list[dict[str, Any]], handles: dict[str, str], locale: str, numbers: dict[str, int]
+) -> list[dict[str, Any]]:
     by_pid = {pid: handle for handle, pid in handles.items()}
     seen: set[str] = set()
-    out: list[dict[str, str]] = []
+    out: list[dict[str, Any]] = []
     for row in rows:
         if row["passage_id"] in seen:
             continue
         seen.add(row["passage_id"])
-        out.append(chip(by_pid.get(row["passage_id"], ""), row, locale))
+        out.append(chip(by_pid.get(row["passage_id"], ""), row, locale, numbers))
     return out
 
 
 async def _spot_options(
-    session: AsyncSession, course_id: str, block: dict[str, Any], cited: list[str], locale: str
-) -> list[dict[str, str]]:
+    session: AsyncSession,
+    course_id: str,
+    block: dict[str, Any],
+    cited: list[str],
+    locale: str,
+    numbers: dict[str, int],
+) -> list[dict[str, Any]]:
     """The cited passage among decoys of the same course, in a keyless order."""
     from app.providers.retrieval import scoped_join
 
     rows = (
         await session.execute(
             sa.text(
-                "SELECT passages.id, passages.address, passages.address_key, s.title"
+                "SELECT passages.id, passages.address, passages.address_key, s.title, s.id"
                 " FROM passages" + scoped_join(UUID(course_id)) + " WHERE passages.is_content"
             ),
             {"course": course_id},
@@ -514,6 +535,7 @@ async def _spot_options(
             "address": dict(r[1] or {}),
             "address_key": str(r[2]),
             "title": str(r[3]),
+            "source_id": str(r[4]),
         }
         for r in rows
     ]
@@ -524,7 +546,7 @@ async def _spot_options(
 
     decoys = sorted((r for r in pool if r["passage_id"] not in cited), key=rank)
     chosen = [r for r in pool if r["passage_id"] in cited][:1] + decoys[: SPOT_OPTIONS - 1]
-    return [chip("", r, locale) for r in sorted(chosen, key=rank)]
+    return [chip("", r, locale, numbers) for r in sorted(chosen, key=rank)]
 
 
 def locale_of(language: str) -> str:
@@ -538,8 +560,9 @@ async def block_view(
     *,
     language: str,
     attempts: dict[str, dict[str, float | int]],
+    numbers: dict[str, int],
 ) -> dict[str, Any]:
-    """One block for one learner: serializer output, chips, attempts, no key."""
+    """One block for one learner: serializer output, numbered chips, attempts, no key."""
     from app.blocks.registry import learner_serializers
     from app.translation.variants import learner_block
 
@@ -566,7 +589,7 @@ async def block_view(
         "content": content,
         "citations": []
         if block["block_type"] == "spot_the_error"
-        else chips_of(rows, handles, locale),
+        else chips_of(rows, handles, locale, numbers),
         "language": resolved["language"],
         "fallback_notice": resolved["fallback_notice"],
         "attempts": attempts.get(block["id"], {"count": 0, "best_score": None, "last_score": None}),
@@ -574,7 +597,9 @@ async def block_view(
         "hold_reason": str(block.get("hold_reason") or ""),
     }
     if block["block_type"] == "spot_the_error":
-        entry["passage_options"] = await _spot_options(session, course["id"], block, order, locale)
+        entry["passage_options"] = await _spot_options(
+            session, course["id"], block, order, locale, numbers
+        )
     return entry
 
 
@@ -615,8 +640,10 @@ async def topic_view(
     threshold: float,
 ) -> dict[str, Any]:
     """One topic with its blocks through the learner serializers."""
-    course, topic, _ = await find_topic(session, principal, topic_id, code="learn.read")
-    return await _topic(session, principal, course, topic, language=language, threshold=threshold)
+    course, topic, topics = await find_topic(session, principal, topic_id, code="learn.read")
+    return await _topic(
+        session, principal, course, topic, topics, language=language, threshold=threshold
+    )
 
 
 async def preview_topic(
@@ -630,13 +657,19 @@ async def preview_topic(
 ) -> dict[str, Any]:
     """One topic of the draft as the learner will read it; nothing is recorded."""
     course = await preview_course(session, course_id)
-    topic = next(
-        (t for t in await topic_entries(session, course) if t["id"] == str(topic_id)), None
-    )
+    topics = await topic_entries(session, course)
+    topic = next((t for t in topics if t["id"] == str(topic_id)), None)
     if topic is None:
         raise _not_found()
     return await _topic(
-        session, principal, course, topic, language=language, threshold=threshold, record=False
+        session,
+        principal,
+        course,
+        topic,
+        topics,
+        language=language,
+        threshold=threshold,
+        record=False,
     )
 
 
@@ -645,15 +678,21 @@ async def _topic(
     principal: Principal,
     course: dict[str, Any],
     topic: dict[str, Any],
+    topics: list[dict[str, Any]],
     *,
     language: str | None,
     threshold: float,
     record: bool = True,
 ) -> dict[str, Any]:
+    from app.services.learner_reference import source_numbers, topic_terms
+
     language = language or course["language"]
     attempts = await attempts_of(session, principal.user_id, [b["id"] for b in topic["blocks"]])
+    numbers = await source_numbers(
+        session, [b["version_id"] for t in topics for b in t["blocks"] if b.get("version_id")]
+    )
     blocks = [
-        await block_view(session, course, b, language=language, attempts=attempts)
+        await block_view(session, course, b, language=language, attempts=attempts, numbers=numbers)
         for b in topic["blocks"]
     ]
     if record:
@@ -688,6 +727,7 @@ async def _topic(
         "language": language,
         "progress": progress_of(topic["blocks"], attempts, threshold),
         "blocks": blocks,
+        "terms": topic_terms(topic, blocks),
     }
 
 
@@ -698,10 +738,10 @@ async def passage_view(
     require(principal, "learn.read")
     for row in await _passage_rows(session, passage_id):
         try:
-            await enrolled_course(session, principal, UUID(str(row[6])), code="learn.read")
+            course = await enrolled_course(session, principal, UUID(str(row[6])), code="learn.read")
         except NotFoundError:
             continue
-        return _passage_entry(row, language)
+        return _passage_entry(row, language, await course_numbers(session, course))
     raise _not_found()
 
 
@@ -711,8 +751,18 @@ async def preview_passage(
     """Passage text for the author's preview panel, scoped to the draft course."""
     for row in await _passage_rows(session, passage_id):
         if str(row[6]) == str(course_id):
-            return _passage_entry(row, language)
+            course = await preview_course(session, course_id)
+            return _passage_entry(row, language, await course_numbers(session, course))
     raise _not_found()
+
+
+async def course_numbers(session: AsyncSession, course: dict[str, Any]) -> dict[str, int]:
+    from app.services.learner_reference import source_numbers
+
+    topics = await topic_entries(session, course)
+    return await source_numbers(
+        session, [b["version_id"] for t in topics for b in t["blocks"] if b.get("version_id")]
+    )
 
 
 async def _passage_rows(session: AsyncSession, passage_id: UUID) -> list[Any]:
@@ -721,7 +771,7 @@ async def _passage_rows(session: AsyncSession, passage_id: UUID) -> list[Any]:
             await session.execute(
                 sa.text(
                     "SELECT p.id, p.text, p.address, p.address_key, s.title, s.as_of,"
-                    " cs.course_id FROM passages p"
+                    " cs.course_id, s.id FROM passages p"
                     " JOIN sources s ON s.id = p.source_id AND s.approval = 'approved'"
                     " JOIN course_sources cs ON cs.source_id = p.source_id"
                     " AND cs.approval = 'approved' WHERE p.id = :p"
@@ -732,7 +782,7 @@ async def _passage_rows(session: AsyncSession, passage_id: UUID) -> list[Any]:
     )
 
 
-def _passage_entry(row: Any, language: str) -> dict[str, Any]:
+def _passage_entry(row: Any, language: str, numbers: dict[str, int]) -> dict[str, Any]:
     label = chip(
         "",
         {
@@ -740,14 +790,17 @@ def _passage_entry(row: Any, language: str) -> dict[str, Any]:
             "address": dict(row[2] or {}),
             "address_key": str(row[3]),
             "title": str(row[4]),
+            "source_id": str(row[7]),
         },
         locale_of(language),
+        numbers,
     )
     return {
         "id": str(row[0]),
         "text": str(row[1]),
         "address_label": label["address_label"],
         "source_title": label["source_title"],
+        "source_number": label["source_number"],
         "as_of": row[5].isoformat() if row[5] else None,
         "course_id": str(row[6]),
     }

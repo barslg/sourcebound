@@ -1,34 +1,29 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { Chip } from '@/api/types'
-const props = defineProps<{ content: Record<string, unknown>; chips?: Chip[]; openId?: string | null }>()
-const emit = defineEmits<{ open: [chip: Chip] }>()
-type Part = { text: string; handle?: string }
-const segments = computed<Part[]>(() => (Array.isArray(props.content.segments) ? (props.content.segments as Part[]) : [{ text: String(props.content.body ?? '') }]))
-// paragraphs: a blank line in a text segment starts a new one; a handle chip stays inline where the writer put it
-const paragraphs = computed<Part[][]>(() => {
-  const out: Part[][] = [[]]
-  for (const s of segments.value) {
-    if (s.handle) { (out[out.length - 1] as Part[]).push(s); continue }
-    const pieces = String(s.text ?? '').split(/\n\s*\n/)
-    pieces.forEach((text, i) => {
-      if (i > 0) out.push([])
-      if (text !== '') (out[out.length - 1] as Part[]).push({ text })
-    })
+import type { Chip, Term } from '@/api/types'
+import { renderReading } from '@/composables/reading'
+
+const props = defineProps<{ content: Record<string, unknown>; chips?: Chip[]; terms?: Term[]; openId?: string | null; openTerm?: string | null }>()
+const emit = defineEmits<{ open: [chip: Chip]; term: [term: Term] }>()
+// The renderer never interprets HTML from the body (markdown-it html: false); every attribute it writes is escaped.
+const html = computed(() => renderReading(String(props.content.body ?? ''), { chips: props.chips ?? [], terms: props.terms ?? [], openId: props.openId ?? null, openTerm: props.openTerm ?? null }))
+
+function onClick(event: MouseEvent): void {
+  const el = (event.target as HTMLElement).closest('[data-handle], [data-term]')
+  if (!el) return
+  const handle = el.getAttribute('data-handle')
+  if (handle) {
+    const chip = (props.chips ?? []).find((c) => c.handle === handle)
+    if (chip) emit('open', chip)
+    return
   }
-  return out.filter((p) => p.length > 0)
-})
-const chipOf = (handle: unknown): Chip | null => (props.chips ?? []).find((c) => c.handle === String(handle)) ?? null
+  const name = el.getAttribute('data-term')
+  const term = (props.terms ?? []).find((t) => t.term === name)
+  if (term) emit('term', term)
+}
 </script>
 
 <template>
-  <div class="stack reading" data-block="reading">
-    <p v-for="(parts, i) in paragraphs" :key="i">
-      <template v-for="(s, j) in parts" :key="j">
-        <button v-if="s.handle && chipOf(s.handle)" type="button" class="chip mono cite-chip" :aria-expanded="openId === chipOf(s.handle)?.passage_id" aria-controls="companion-panel" :title="chipOf(s.handle)?.address_label" data-handle-chip @click="emit('open', chipOf(s.handle) as Chip)">{{ String(s.handle) }}</button>
-        <span v-else-if="s.handle" class="chip mono" data-handle-chip>{{ String(s.handle) }}</span>
-        <span v-else>{{ s.text }}</span>
-      </template>
-    </p>
-  </div>
+  <!-- eslint-disable-next-line vue/no-v-html -- rendered by our own markdown renderer with html: false -->
+  <div class="stack reading" data-block="reading" @click="onClick" v-html="html"></div>
 </template>
