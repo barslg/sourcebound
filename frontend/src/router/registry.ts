@@ -1,7 +1,7 @@
 import type { ActionId } from '../ui/actionMeta'
 import type { SectionEntry } from './guard'
 
-export type PageState = 'loading' | 'empty' | 'error' | 'denied' | 'queued'
+export type PageState = 'loading' | 'empty' | 'error' | 'denied' | 'queued' | 'notFound'
 export type ObjectKind = 'course' | 'learn' | 'user' | 'role' | 'invite' | 'run' | 'none'
 export type NavIconId = 'courses' | 'users' | 'invites' | 'roles' | 'learn'
 export type Access = { kind: 'public' } | { kind: 'signedIn' } | { kind: 'perm'; code: string }
@@ -78,7 +78,7 @@ export const REGISTRY = [
   row({ name: 'invites', path: '/invites', titleKey: 'invites.title', purposeKey: 'invites.intro', access: { kind: 'perm', code: 'invite.create' }, nav: { section: 'main', icon: 'invites', labelKey: 'nav.invites' }, states: LIST, primaryAction: 'create' }),
   row({ name: 'roles', path: '/roles', titleKey: 'roles.title', purposeKey: 'roles.help', access: { kind: 'perm', code: 'role.edit' }, nav: { section: 'main', icon: 'roles', labelKey: 'nav.roles' }, states: LIST, primaryAction: 'create' }),
   row({ name: 'learn', path: '/learn', titleKey: 'learn.title', purposeKey: 'learn.help', access: { kind: 'perm', code: 'learn.read' }, nav: { section: 'main', icon: 'learn', labelKey: 'nav.learn' }, states: LIST }),
-  row({ name: 'learn-course', path: '/learn/courses/:id', titleKey: 'learnCourse.title', purposeKey: 'learnCourse.help', parent: 'learn', access: { kind: 'perm', code: 'learn.read' }, object: 'learn', heading: 'object', states: LIST, primaryAction: 'continue' }),
+  row({ name: 'learn-course', path: '/learn/courses/:id', titleKey: 'learnCourse.title', purposeKey: 'learnCourse.help', parent: 'learn', access: { kind: 'perm', code: 'learn.read' }, object: 'learn', heading: 'object', states: [...LIST, 'notFound'], primaryAction: 'continue' }),
   row({ name: 'learn-topic', path: '/learn/topics/:id', titleKey: 'learnTopic.title', purposeKey: 'learnTopic.help', parent: 'learn-course', access: { kind: 'perm', code: 'learn.read' }, object: 'learn', states: LIST }),
   row({ name: 'course-report', path: '/courses/:id/report', titleKey: 'report.title', purposeKey: 'report.help', parent: 'course-publish', access: courses, object: 'course', heading: 'object', states: LIST, primaryAction: 'export' }),
   row({ name: 'not-found', path: '/:rest(.*)*', titleKey: 'notFound.title', purposeKey: 'notFound.help', access: { kind: 'signedIn' }, bare: false, entry: 'external' }),

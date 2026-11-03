@@ -7,7 +7,7 @@ const json = (route: Route, status: number, body: unknown): Promise<void> =>
 const denied = { error: 'forbidden', message: 'You do not have permission for this action.' }
 const broken = { error: 'internal', message: 'internal error' }
 
-interface Screen { name: string; row: string; path: () => string; api: string; emptyBody: unknown; emptyLink: RegExp; noEmpty?: boolean }
+interface Screen { name: string; row: string; path: () => string; api: string; emptyBody: unknown; emptyLink: RegExp; noEmpty?: boolean; notFound?: RegExp }
 
 const SCREENS: Screen[] = [
   { name: 'courses', row: 'courses', path: () => '/courses', api: '**/api/v1/courses', emptyBody: [], emptyLink: /Create your first course/ },
@@ -19,7 +19,7 @@ const SCREENS: Screen[] = [
   { name: 'generate', row: 'course-generate', path: () => `/courses/${ids().course}/generate`, api: `**/api/v1/courses/${ids().course}/plan`, emptyBody: { modules: [] }, emptyLink: /Go to the Plan page/ },
   { name: 'fix', row: 'course-fix', path: () => `/courses/${ids().course}/fix`, api: `**/api/v1/courses/${ids().course}/held`, emptyBody: { blocks: [], batch_quote_usd: null }, emptyLink: /Go to (Generate|Publish)/ },
   { name: 'learn', row: 'learn', path: () => '/learn', api: '**/api/v1/learn/courses', emptyBody: [], emptyLink: /not enrolled/ },
-  { name: 'learn course', row: 'learn-course', path: () => `/learn/courses/${ids().learn}`, api: `**/api/v1/learn/courses/${ids().learn}*`, emptyBody: { id: ids().learn, title: 'Learner lab', language: 'en', source_language: 'en', available_languages: [], progress: { blocks_total: 0, blocks_attempted: 0, completion: 0, assessed: 0, mastery: null, status: 'not_started' }, modules: [] }, emptyLink: /Back to my courses/ },
+  { name: 'learn course', row: 'learn-course', path: () => `/learn/courses/${ids().learn}`, api: `**/api/v1/learn/courses/${ids().learn}*`, emptyBody: { id: ids().learn, title: 'Learner lab', language: 'en', source_language: 'en', available_languages: [], progress: { blocks_total: 0, blocks_attempted: 0, completion: 0, assessed: 0, mastery: null, status: 'not_started' }, modules: [] }, emptyLink: /Back to my courses/, notFound: /not published/ },
   { name: 'learn topic', row: 'learn-topic', path: () => `/learn/topics/${ids().learn_topic}`, api: `**/api/v1/learn/topics/${ids().learn_topic}*`, emptyBody: { id: ids().learn_topic, course_id: ids().learn, module_id: 'm', kind: 'lesson', title: 'Empty topic', objectives: [], language: 'en', progress: { blocks_total: 0, blocks_attempted: 0, completion: 0, assessed: 0, mastery: null, status: 'not_started' }, blocks: [] }, emptyLink: /Back to the course outline/ },
   { name: 'report', row: 'course-report', path: () => `/courses/${ids().learn}/report`, api: `**/api/v1/courses/${ids().learn}/report*`, emptyBody: { course_id: ids().learn, title: 'Learner lab', published: true, learners: [], find_the_error: {} }, emptyLink: /Go to invites/ },
   { name: 'runs', row: 'course-runs', path: () => `/courses/${ids().course}/runs`, api: `**/api/v1/courses/${ids().course}/runs`, emptyBody: [], emptyLink: /No run yet/ },
@@ -31,7 +31,7 @@ const SCREENS: Screen[] = [
 test('states: every state the registry declares for a route is exercised by a screen here', () => {
   const tested = (row: string): string[] => {
     const own = SCREENS.filter((x) => x.row === row)
-    return own.length === 0 ? [] : ['loading', 'error', 'denied', ...(own.some((x) => !x.noEmpty) ? ['empty'] : [])]
+    return own.length === 0 ? [] : ['loading', 'error', 'denied', ...(own.some((x) => !x.noEmpty) ? ['empty'] : []), ...(own.some((x) => x.notFound) ? ['notFound'] : [])]
   }
   const missing = ROWS.flatMap((r) => r.states.filter((st) => st !== 'queued' && !tested(r.name).includes(st)).map((st) => `${r.name}: ${st}`))
   expect(missing).toEqual([])
@@ -73,6 +73,20 @@ for (const s of SCREENS.filter((x) => !x.noEmpty)) {
       const scope = page.locator('[data-view="empty"]').first()
       await expect(scope.getByRole('button', { name: s.emptyLink }).or(scope.getByRole('link', { name: s.emptyLink }))).toBeVisible()
     }
+  })
+}
+
+for (const s of SCREENS.filter((x) => x.notFound)) {
+  test(`states: ${s.name} not found says why and names the way out`, async ({ page, context }) => {
+    // an unpublished course answers 404 to a learner: the page says so and links the author's preview (2026-11-03)
+    await signInAs(context, 'admin')
+    await page.route(s.api, (route) => json(route, 404, { error: 'not_found', message: 'not found' }))
+    await page.goto(s.path())
+    const box = page.locator('[data-view="not-found"]').first()
+    await expect(box).toContainText(s.notFound as RegExp)
+    await expect(box.getByTestId('back-to-learn')).toBeVisible()
+    await expect(box.getByTestId('author-preview')).toHaveAttribute('href', /\/courses\/.+\/preview$/)
+    await expect(page.locator('[data-view="error"]')).toHaveCount(0)
   })
 }
 
