@@ -4,7 +4,7 @@ import { expect, ids, recordApi, sessions, signInAs, test } from './fixtures'
 const known = new Set<string>(Object.values(ENDPOINTS))
 const patterns = [
   /^\/api\/v1\/users\/[^/]+(\/ban)?$/, /^\/api\/v1\/roles\/[^/]+(\/assign|\/revoke)?$/,
-  /^\/api\/v1\/courses\/[^/]+(\/(profile|plan|plan\/validate|plan\/submit|generate\/submit|sources|estimate|held|held\/rewrite|publish|runs))?$/,
+  /^\/api\/v1\/courses\/[^/]+(\/(profile|plan|plan\/validate|plan\/submit|generate\/submit|sources|estimate|held|held\/rewrite|held\/recheck|publish|runs))?$/,
   /^\/api\/v1\/sources\/[^/]+\/(approve|reject)$/, /^\/api\/v1\/runs\/[^/]+(\/(resume|cancel))?$/, /^\/api\/v1\/blocks\/[^/]+(\/(rewrite|accept))?$/,
   /^\/api\/v1\/operations\/[^/]+$/, /^\/api\/v1\/human-queue(\/[^/]+\/resolve)?$/, /^\/api\/v1\/invites\/[^/]+\/(revoke|accept)$/, /^\/api\/v1\/notifications\/[^/]+\/read$/,
 ]

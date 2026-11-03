@@ -44,6 +44,7 @@ export const ROUTE_CODES: Readonly<Record<string, readonly string[]>> = {
   "POST /api/v1/blocks/{block_id}/rewrite": ["course.generate"],
   "POST /api/v1/courses": ["course.create"],
   "POST /api/v1/courses/{course_id}/generate/submit": ["course.generate"],
+  "POST /api/v1/courses/{course_id}/held/recheck": ["course.generate"],
   "POST /api/v1/courses/{course_id}/held/rewrite": ["course.generate"],
   "POST /api/v1/courses/{course_id}/plan/submit": ["course.plan"],
   "POST /api/v1/courses/{course_id}/profile": ["course.edit"],

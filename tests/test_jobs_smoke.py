@@ -1901,3 +1901,102 @@ def test_a_bigger_output_budget_does_not_rerun_a_finished_step(monkeypatch: Any)
     assert step_digest(agent="reader", prompt="p", upstream={"a": 1}) == before
     monkeypatch.setattr("app.runs.executor.resolve_step", lambda *a, **k: (model, "low", budget))
     assert step_digest(agent="reader", prompt="p", upstream={"a": 1}) != before
+
+
+async def test_recheck_releases_a_hold_the_current_checks_no_longer_find(
+    t03_session: AsyncSession,
+) -> None:
+    """A hold from a check that was since fixed lifts without a paid rewrite.
+
+    After a clean demo run: b1 is marked held with a code line the current
+    adjacency check does not find, b2 with a reader line (not recomputable),
+    b3 with the same code line but a citation quote that is no longer verbatim
+    (a hold the current checks still find). Recheck releases b1 only, keeps b2's
+    line and replaces b3's with what the check finds today. Then, with b3's
+    topic read step gone, a clean b3 stays held (no verdict on this version),
+    and b1 held on a non-verbatim quote stays held: stored content cannot
+    prove that line either way.
+    """
+    from app.services.recheck import recheck_held
+
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-recheck")
+    final = await _smoke_run(t03_session, demo, dag, demo_t05.mock_demo_handler())
+    assert final["status"] == "done", final["stop_marker"]
+    old = (
+        "false adjacency: text from P1 runs into text from P9"
+        " without a \u27e6P9\u27e7 marker between them"
+    )
+    reader_line = 'coverage: carry the second passage too (evidence: "tools into risk tiers")'
+    course = str(demo["course_id"])
+    block_sql = (
+        " WHERE id IN (SELECT b.id FROM blocks b JOIN topics t ON t.id = b.topic_id"
+        " JOIN modules m ON m.id = t.module_id WHERE m.course_id = :c AND b.plan_node_id = :n)"
+    )
+
+    async def hold(node: str, reason: str) -> None:
+        await t03_session.execute(
+            sa.text(
+                "UPDATE blocks SET status = 'held', hold_reason = :r, accepted_version_id = NULL"
+                + block_sql
+            ),
+            {"r": reason, "c": course, "n": node},
+        )
+
+    for node, reason in (("b1", old), ("b2", reader_line), ("b3", old)):
+        await hold(node, reason)
+    b3_version = (
+        await t03_session.execute(
+            sa.text("SELECT current_version_id FROM blocks" + block_sql), {"c": course, "n": "b3"}
+        )
+    ).scalar_one()
+    verbatim = (
+        (
+            await t03_session.execute(
+                sa.text(
+                    "SELECT quote FROM citations WHERE block_version_id = :v ORDER BY quote_start"
+                ),
+                {"v": str(b3_version)},
+            )
+        )
+        .scalars()
+        .first()
+    )
+    await t03_session.execute(
+        sa.text("UPDATE citations SET quote = 'words no passage says' WHERE block_version_id = :v"),
+        {"v": str(b3_version)},
+    )
+    await t03_session.commit()
+    result = await recheck_held(t03_session, course_id=demo["course_id"])
+    await t03_session.commit()
+    blocks = await _smoke_blocks(t03_session, demo["course_id"])
+    assert blocks["b1"] == ("accepted", ""), blocks["b1"]
+    assert blocks["b2"] == ("held", reader_line), blocks["b2"]
+    assert blocks["b3"][0] == "held" and blocks["b3"][1].startswith(
+        "quote is not verbatim in its passage"
+    ), blocks["b3"]
+    assert result == {"rechecked": 3, "released": 1, "held": 2}, result
+    accepted = (
+        await t03_session.execute(
+            sa.text("SELECT accepted_version_id = current_version_id FROM blocks" + block_sql),
+            {"c": course, "n": "b1"},
+        )
+    ).scalar_one()
+    assert accepted is True
+    await t03_session.execute(
+        sa.text("UPDATE citations SET quote = :q WHERE block_version_id = :v"),
+        {"q": verbatim, "v": str(b3_version)},
+    )
+    await hold("b3", old)
+    dropped = "quote is not verbatim in its passage (P1)"
+    await hold("b1", dropped)  # the executor drops such a quote from stored content
+    await t03_session.execute(
+        sa.text("DELETE FROM run_steps WHERE run_id = :run AND step_key = 'reader:t2'"),
+        {"run": str(final["id"])},
+    )
+    await t03_session.commit()
+    result = await recheck_held(t03_session, course_id=demo["course_id"])
+    await t03_session.commit()
+    blocks = await _smoke_blocks(t03_session, demo["course_id"])
+    assert blocks["b3"] == ("held", old), blocks["b3"]
+    assert blocks["b1"] == ("held", dropped), blocks["b1"]
+    assert result == {"rechecked": 3, "released": 0, "held": 3}, result

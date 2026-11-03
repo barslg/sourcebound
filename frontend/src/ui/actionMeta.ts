@@ -37,6 +37,7 @@ export const ACTIONS = [
   a('add-module', 'primary', ['plan']),
   a('add-topic', 'secondary', ['plan']),
   a('rewrite', 'secondary', ['fix']),
+  a('recheck', 'secondary', ['fix']),
   a('accept', 'secondary', ['fix']),
   a('publish', 'primary', ['publish'], { confirm: true }),
   a('resume', 'primary', ['run']),

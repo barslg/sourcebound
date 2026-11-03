@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { request } from '@/api/client'
-import { blockAccept, blockItem, blockRewrite, courseHeld, coursePlan, courseRewriteHeld } from '@/api/endpoints'
+import { blockAccept, blockItem, blockRewrite, courseHeld, coursePlan, courseRecheckHeld, courseRewriteHeld } from '@/api/endpoints'
 import type { HeldBlock, HeldDoc } from '@/api/types'
 import CourseHeader from '@/components/CourseHeader.vue'
 import ActionButton from '@/components/ActionButton.vue'
@@ -64,6 +64,18 @@ async function rewriteAll(): Promise<void> {
     working.value = null
   }
 }
+async function recheckAll(): Promise<void> {
+  working.value = 'recheck'
+  try {
+    const result = await request<{ rechecked: number; released: number; held: number }>(courseRecheckHeld(courseId.value), { method: 'POST' })
+    notify('success', t('fix.done.recheck', { released: result.released, held: result.held }))
+    await Promise.all([held.reload(true), plan.reload(true), header.value?.reload()])
+  } catch (cause) {
+    notifyError(cause, () => void recheckAll())
+  } finally {
+    working.value = null
+  }
+}
 function startEdit(block: HeldBlock): void {
   editing.value = block.id
   draft.value = block.brief
@@ -87,6 +99,7 @@ function startEdit(block: HeldBlock): void {
         </div>
         <div v-if="held.data.value?.batch_quote_usd" class="row">
           <ActionButton action="rewrite" :label="t('fix.batch', { count: held.data.value.blocks.length, price: usd(held.data.value.batch_quote_usd) })" :loading="working === 'batch'" :reason="lacking('course.generate')" data-testid="fix-batch" @click="rewriteAll" />
+          <ActionButton action="recheck" :label="t('fix.recheck')" :loading="working === 'recheck'" :reason="lacking('course.generate')" data-testid="fix-recheck" @click="recheckAll" />
         </div>
         <Queued v-if="queue.queued.value" />
         <ul class="plain-list">

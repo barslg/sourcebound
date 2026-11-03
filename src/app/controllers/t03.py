@@ -342,6 +342,19 @@ async def rewrite_held(ctx: RequestContext, *, course_id: str) -> dict[str, str]
     return {"operation_id": str(operation_id)}
 
 
+async def recheck_held(ctx: RequestContext, *, course_id: str) -> dict[str, int]:
+    from app.services.courses import get_course as get_use_case
+    from app.services.recheck import recheck_held as recheck_use_case
+
+    actor = require_auth(ctx)
+    require(actor, "course.generate")
+    course = await get_use_case(ctx.db, course_id=UUID(course_id))
+    _owner_or_404(course, actor.user_id, actor.is_superadmin)
+    result = await recheck_use_case(ctx.db, course_id=UUID(course_id))
+    await ctx.db.commit()
+    return result
+
+
 async def publish_course(ctx: RequestContext, *, course_id: str) -> dict[str, str]:
     from app.services.courses import get_course as get_use_case
     from app.services.courses import publish_course as publish_use_case

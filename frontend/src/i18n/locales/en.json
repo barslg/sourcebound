@@ -555,8 +555,10 @@
       "rewrite": "Rewrite queued.",
       "accept": "Block accepted.",
       "edit": "Block saved.",
-      "batch": "Rewrite of all held blocks queued."
+      "batch": "Rewrite of all held blocks queued.",
+      "recheck": "Re-check done: {released} released, {held} still held."
     },
+    "recheck": "Re-check held blocks",
     "batch": "Rewrite all held blocks ({count}, about {price})",
     "noPassage": "The source passage is not available.",
     "editHint": "Describe what the block should say; do not paste the answer into the question.",
@@ -688,6 +690,7 @@
     "shortcuts": "Keyboard shortcuts",
     "retry": "Try again",
     "check-again": "Check again",
+    "recheck": "Re-check",
     "search": "Search",
     "choose-file": "Choose file",
     "remove-file": "Remove file",

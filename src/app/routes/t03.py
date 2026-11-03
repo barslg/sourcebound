@@ -148,6 +148,15 @@ async def rewrite_held(
     return await controller.rewrite_held(ctx, course_id=course_id)
 
 
+@courses_router.post("/{course_id}/held/recheck")
+async def recheck_held(
+    course_id: Annotated[str, Depends(course_id_param)],
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, int]:
+    """Re-run the code checks over held blocks; release what they no longer hold ($0)."""
+    return await controller.recheck_held(ctx, course_id=course_id)
+
+
 @courses_router.post("/{course_id}/publish", status_code=201)
 async def publish_course(
     course_id: Annotated[str, Depends(course_id_param)],

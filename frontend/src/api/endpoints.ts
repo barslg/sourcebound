@@ -66,6 +66,7 @@ export const blockAccept = (id: string): string => `${blockItem(id)}/accept`
 export const courseTranslate = (id: string): string => `${courseItem(id)}/translate`
 export const courseLearner = (id: string): string => `${courseItem(id)}/learner`
 export const courseRewriteHeld = (id: string): string => `${courseItem(id)}/held/rewrite`
+export const courseRecheckHeld = (id: string): string => `${courseItem(id)}/held/recheck`
 
 export function loginUrl(next?: string): string {
   const q = new URLSearchParams({ provider: 'google' })
