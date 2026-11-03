@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+import DatePicker from 'primevue/datepicker'
 import InputNumber from 'primevue/inputnumber'
 import { ApiError, request } from '@/api/client'
 import { ENDPOINTS, inviteRevoke } from '@/api/endpoints'
@@ -25,11 +26,12 @@ const route = useRoute()
 const router = useRouter()
 const index = useCourseIndex()
 const picked = ref<string[]>(typeof route.query.course === 'string' ? [route.query.course] : [])
-const pickedTags = ref<string[]>([])
 const maxUses = ref<number | null>(null)
-const expires = ref('')
-const today = new Date().toLocaleDateString('sv-SE')
-const expiryError = computed(() => (expires.value && expires.value < today ? t('invites.expiresPast') : null))
+const expiresOn = ref<Date | null>(null)
+const today = new Date()
+today.setHours(0, 0, 0, 0)
+const expires = computed(() => (expiresOn.value ? expiresOn.value.toLocaleDateString('sv-SE') : ''))
+const expiryError = computed(() => (expiresOn.value && expiresOn.value < today ? t('invites.expiresPast') : null))
 const busy = ref(false)
 const error = ref<string | null>(null)
 const created = ref<Made[]>([])
@@ -86,16 +88,16 @@ async function copy(token: string): Promise<void> {
 <template>
   <PageHeader />
   <form id="invite-form" class="stack" @submit.prevent="create">
-    <ScopePicker id="inv-course" v-model="picked" by="course" @update:tags="pickedTags = $event" />
+    <ScopePicker id="inv-course" v-model="picked" by="course" />
     <FormField id="inv-max" :label="t('invites.maxUses')" :help="t('invites.maxUsesHint')">
       <InputNumber v-model="maxUses" input-id="inv-max" :min="1" :use-grouping="false" />
     </FormField>
     <FormField id="inv-exp" :label="t('invites.expires')" :help="t('invites.expiresHint')" :error="expiryError">
-      <input id="inv-exp" v-model="expires" type="date" :min="today" data-testid="invite-expires" />
+      <DatePicker v-model="expiresOn" input-id="inv-exp" :min-date="today" show-icon icon-display="input" date-format="yy-mm-dd" :manual-input="false" data-testid="invite-expires" />
     </FormField>
     <p v-if="error" class="mono danger-text" role="alert" data-testid="form-error">{{ error }}</p>
     <div class="row">
-      <ActionButton type="submit" action="create" :label="t('invites.create')" :loading="busy" :reason="firstReason(lacking('invite.create'), pickedTags.length === 0 && t('invites.pickCourse'))" data-testid="invite-create" />
+      <ActionButton type="submit" action="create" :label="t('invites.create')" :loading="busy" :reason="firstReason(lacking('invite.create'), picked.length === 0 && t('invites.pickCourse'))" data-testid="invite-create" />
     </div>
   </form>
   <section class="stack">

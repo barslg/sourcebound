@@ -290,6 +290,8 @@ test('learner path: enrolled student reads a topic, answers blocks, finds the er
   await expect(spot.getByTestId('spot-counters')).toContainText('Number or date')
   const found = await lastAnswer(before3)
   expect(found.correct, JSON.stringify(found)).toBe(true)
+  const fold = spot.getByTestId(/^disclosure-sources-/)
+  if ((await fold.count()) > 0) await fold.click()
   await spot.locator('[data-testid="cite-chip"][aria-expanded="false"]').first().click()
   await expect(page.getByTestId('passage-text')).toBeVisible()
   await page.screenshot({ path: '../tmp/shots-t06/spot-1280.png', fullPage: true })

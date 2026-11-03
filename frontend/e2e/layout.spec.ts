@@ -38,6 +38,7 @@ for (const [name, path] of [['preview topic', () => `/preview/topics/${ids().tra
     expect(main.width, 'text column').toBeGreaterThanOrEqual(560)
     expect(side.x, 'companion sits right of the text').toBeGreaterThanOrEqual(main.x + main.width)
     await expect(page.getByTestId('lesson-rail')).toBeVisible()
+    for (const fold of await page.getByTestId(/^disclosure-sources-/).all()) await fold.click()
     const chips = await page.getByTestId('cite-chip').evaluateAll((els) => els.map((el) => ({ width: el.getBoundingClientRect().width, text: el.textContent ?? '' })))
     // the translated lab seeds no citation rows, so only the learner lab proves the chip form
     if (name === 'learner topic') expect(chips.length).toBeGreaterThan(0)

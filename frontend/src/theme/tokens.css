@@ -443,3 +443,16 @@ span.cite-mark { cursor: default; color: var(--sb-muted); }
 .course-head { gap: var(--sb-space-3); }
 .companion .tutor-head { font-family: var(--sb-font-sans); font-size: var(--sb-fs-md); font-weight: 600; letter-spacing: 0; margin: 0; }
 .companion .disclosure { text-align: left; }
+
+.p-inputnumber, .p-inputnumber-input, .p-datepicker, .p-datepicker-input { width: 100%; }
+.scenario-item { align-items: stretch; }
+.scenario-item .scenario-text { margin: 0; }
+.scenario-item .scenario-source { flex: 1 1 24ch; }
+.fold { display: flex; flex-direction: column; gap: var(--sb-space-2); width: 100%; align-self: stretch; }
+.fold-head { display: flex; align-items: center; justify-content: flex-end; gap: var(--sb-space-2); }
+.fold-head .p-button svg { transition: transform var(--sb-motion); }
+.fold-head .p-button[aria-expanded='true'] svg { transform: rotate(90deg); }
+.fold-body { padding-top: var(--sb-space-1); }
+.group-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--sb-space-3); }
+.group-list .group-title { margin: 0 0 var(--sb-space-1); font-weight: 500; }
+.group-list ul { margin: 0; padding-left: var(--sb-space-4); }

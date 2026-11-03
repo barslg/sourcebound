@@ -92,7 +92,7 @@
     "unread": "{count} nye",
     "progress": "{percent} prosent",
     "error": "Feil: {message}",
-    "earlier": "Fra tjeneren",
+    "earlier": "Nylig",
     "markFailed": "Kunne ikke merke som lest: {message}",
     "help": "Lange jobber, for eksempel å skrive en plan eller lage et kurs, vises her mens de kjører."
   },
@@ -109,7 +109,11 @@
       "generate_course": "Lager kurset",
       "rewrite_block": "Skriver om en blokk",
       "rewrite_held_batch": "Skriver om blokker som er holdt tilbake",
-      "transcribe_audio": "Gjør lyd om til tekst"
+      "transcribe_audio": "Gjør lyd om til tekst",
+      "submit_plan": "Skriver planen",
+      "submit_generate": "Genererer kurset",
+      "submit_translate": "Oversetter kurset",
+      "resume_run": "Gjenopptar kjøringen"
     },
     "statuses": {
       "queued": "I kø",
@@ -390,7 +394,8 @@
     "thinReason": "Denne adressen ga ingen lesbar tekst. Lim inn eller last opp innholdet i stedet.",
     "fileChoose": "Velg fil",
     "fileRemove": "Fjern filen",
-    "citedAs": "Sitert i planen som:"
+    "citedBy": "Sitert av {blocks} blokker i {topics} emner.",
+    "citedPassages": "Siterte avsnitt ({count})"
   },
   "plan": {
     "reloadTheirs": "Last inn deres",
@@ -460,7 +465,6 @@
     "buildCard": "Bygg planen fra kildene dine",
     "outline": "Kursoversikt",
     "outlineHelp": "Titler lagres når du forlater feltet. Åpne et emne for å se blokkene.",
-    "notUsed": "Ikke brukt: {list}",
     "handoffNext": "Neste: {note}",
     "moreFor": "Flere handlinger for {name}",
     "kind": {
@@ -483,7 +487,11 @@
     "emptyTopic": "Dette emnet har ingen blokker ennå. Skriv et sammendrag eller slett det.",
     "treeInvalid": "Planen har feil. Fiks eller slett de markerte emnene først.",
     "conflictTitle": "Planen ble endret",
-    "conflictBody": "Noen endret denne planen mens du redigerte. Last inn deres versjon, eller behold din og overskriv."
+    "conflictBody": "Noen endret denne planen mens du redigerte. Last inn deres versjon, eller behold din og overskriv.",
+    "leftOut": "Utelatt fra planen",
+    "leftOutHelp": "Det de godkjente kildene inneholder som kurset ikke lærer bort, og hvorfor planleggeren lot det ligge.",
+    "leftOutCount": "{count} avsnitt utelatt",
+    "leftOutGroup": "{count} avsnitt"
   },
   "run": {
     "title": "Genereringskjøring",
@@ -707,7 +715,8 @@
     "continue": "Fortsett",
     "export": "Eksporter CSV",
     "add-module": "Legg til modul",
-    "add-topic": "Legg til emne"
+    "add-topic": "Legg til emne",
+    "details": "Vis detaljer"
   },
   "form": {
     "required": "påkrevd",
@@ -888,7 +897,8 @@
       "hide": "Skjul definisjonen"
     },
     "diagramFallback": "Diagrammet kunne ikke tegnes; trinnene står i rekkefølge i stedet.",
-    "tickAll": "Kryss av for alle alternativene som gjelder."
+    "tickAll": "Kryss av for alle alternativene som gjelder.",
+    "sourcesCount": "Kilder ({count})"
   },
   "runs": {
     "title": "Kjøringer",
@@ -1033,6 +1043,13 @@
     "keyRemoved": "Nøkkel fjernet.",
     "keyPrivacy": "Nøkkelen krypteres med en serverhemmelighet, logges aldri og returneres aldri av noen forespørsel.",
     "busy": "Vent på lagringen.",
-    "noKey": "Legg til Meta-API-nøkkelen din på kontosiden først."
+    "noKey": "Legg til Meta-API-nøkkelen din på kontosiden først.",
+    "keyFallback": "På denne maskinen brukes serverens nøkkel til du legger inn din egen.",
+    "leadsTitle": "Hvor nøkkelen fører",
+    "leadsHelp": "Hva som betales fra den, og hvor den kommer fra.",
+    "leadsBilled": "Hver plan, generering, oversettelse og omskriving du starter, betales fra denne nøkkelen etter forbruk, til Meta Model API-prisene.",
+    "leadsTutor": "Elever på dine publiserte kurs spør veilederen på nøkkelen din også.",
+    "leadsGet": "Hent eller forny nøkkelen i Metas utviklerpanel",
+    "leadsCourses": "Åpne kursene dine"
   }
 }

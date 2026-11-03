@@ -13,12 +13,14 @@ import AppDialog from '@/components/AppDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import FormField from '@/components/FormField.vue'
 import PlanBuildForm from '@/components/PlanBuildForm.vue'
+import Disclosure from '@/components/Disclosure.vue'
 import Section from '@/components/Section.vue'
 import ResourceState from '@/components/ResourceState.vue'
 import RowMenu, { type RowMenuItem } from '@/components/RowMenu.vue'
 import { firstReason, lacking } from '@/composables/reasons'
 import { humanize } from '@/composables/labels'
 import { useQueued } from '@/composables/useQueued'
+import { prettyAddress } from '@/composables/sourceView'
 import { sourceHandles, type PlanModule, type PlanOp, type PlanTopic, type PlanTree } from '@/composables/planTree'
 import { dropCached, useResource } from '@/composables/useResource'
 import { useSessionStore } from '@/stores/session'
@@ -195,6 +197,18 @@ async function buildPlan(): Promise<void> {
 
 const blockTypeLabel = (type: string): string => (te(`plan.blockType.${type}`) ? t(`plan.blockType.${type}`) : humanize(type))
 const kindLabel = (kind: string): string => (te(`plan.kind.${kind}`) ? t(`plan.kind.${kind}`) : humanize(kind))
+const leftOutOpen = ref(false)
+/** The passages the planner left out, grouped by its reason, largest group first, addresses without the heading markers. */
+const leftOut = computed(() => {
+  const groups = new Map<string, Array<{ handle: string; address: string; excerpt: string }>>()
+  for (const u of plan.data.value?.uncovered ?? []) {
+    const address = prettyAddress(u.address)
+    const list = groups.get(u.reason) ?? []
+    list.push({ handle: u.handle, address, excerpt: u.excerpt ?? '' })
+    groups.set(u.reason, list)
+  }
+  return [...groups.entries()].map(([reason, items]) => ({ reason, items })).sort((a, b) => b.items.length - a.items.length)
+})
 function sourceChipLabel(handle: string): string {
   for (const m of plan.data.value?.modules ?? []) {
     for (const x of m.topics) {
@@ -298,8 +312,18 @@ watch(() => route.hash, (hash) => {
         <section v-if="(plan.data.value?.through_line?.handoffs ?? []).length > 0" class="stack" data-testid="handoffs">
           <p v-for="h in plan.data.value?.through_line?.handoffs ?? []" :key="h.topic_plan_node_id" class="muted">{{ t('plan.handoffNext', { note: h.note }) }}</p>
         </section>
-        <section v-if="(plan.data.value?.uncovered ?? []).length > 0" class="stack" data-testid="not-used">
-          <p class="muted">{{ t('plan.notUsed', { list: (plan.data.value?.uncovered ?? []).map((u) => `${u.address || u.handle}${u.excerpt ? ` «${u.excerpt}»` : ''} — ${u.reason}`).join('; ') }) }}</p>
+        <section v-if="leftOut.length > 0" class="stack" data-testid="not-used">
+          <Section :title="t('plan.leftOut')" :help="t('plan.leftOutHelp')" />
+          <Disclosure id="left-out" :label="t('plan.leftOutCount', { count: (plan.data.value?.uncovered ?? []).length })" :open="leftOutOpen" @update:open="leftOutOpen = $event">
+            <ol class="group-list">
+              <li v-for="g in leftOut" :key="g.reason">
+                <p class="group-title">{{ g.reason }} <span class="muted">· {{ t('plan.leftOutGroup', { count: g.items.length }) }}</span></p>
+                <ul>
+                  <li v-for="u in g.items" :key="u.handle"><span>{{ u.address }}</span><span v-if="u.excerpt" class="muted"> «{{ u.excerpt }}»</span></li>
+                </ul>
+              </li>
+            </ol>
+          </Disclosure>
         </section>
 
         <section class="next-card" data-testid="next-step">

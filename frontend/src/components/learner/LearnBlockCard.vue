@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { AnswerResult as Result, Chip, LearnBlockView, Term } from '@/api/types'
 import ActionButton from '@/components/ActionButton.vue'
@@ -8,6 +8,7 @@ import { lacking } from '@/composables/reasons'
 import AnswerResult from './AnswerResult.vue'
 import BlockView from './BlockView.vue'
 import CitationChip from './CitationChip.vue'
+import Disclosure from '@/components/Disclosure.vue'
 
 const props = defineProps<{ block: LearnBlockView; draft: Draft; result: Result | null; busy?: boolean; testMode?: boolean; openId: string | null; openTerm?: string | null; terms?: Term[]; index: number }>()
 const emit = defineEmits<{ 'update:draft': [value: Draft]; check: []; open: [chip: Chip]; term: [term: Term] }>()
@@ -18,6 +19,12 @@ const dots = computed(() => Math.min(props.block.attempts.count, 6))
 const answerable = computed(() => isAnswerable(props.block.block_type))
 const denied = lacking('learn.answer')
 const reason = computed(() => denied ?? (answered(props.block.block_type, props.draft) ? null : t('learn.answerFirst')))
+const chips = computed(() => {
+  const seen = new Set<string>()
+  return props.block.citations.filter((c) => (seen.has(c.passage_id) ? false : (seen.add(c.passage_id), true)))
+})
+const sourcesOpen = ref(false)
+watch(() => props.openId, (id) => { if (id && chips.value.some((c) => c.passage_id === id)) sourcesOpen.value = true })
 const bindings = computed(() => ({ uid: props.block.id, modelValue: answerable.value ? props.draft : undefined, chips: props.block.citations, options: props.block.passage_options, openId: props.openId, ...(props.block.block_type === 'reading' ? { terms: props.terms ?? [], openTerm: props.openTerm ?? null } : {}) }))
 </script>
 
@@ -29,9 +36,11 @@ const bindings = computed(() => ({ uid: props.block.id, modelValue: answerable.v
       <span v-if="block.attempts.count > 0" data-testid="attempts">{{ t('learn.attempts', block.attempts.count) }}</span>
     </p>
     <BlockView :type="block.block_type" :content="block.content" v-bind="bindings" @update:model-value="emit('update:draft', $event as Draft)" @open="emit('open', $event as Chip)" @term="emit('term', $event as Term)" />
-    <ul v-if="block.citations.length > 0 && block.block_type !== 'reading'" class="plain-list row" :aria-label="t('learn.sources')" data-testid="block-chips">
-      <li v-for="c in block.citations" :key="c.passage_id"><CitationChip :chip="c" :open="openId === c.passage_id" @open="emit('open', $event)" /></li>
-    </ul>
+    <Disclosure v-if="chips.length > 0 && block.block_type !== 'reading'" :id="`sources-${block.id}`" :label="t('learn.sourcesCount', { count: chips.length })" :open="sourcesOpen" @update:open="sourcesOpen = $event">
+      <ul class="plain-list row" :aria-label="t('learn.sources')" data-testid="block-chips">
+        <li v-for="c in chips" :key="c.passage_id"><CitationChip :chip="c" :open="openId === c.passage_id" @open="emit('open', $event)" /></li>
+      </ul>
+    </Disclosure>
     <p v-if="block.fallback_notice" class="preview-notice" role="note" data-testid="fallback-notice">{{ block.fallback_notice }}</p>
     <div v-if="answerable && !testMode" class="row">
       <ActionButton action="check-answer" :label="t('learn.checkAnswer')" :loading="busy" :reason="reason" data-testid="check-answer" @click="emit('check')" />

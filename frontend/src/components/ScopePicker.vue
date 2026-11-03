@@ -4,30 +4,27 @@ import { useI18n } from 'vue-i18n'
 import MultiSelect from 'primevue/multiselect'
 import { request } from '@/api/client'
 import { ENDPOINTS } from '@/api/endpoints'
+import type { CourseRow } from '@/api/types'
 import FormField from '@/components/FormField.vue'
 import { useResource } from '@/composables/useResource'
 
 interface TagRow { tag: string; courses: Array<{ id: string; title: string }> }
+type Loaded = { kind: 'course'; rows: CourseRow[] } | { kind: 'label'; rows: TagRow[] }
 const props = defineProps<{ id: string; by: 'course' | 'label'; modelValue: string[] }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string[]]; 'update:tags': [value: string[]] }>()
 const { t } = useI18n()
-const tags = useResource<TagRow[]>(`tags:${props.id}`, (signal) => request<TagRow[]>(ENDPOINTS.tags, { signal }))
+/** Courses come from the course list (every visible course, tagged or not); labels from the tag index. */
+const loaded = useResource<Loaded>(`scope:${props.by}:${props.id}`, async (signal) =>
+  props.by === 'course'
+    ? { kind: 'course', rows: await request<CourseRow[]>(ENDPOINTS.courses, { signal }) }
+    : { kind: 'label', rows: await request<TagRow[]>(ENDPOINTS.tags, { signal }) })
 
-const courses = computed(() => {
-  const byId = new Map<string, { id: string; title: string; tags: string[] }>()
-  for (const row of tags.data.value ?? []) {
-    for (const c of row.courses) {
-      const known = byId.get(c.id) ?? { id: c.id, title: c.title, tags: [] }
-      known.tags.push(row.tag)
-      byId.set(c.id, known)
-    }
-  }
-  return [...byId.values()].sort((a, b) => a.title.localeCompare(b.title))
-})
+const courses = computed(() => (loaded.data.value?.kind === 'course' ? loaded.data.value.rows : []).map((c) => ({ id: c.id, title: c.title })).sort((a, b) => a.title.localeCompare(b.title)))
+const tagRows = computed(() => (loaded.data.value?.kind === 'label' ? loaded.data.value.rows : []))
 const options = computed(() => (props.by === 'course'
-  ? courses.value.map((c) => ({ value: c.id, label: c.title, tags: c.tags, count: 0 }))
-  : (tags.data.value ?? []).map((r) => ({ value: r.tag, label: r.courses.map((c) => c.title).join(', ') || t('scope.unknownCourse'), tags: [] as string[], count: r.courses.length }))))
-const derived = computed(() => (props.by === 'label' ? props.modelValue : [...new Set(courses.value.filter((c) => props.modelValue.includes(c.id)).flatMap((c) => c.tags))].sort()))
+  ? courses.value.map((c) => ({ value: c.id, label: c.title, count: 0 }))
+  : tagRows.value.map((r) => ({ value: r.tag, label: r.courses.map((c) => c.title).join(', ') || t('scope.unknownCourse'), count: r.courses.length }))))
+const derived = computed(() => [...props.modelValue].sort())
 watch(derived, (next) => emit('update:tags', next), { immediate: true })
 const copy = computed(() => (props.by === 'course' ? { label: t('scope.coursesLabel'), help: t('scope.coursesHelp') } : { label: t('scope.labelsLabel'), help: t('scope.labelsHelp') }))
 </script>
@@ -35,7 +32,7 @@ const copy = computed(() => (props.by === 'course' ? { label: t('scope.coursesLa
 <template>
   <div data-testid="scope-picker">
     <FormField :id="id" :label="copy.label" :help="copy.help">
-      <MultiSelect :model-value="modelValue" :input-id="id" :options="options" option-label="label" option-value="value" display="chip" :placeholder="t('scope.placeholder')" :empty-message="t('scope.empty')" :loading="tags.loading.value" :disabled="tags.loading.value && (tags.data.value ?? []).length === 0" @update:model-value="emit('update:modelValue', $event as string[])">
+      <MultiSelect :model-value="modelValue" :input-id="id" :options="options" option-label="label" option-value="value" display="chip" :placeholder="t('scope.placeholder')" :empty-message="t('scope.empty')" :loading="loaded.loading.value" :disabled="loaded.loading.value && options.length === 0" @update:model-value="emit('update:modelValue', $event as string[])">
         <template #option="{ option }">
           <span class="row">
             <span>{{ option.label }}</span>
@@ -43,7 +40,7 @@ const copy = computed(() => (props.by === 'course' ? { label: t('scope.coursesLa
           </span>
         </template>
       </MultiSelect>
-      <p v-if="tags.error.value" class="mono danger-text" role="alert">{{ t('scope.loadError', { message: tags.error.value.message }) }}</p>
+      <p v-if="loaded.error.value" class="mono danger-text" role="alert">{{ t('scope.loadError', { message: loaded.error.value.message }) }}</p>
     </FormField>
   </div>
 </template>

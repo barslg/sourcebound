@@ -92,7 +92,7 @@
     "unread": "{count} new",
     "progress": "{percent} percent",
     "error": "Error: {message}",
-    "earlier": "From the server",
+    "earlier": "Recent",
     "markFailed": "Could not mark as read: {message}",
     "help": "Long jobs such as writing a plan or generating a course are listed here while they run."
   },
@@ -109,7 +109,11 @@
       "generate_course": "Generating the course",
       "rewrite_block": "Rewriting a block",
       "rewrite_held_batch": "Rewriting held blocks",
-      "transcribe_audio": "Turning audio into text"
+      "transcribe_audio": "Turning audio into text",
+      "submit_plan": "Writing the plan",
+      "submit_generate": "Generating the course",
+      "submit_translate": "Translating the course",
+      "resume_run": "Resuming the run"
     },
     "statuses": {
       "queued": "Queued",
@@ -390,7 +394,8 @@
     "thinReason": "This address gave no readable text. Paste or upload its content instead.",
     "fileChoose": "Choose file",
     "fileRemove": "Remove file",
-    "citedAs": "Cited in the plan as:"
+    "citedBy": "Cited by {blocks} blocks in {topics} topics.",
+    "citedPassages": "Cited passages ({count})"
   },
   "plan": {
     "reloadTheirs": "Reload theirs",
@@ -460,7 +465,6 @@
     "buildCard": "Build the plan from your sources",
     "outline": "Course outline",
     "outlineHelp": "Titles save when you leave the field. Open a topic to see its blocks.",
-    "notUsed": "Not used: {list}",
     "handoffNext": "Next: {note}",
     "moreFor": "More actions for {name}",
     "kind": {
@@ -483,7 +487,11 @@
     "emptyTopic": "This topic has no blocks yet. Write a brief or delete it.",
     "treeInvalid": "The plan has errors. Fix or delete the marked topics first.",
     "conflictTitle": "The plan changed",
-    "conflictBody": "Someone changed this plan while you were editing. Reload their version, or keep yours and overwrite it."
+    "conflictBody": "Someone changed this plan while you were editing. Reload their version, or keep yours and overwrite it.",
+    "leftOut": "Left out of the plan",
+    "leftOutHelp": "What the approved sources contain that this course does not teach, and why the planner left it out.",
+    "leftOutCount": "{count} passages left out",
+    "leftOutGroup": "{count} passages"
   },
   "run": {
     "title": "Generation run",
@@ -707,7 +715,8 @@
     "continue": "Continue",
     "export": "Export CSV",
     "add-module": "Add module",
-    "add-topic": "Add topic"
+    "add-topic": "Add topic",
+    "details": "Show details"
   },
   "form": {
     "required": "required",
@@ -888,7 +897,8 @@
       "hide": "Hide the definition"
     },
     "diagramFallback": "The diagram could not be drawn; the steps are listed in order instead.",
-    "tickAll": "Tick every option that applies."
+    "tickAll": "Tick every option that applies.",
+    "sourcesCount": "Sources ({count})"
   },
   "runs": {
     "title": "Runs",
@@ -1033,6 +1043,13 @@
     "keyRemoved": "Key removed.",
     "keyPrivacy": "The key is encrypted at rest with a server secret, never logged and never returned by any request.",
     "busy": "Wait for the current save.",
-    "noKey": "Add your Meta API key on your account page first."
+    "noKey": "Add your Meta API key on your account page first.",
+    "keyFallback": "On this machine the server key is used until you add your own.",
+    "leadsTitle": "Where the key leads",
+    "leadsHelp": "What is paid from it and where it comes from.",
+    "leadsBilled": "Every plan, generation, translation and rewrite you start is paid from this key, pay as you go, at the Meta Model API prices.",
+    "leadsTutor": "Learners on your published courses ask the tutor on your key as well.",
+    "leadsGet": "Get or renew the key in the Meta developer dashboard",
+    "leadsCourses": "Open your courses"
   }
 }
