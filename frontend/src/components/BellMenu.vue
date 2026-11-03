@@ -10,8 +10,9 @@ import { useOperationsStore } from '@/stores/operations'
 import { useSessionStore } from '@/stores/session'
 import { notificationLabel } from '@/composables/notifications'
 import { humanize } from '@/composables/labels'
+import type { NotificationRow } from '@/api/types'
 
-const { t, te } = useI18n()
+const { t, te, d } = useI18n()
 const ops = useOperationsStore()
 const session = useSessionStore()
 const panel = ref<InstanceType<typeof Popover> | null>(null)
@@ -27,6 +28,8 @@ function toggle(event: Event): void {
 const kindLabel = (kind: string): string => (te(`op.kinds.${kind}`) ? t(`op.kinds.${kind}`) : humanize(kind))
 const statusLabel = (status: string): string => (te(`op.statuses.${status}`) ? t(`op.statuses.${status}`) : humanize(status))
 const runOf = (result: Record<string, unknown> | null): string | null => (result && typeof result.run_id === 'string' ? result.run_id : null)
+const noteText = (n: NotificationRow): string => (n.operation_kind ? [kindLabel(n.operation_kind), n.course_title].filter(Boolean).join(' · ') : t(notificationLabel(n.kind)))
+const failed = (n: NotificationRow): boolean => n.status === 'failed' || n.status === 'error'
 </script>
 
 <template>
@@ -54,9 +57,17 @@ const runOf = (result: Record<string, unknown> | null): string | null => (result
       <template v-if="ops.notifications.length > 0">
         <h3>{{ t('bell.earlier') }}</h3>
         <ul class="plain-list" data-testid="bell-notifications">
-          <li v-for="n in ops.notifications" :key="n.id" class="bell-item row" data-testid="bell-notification">
-            <span>{{ t(notificationLabel(n.kind)) }}</span>
-            <StatusChip v-if="!n.read" class="row-end" tone="info" :label="t('bell.unread', { count: 1 })" />
+          <li v-for="n in ops.notifications" :key="n.id" class="bell-item" data-testid="bell-notification">
+            <div class="row">
+              <span>{{ noteText(n) }}</span>
+              <StatusChip v-if="n.status" class="row-end" :tone="failed(n) ? 'danger' : 'ok'" :label="statusLabel(n.status)" />
+              <StatusChip v-if="!n.read" tone="info" :label="t('bell.unread', { count: 1 })" />
+            </div>
+            <p v-if="n.error" class="mono danger-text">{{ t('bell.error', { message: n.error }) }}</p>
+            <div class="row muted">
+              <span v-if="n.created_at">{{ d(new Date(n.created_at), 'short') }}</span>
+              <router-link v-if="n.run_id" :to="`/runs/${n.run_id}`">{{ t('plan.openRun') }}</router-link>
+            </div>
           </li>
         </ul>
       </template>

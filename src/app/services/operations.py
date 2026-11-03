@@ -286,6 +286,19 @@ async def execute_operation(
                         progress=1.0,
                         error=str(exc)[:2000],
                     )
+                    if actor_id is not None:
+                        await failed.execute(
+                            sa.text(
+                                "INSERT INTO notifications (user_id, kind, payload)"
+                                " VALUES (:user, 'operation.failed', CAST(:payload AS jsonb))"
+                            ),
+                            {
+                                "user": str(actor_id),
+                                "payload": json.dumps(
+                                    {"operation_id": str(operation_id), "status": "failed"}
+                                ),
+                            },
+                        )
                     await failed.commit()
     finally:
         if engine is not None:

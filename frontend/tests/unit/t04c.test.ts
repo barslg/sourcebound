@@ -30,9 +30,10 @@ describe('plan blocks', () => {
 })
 
 describe('notifications', () => {
+  const extra = { operation_kind: '', status: '', error: null, run_id: null, course_title: null }
   const rows = [
-    { id: '1', kind: 'operation.done', payload: { operation_id: 'o1', status: 'done' }, read: false, created_at: null },
-    { id: '2', kind: 'operation.done', payload: {}, read: true, created_at: null },
+    { id: '1', kind: 'operation.done', payload: { operation_id: 'o1', status: 'done' }, read: false, created_at: null, ...extra },
+    { id: '2', kind: 'operation.done', payload: {}, read: true, created_at: null, ...extra },
   ]
   it('counts unread rows from the server flag', () => {
     expect(unreadOf(rows)).toBe(1)

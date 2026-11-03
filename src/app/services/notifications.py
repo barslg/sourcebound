@@ -1,4 +1,4 @@
-"""Per-user notifications: newest-first listing with a read flag."""
+"""Per-user notifications: the newest ten, each with what the operation did."""
 
 from __future__ import annotations
 
@@ -10,16 +10,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.rbac.principal import Principal
 
+NEWEST = 10
+
 
 async def list_notifications(session: AsyncSession, *, actor: Principal) -> list[dict[str, Any]]:
-    """The caller's notifications, newest first, with a read flag."""
+    """The caller's newest notifications with the operation's kind, outcome, course and run."""
     rows = (
         await session.execute(
             sa.text(
-                "SELECT id, kind, payload, read_at, created_at FROM notifications"
-                " WHERE user_id = :user ORDER BY created_at DESC"
+                "SELECT n.id, n.kind, n.payload, n.read_at, n.created_at,"
+                " o.kind, o.status, o.error, o.result ->> 'run_id',"
+                " COALESCE(c.title, c2.title)"
+                " FROM notifications n"
+                " LEFT JOIN operations o ON o.id::text = n.payload ->> 'operation_id'"
+                " LEFT JOIN runs r ON r.id::text = o.result ->> 'run_id'"
+                " LEFT JOIN courses c ON c.id = r.course_id"
+                " LEFT JOIN courses c2 ON c2.id::text = o.params ->> 'course_id'"
+                " WHERE n.user_id = :user ORDER BY n.created_at DESC LIMIT :newest"
             ),
-            {"user": str(actor.user_id)},
+            {"user": str(actor.user_id), "newest": NEWEST},
         )
     ).all()
     return [
@@ -29,8 +38,24 @@ async def list_notifications(session: AsyncSession, *, actor: Principal) -> list
             "payload": dict(payload or {}),
             "read": read_at is not None,
             "created_at": created.isoformat() if created else None,
+            "operation_kind": str(op_kind or ""),
+            "status": str(op_status or (payload or {}).get("status") or ""),
+            "error": str(error) if error else None,
+            "run_id": str(run_id) if run_id else None,
+            "course_title": str(title) if title else None,
         }
-        for note_id, kind, payload, read_at, created in rows
+        for (
+            note_id,
+            kind,
+            payload,
+            read_at,
+            created,
+            op_kind,
+            op_status,
+            error,
+            run_id,
+            title,
+        ) in rows
     ]
 
 

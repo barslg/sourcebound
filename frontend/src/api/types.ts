@@ -84,7 +84,7 @@ export interface HeldBlock { id: string; topic_title: string; brief: string; hol
 export interface HeldDoc { blocks: HeldBlock[]; batch_quote_usd: string | null }
 export interface Estimate { blocks: number; calls: number; tokens: number; cost_usd: string; seconds: number; note: string }
 export interface InviteListItem { id: string; course_tags: string[]; max_uses: number | null; used_count: number; expires_at: string | null; revoked_at: string | null }
-export interface NotificationRow { id: string; kind: string; payload: Record<string, unknown>; read: boolean; created_at: string | null }
+export interface NotificationRow { id: string; kind: string; payload: Record<string, unknown>; read: boolean; created_at: string | null; operation_kind: string; status: string; error: string | null; run_id: string | null; course_title: string | null }
 export interface QueueItem { id: string; kind: string; url: string; reason: string; payload: { course_id?: string }; created_at: string | null }
 export interface Permission { code: string; category: string; label: string; description: string }
 export interface LearnProgress { blocks_total: number; blocks_attempted: number; completion: number; assessed: number; mastery: number | null; status: string }

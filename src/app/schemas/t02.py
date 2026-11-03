@@ -145,6 +145,11 @@ class NotificationResponse(BaseModel):
     payload: dict[str, object]
     read: bool
     created_at: str | None
+    operation_kind: str = ""
+    status: str = ""
+    error: str | None = None
+    run_id: str | None = None
+    course_title: str | None = None
 
 
 class EchoRequest(BaseModel):
