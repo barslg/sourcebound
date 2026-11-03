@@ -2,7 +2,6 @@
 import Select from 'primevue/select'
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Circle, CircleCheck } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 import { request } from '@/api/client'
 import { learnAnswer, learnCourse, learnSubmit, learnTopic } from '@/api/endpoints'
@@ -11,6 +10,7 @@ import ActionButton from '@/components/ActionButton.vue'
 import CitationChip from '@/components/learner/CitationChip.vue'
 import CompanionPanel from '@/components/learner/CompanionPanel.vue'
 import LearnBlockCard from '@/components/learner/LearnBlockCard.vue'
+import LessonRail from '@/components/learner/LessonRail.vue'
 import TutorPanel from '@/components/learner/TutorPanel.vue'
 import FormField from '@/components/FormField.vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -51,7 +51,7 @@ watch(() => topic.data.value?.course_id, async (courseId) => {
 }, { immediate: true })
 watch(id, () => { submitted.value = null; openId.value = null; for (const k of Object.keys(results)) Reflect.deleteProperty(results, k) })
 
-const courseRef = computed(() => (outline.value && topic.data.value ? { id: topic.data.value.course_id, title: outline.value.title } : null))
+const courseRef = computed(() => (topic.data.value ? { id: topic.data.value.course_id, title: outline.value?.title ?? topic.data.value.course_title ?? '' } : null))
 const languages = computed(() => {
   const o = outline.value
   if (!o) return []
@@ -119,16 +119,7 @@ function retake(): void {
   <ResourceState :loading="topic.loading.value" :error="topic.error.value" :empty="topic.data.value !== null && topic.data.value.blocks.length === 0" :empty-text="t('learnTopic.empty')" @retry="topic.reload()">
     <template #empty-actions><router-link v-if="topic.data.value" :to="`/learn/courses/${topic.data.value.course_id}`" data-testid="back-to-course">{{ t('learnTopic.backToCourse') }}</router-link></template>
     <div v-if="topic.data.value" class="learn-layout">
-      <nav class="learn-rail" :aria-label="t('learn.rail')" data-testid="lesson-rail">
-        <ol>
-          <li v-for="(b, i) in topic.data.value.blocks" :key="b.id">
-            <a :href="`#block-${b.id}`" :data-done="ticked(b.id)">
-              <component :is="ticked(b.id) ? CircleCheck : Circle" :size="16" :stroke-width="2" :class="{ 'tick-open': !ticked(b.id) }" aria-hidden="true" />
-              <span>{{ i + 1 }}. {{ t(`learn.type.${b.block_type}`) }}<span class="sr-only"> ({{ ticked(b.id) ? t('learn.outlineDone') : t('learn.outlineOpen') }})</span></span>
-            </a>
-          </li>
-        </ol>
-      </nav>
+      <LessonRail :blocks="topic.data.value.blocks" :state="(b) => (ticked(b.id) ? 'done' : 'open')" />
       <div class="stack learn-main">
         <Section id="topic" :title="topic.data.value.title" :help="isTest ? t('learnTopic.testHelp') : t('learnTopic.lessonHelp')" />
         <ul v-if="topic.data.value.objectives.length > 0" class="hint" data-testid="objectives"><li v-for="o in topic.data.value.objectives" :key="o">{{ o }}</li></ul>

@@ -8,11 +8,13 @@ from app.course.grounding import HANDLE_MARKER_RE
 
 
 def render_for_learner(content: dict[str, Any]) -> dict[str, Any]:
-    """Learner-safe view: body, handle chips at passage boundaries, quotes.
+    """Learner-safe view: the body with a handle chip at every passage boundary.
 
     The body is split at every ⟦P<n>⟧ marker into text/handle segments
     so the learner UI shows a citation chip at each passage boundary
-    instead of joining two passages into one anonymous paragraph.
+    instead of joining two passages into one anonymous paragraph. The
+    writer's quotes are evidence for the checks, never learner text:
+    the chips open the passage itself.
     """
     body = str(content.get("body", ""))
     segments: list[dict[str, Any]] = []
@@ -24,15 +26,4 @@ def render_for_learner(content: dict[str, Any]) -> dict[str, Any]:
         pos = match.end()
     if pos < len(body) or not segments:
         segments.append({"text": body[pos:]})
-    return {
-        "body": body,
-        "segments": segments,
-        "citations": [
-            {
-                "handle": str(item.get("handle", item.get("passage_id", ""))),
-                "quote": str(item.get("quote", "")),
-            }
-            for item in content.get("citations", [])
-            if isinstance(item, dict)
-        ],
-    }
+    return {"body": body, "segments": segments}

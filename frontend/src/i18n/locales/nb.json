@@ -777,14 +777,6 @@
     "takeaways": "Hovedpunkter",
     "nextLesson": "Neste leksjon",
     "lastLesson": "Dette var den siste leksjonen i kurset.",
-    "tools": "Studiehjelp",
-    "toolSimpler": "Forklar enklere",
-    "toolField": "Eksempel fra mitt fagfelt",
-    "toolCheck": "Test meg",
-    "toolTerms": "Begreper",
-    "toolSoon": "Ikke tilgjengelig ennå: kurset har ingen ferdige varianter av denne teksten.",
-    "outlineDone": "ferdig",
-    "outlineOpen": "ikke prøvd ennå",
     "title": "Min læring",
     "help": "Kursene du er påmeldt, med fremgangen din.",
     "empty": "Du er ikke påmeldt noe publisert kurs ennå. Be læreren din om en invitasjonslenke.",
@@ -872,6 +864,11 @@
       "ask": "Spør kurset",
       "needQuestion": "Skriv et spørsmål først.",
       "notInMaterials": "Dette står ikke i kursmaterialet."
+    },
+    "railState": {
+      "done": "gjort",
+      "open": "ikke prøvd ennå",
+      "held": "holdt for retting"
     }
   },
   "runs": {

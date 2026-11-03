@@ -9,6 +9,7 @@ import type { Chip, LearnOutline, LearnTopic } from '@/api/types'
 import CitationChip from '@/components/learner/CitationChip.vue'
 import CompanionPanel from '@/components/learner/CompanionPanel.vue'
 import LearnBlockCard from '@/components/learner/LearnBlockCard.vue'
+import LessonRail from '@/components/learner/LessonRail.vue'
 import FormField from '@/components/FormField.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ResourceState from '@/components/ResourceState.vue'
@@ -28,7 +29,7 @@ const outline = ref<LearnOutline | null>(null)
 const drafts = reactive<Record<string, Draft>>({})
 const openId = ref<string | null>(null)
 const served = computed(() => topic.data.value?.language ?? language.value)
-const courseRef = computed(() => (outline.value && topic.data.value ? { id: topic.data.value.course_id, title: outline.value.title } : null))
+const courseRef = computed(() => (topic.data.value ? { id: topic.data.value.course_id, title: outline.value?.title ?? topic.data.value.course_title ?? '' } : null))
 const flat = computed(() => (outline.value?.modules ?? []).flatMap((m) => m.topics))
 const at = computed(() => flat.value.findIndex((x) => x.id === topicId.value))
 const next = computed(() => (at.value >= 0 ? (flat.value[at.value + 1] ?? null) : null))
@@ -60,8 +61,9 @@ function open(chip: Chip): void { openId.value = openId.value === chip.passage_i
   <ResourceState :loading="topic.loading.value" :error="topic.error.value" :empty="topic.data.value !== null && topic.data.value.blocks.length === 0" :empty-text="t('previewTopic.empty')" @retry="topic.reload()">
     <template #empty-actions><router-link :to="outlineLink" data-testid="back-to-preview">{{ t('previewTopic.backToOutline') }}</router-link></template>
     <div v-if="topic.data.value" class="learn-layout">
+      <LessonRail :blocks="topic.data.value.blocks" :state="(b) => (b.status === 'held' ? 'held' : 'open')" />
       <div class="stack learn-main">
-        <Section id="topic" :title="topic.data.value.title" :help="t('previewTopic.help')" />
+        <Section id="topic" :title="topic.data.value.title" :help="topic.data.value.kind === 'module_test' ? t('learnTopic.testHelp') : t('learnTopic.lessonHelp')" />
         <ul v-if="topic.data.value.objectives.length > 0" class="hint" data-testid="objectives"><li v-for="o in topic.data.value.objectives" :key="o">{{ o }}</li></ul>
         <FormField id="pt-lang" :label="t('preview.language')" :help="t('preview.languageHint')">
           <Select v-model="language" input-id="pt-lang" :options="COURSE_LANGUAGES.map((code) => ({ code, label: t(`language.${code}`) }))" option-label="label" option-value="code" data-testid="preview-language" />

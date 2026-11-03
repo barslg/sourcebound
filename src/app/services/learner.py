@@ -466,14 +466,15 @@ async def citation_rows(session: AsyncSession, version_id: str) -> list[dict[str
 
 
 def chip(handle: str, row: dict[str, Any], locale: str) -> dict[str, str]:
-    """One citation chip: handle, source title, address label, passage id."""
-    from app.i18n.citations import format_citation_address
+    """One citation chip: handle, reader-facing title, full and short address, passage id."""
+    from app.i18n.citations import display_title, format_citation_address, format_citation_short
 
     address = {**row["address"], "address_key": row["address_key"]}
     return {
         "handle": handle,
-        "source_title": row["title"],
+        "source_title": display_title(str(row["title"]), address),
         "address_label": format_citation_address(address, locale),
+        "address_short": format_citation_short(address, locale),
         "passage_id": row["passage_id"],
     }
 
@@ -679,6 +680,7 @@ async def _topic(
         "next_note": note if note and not is_last else "",
         "id": topic["id"],
         "course_id": course["id"],
+        "course_title": str(course.get("title", "")),
         "module_id": topic["module_id"],
         "kind": topic["kind"],
         "title": topic["title"],
@@ -745,7 +747,7 @@ def _passage_entry(row: Any, language: str) -> dict[str, Any]:
         "id": str(row[0]),
         "text": str(row[1]),
         "address_label": label["address_label"],
-        "source_title": str(row[4]),
+        "source_title": label["source_title"],
         "as_of": row[5].isoformat() if row[5] else None,
         "course_id": str(row[6]),
     }

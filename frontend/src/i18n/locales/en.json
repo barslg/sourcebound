@@ -777,14 +777,6 @@
     "takeaways": "Takeaways",
     "nextLesson": "Next lesson",
     "lastLesson": "That was the last lesson of the course.",
-    "tools": "Study tools",
-    "toolSimpler": "Explain simpler",
-    "toolField": "Example from my field",
-    "toolCheck": "Check me",
-    "toolTerms": "Terms",
-    "toolSoon": "Not available yet: the course has no prepared variants of this text.",
-    "outlineDone": "done",
-    "outlineOpen": "not tried yet",
     "title": "My learning",
     "help": "The courses you are enrolled in, with your progress.",
     "empty": "You are not enrolled in a published course yet. Ask your teacher for an invite link.",
@@ -872,6 +864,11 @@
       "ask": "Ask the course",
       "needQuestion": "Type a question first.",
       "notInMaterials": "This is not in the course materials."
+    },
+    "railState": {
+      "done": "done",
+      "open": "not tried yet",
+      "held": "held for a fix"
     }
   },
   "runs": {

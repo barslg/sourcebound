@@ -819,6 +819,27 @@ def _web_records_to_passages(records: list[dict[str, str]]) -> list[dict[str, An
     return rejoin_list_passages(passages)
 
 
+_HTML_TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
+_HTML_H1_RE = re.compile(r"<h1[^>]*>(.*?)</h1>", re.IGNORECASE | re.DOTALL)
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def page_title(page: FetchedPage) -> str:
+    """The page's own title (<title>, else the first <h1>, else the first markdown heading)."""
+    import html as html_lib
+
+    if _is_html(page.content_type, page.text):
+        for pattern in (_HTML_TITLE_RE, _HTML_H1_RE):
+            match = pattern.search(page.text)
+            if match:
+                text = " ".join(html_lib.unescape(_TAG_RE.sub(" ", match.group(1))).split())
+                if text:
+                    return text[:200]
+        return ""
+    heading = re.search(r"^#{1,6}\s+(.+)$", page.text, re.MULTILINE)
+    return " ".join(heading.group(1).split())[:200] if heading else ""
+
+
 async def fetch_url(url: str, *, settings: Settings, client: Any | None = None) -> FetchedPage:
     """Fetch one URL via the web provider (guarded, no redirects).
 
@@ -909,7 +930,16 @@ async def intake_url(
             {"digest": digest},
         )
     ).first()
+    title = page_title(page) or url
     if existing is not None:
+        # a re-crawl of an unchanged page repairs a title that was only its URL
+        await session.execute(
+            sa.text(
+                "UPDATE sources SET title = :title WHERE id = :id AND kind = 'url'"
+                " AND (title = '' OR title LIKE 'http://%' OR title LIKE 'https://%')"
+            ),
+            {"id": str(existing[0]), "title": title},
+        )
         if course_id is not None:
             await bind_source_to_course(
                 session, course_id=course_id, source_id=UUID(str(existing[0]))
@@ -924,7 +954,7 @@ async def intake_url(
                 " VALUES (:digest, 'url', 'text', :title, '', 'pending', '',"
                 " 'ready') RETURNING id"
             ),
-            {"digest": digest, "title": url},
+            {"digest": digest, "title": title},
         )
     ).one()
     source_id = UUID(str(row[0]))
@@ -1042,7 +1072,7 @@ async def approve_candidate(
             ),
             {
                 "digest": digest,
-                "title": title or url,
+                "title": title or page_title(page) or url,
                 "actor": str(approved_by) if approved_by else None,
             },
         )

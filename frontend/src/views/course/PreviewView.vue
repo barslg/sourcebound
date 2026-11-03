@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import Select from 'primevue/select'
 import { computed } from 'vue'
+import { CircleCheck, TriangleAlert } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { request } from '@/api/client'
 import { coursePreview } from '@/api/endpoints'
 import type { LearnOutline, LearnTopicRef } from '@/api/types'
 import FormField from '@/components/FormField.vue'
+import SyllabusRow from '@/components/learner/SyllabusRow.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ResourceState from '@/components/ResourceState.vue'
 import StatusChip from '@/components/StatusChip.vue'
@@ -38,14 +40,10 @@ const topicLink = (topic: LearnTopicRef): string => `/preview/topics/${topic.id}
           <h3>{{ m.title }}</h3>
           <p v-if="m.purpose" class="hint module-purpose">{{ m.purpose }}</p>
           <ul class="plain-list syllabus">
-            <li v-for="x in m.topics" :key="x.id" class="syllabus-row" data-testid="topic-row">
-              <span>
-                <router-link :to="topicLink(x)" data-testid="topic-open"><strong>{{ x.title }}</strong></router-link>
-                <span v-if="x.kind === 'module_test'" class="muted"> · {{ t('learnCourse.moduleTest') }}</span>
-              </span>
-              <StatusChip v-if="(x.held ?? 0) > 0" tone="warn" :label="t('preview.heldChip', x.held ?? 0)" data-testid="preview-held" />
-              <span class="muted">{{ t('preview.blocks', x.progress.blocks_total) }}</span>
-            </li>
+            <SyllabusRow v-for="x in m.topics" :key="x.id" :to="topicLink(x)" :title="x.title" :module-test="x.kind === 'module_test'" :icon="(x.held ?? 0) > 0 ? TriangleAlert : CircleCheck" :icon-class="(x.held ?? 0) > 0 ? 'tick-held' : 'muted'">
+              <template v-if="(x.held ?? 0) > 0" #status><StatusChip tone="warn" :label="t('preview.heldChip', x.held ?? 0)" data-testid="preview-held" /></template>
+              <template #end><span class="muted">{{ t('preview.blocks', x.progress.blocks_total) }}</span></template>
+            </SyllabusRow>
           </ul>
         </section>
       </div>

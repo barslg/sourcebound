@@ -34,3 +34,25 @@ def format_citation_address(address: dict[str, Any], locale: str) -> str:
     if kind == "figure":
         return f"{_FIGURE[lang]} {address.get('figure', '?')}"
     return str(address.get("address_key", "?"))
+
+
+def format_citation_short(address: dict[str, Any], locale: str) -> str:
+    """The chip-sized address: the last heading only; other kinds as the full one."""
+    kind = str(address.get("kind", ""))
+    if kind not in ("md", "web"):
+        return format_citation_address(address, locale)
+    path = str(address.get("heading_path") or address.get("anchor") or "?")
+    last = path.rsplit(">", 1)[-1].strip() or path
+    para = address.get("para")
+    if para is None:
+        return last
+    return f"{last}, {_PARA[_locale(locale)]} {para}"
+
+
+def display_title(title: str, address: dict[str, Any]) -> str:
+    """The source title a reader sees: a URL title becomes the page's first heading."""
+    if not title.lower().startswith(("http://", "https://")):
+        return title
+    path = str(address.get("heading_path") or "")
+    first = path.split(">", 1)[0].strip()
+    return first or title

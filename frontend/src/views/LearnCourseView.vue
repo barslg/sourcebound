@@ -9,6 +9,7 @@ import { learnCourse, learnCourses } from '@/api/endpoints'
 import type { LearnCourse, LearnOutline, LearnTopicRef } from '@/api/types'
 import ActionButton from '@/components/ActionButton.vue'
 import FormField from '@/components/FormField.vue'
+import SyllabusRow from '@/components/learner/SyllabusRow.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ResourceState from '@/components/ResourceState.vue'
 import StatusChip from '@/components/StatusChip.vue'
@@ -82,15 +83,10 @@ function open(): void { if (resume.value) void router.push(topicLink(resume.valu
         <h3>{{ m.title }}</h3>
         <p v-if="m.purpose" class="hint module-purpose">{{ m.purpose }}</p>
         <ul class="plain-list syllabus">
-          <li v-for="x in m.topics" :key="x.id" class="syllabus-row" data-testid="topic-row">
-            <component :is="stateIcon(x.progress.status)" :size="20" :stroke-width="2" aria-hidden="true" :class="{ muted: x.progress.status === 'not_started' }" />
-            <span>
-              <router-link :to="topicLink(x)" data-testid="topic-open"><strong>{{ x.title }}</strong></router-link>
-              <span v-if="x.kind === 'module_test'" class="muted"> · {{ t('learnCourse.moduleTest') }}</span>
-            </span>
-            <StatusChip :tone="tone(x.progress.status)" :label="t(`learn.status.${x.progress.status}`)" data-testid="topic-status" />
-            <span class="muted">{{ t('learn.progress', { done: x.progress.blocks_attempted, total: x.progress.blocks_total }) }}</span>
-          </li>
+          <SyllabusRow v-for="x in m.topics" :key="x.id" :to="topicLink(x)" :title="x.title" :module-test="x.kind === 'module_test'" :icon="stateIcon(x.progress.status)" :icon-class="x.progress.status === 'not_started' ? 'muted' : ''">
+            <template #status><StatusChip :tone="tone(x.progress.status)" :label="t(`learn.status.${x.progress.status}`)" data-testid="topic-status" /></template>
+            <template #end><span class="muted">{{ t('learn.progress', { done: x.progress.blocks_attempted, total: x.progress.blocks_total }) }}</span></template>
+          </SyllabusRow>
         </ul>
       </section>
     </div>
