@@ -62,6 +62,11 @@ Rules:
 - `handoff`: two or three sentences for the next topic's writer: what
   the learner now knows, the terms as you named them, and the state of
   the case after this topic.
+- Never narrate how the text was made: no "the passage says", "the
+  sources", "the brief", "as given". The learner reads about the
+  subject, with the citation chips beside it.
+- Code you show runs as shown: names defined before use, and a `>>>`
+  transcript prints exactly what the interpreter prints.
 - Begin with the substance (the definition, the rule, a concrete case),
   not a scene-setting introduction. Length follows the passages: no
   padding, no preview of later topics, no closing summary, no quiz or
