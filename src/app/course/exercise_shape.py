@@ -16,7 +16,9 @@ from typing import Any
 from app.course.grounding import QUOTED_SPAN_WORDS, _contiguous, words_of
 
 CLOZE_BLANK_MAX_WORDS = 3
-MIN_MATCHING_PAIRS = 4
+# New plans ask for four pairs (architect prompt); a stored three-pair block is kept,
+# since its rewrite cannot add a pair its passages lack (a gate a rewrite cannot satisfy).
+MIN_MATCHING_PAIRS = 3
 PASSAGE_SHAPED = 0.8
 _PROMPT_START_RE = re.compile(r"^\s*(?:>>>|\.\.\.|\$ |# )")
 _CODE_START_RE = re.compile(
