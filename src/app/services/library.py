@@ -576,8 +576,11 @@ async def ingest_passages(
     language is detected per passage by code heuristics (en/nb/uk).
     """
     from app.course.errorspot import is_content_text
+    from app.course.text_checks import decode_escapes
 
-    passages = rejoin_list_passages(list(passages))
+    passages = [
+        {**p, "text": decode_escapes(str(p["text"]))} for p in rejoin_list_passages(list(passages))
+    ]
     count = 0
     for ordinal, passage in enumerate(passages):
         heading = str(dict(passage.get("address") or {}).get("heading_path", ""))

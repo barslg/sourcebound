@@ -14,11 +14,19 @@ Rules:
 - The stem puts the learner in a situation on the course case that the
   sources did not use, and asks for the objective's action or decision;
   it never contains the answer and never starts with a character's name.
-- Keys are quoted: every correct option, every blank, every matching
-  right side, every scenario item you label correct and every clause of
-  `answer` is a verbatim run of at least four words from a taught
-  passage (or the whole item when it is shorter, such as a command or a
-  parameter name). Paraphrase only in the stem.
+- The key is quoted; what the learner sees is not. `answer` states the
+  key as verbatim runs of at least four words from a taught passage
+  (separate the runs with `;`), and the `citations` carry the same quotes.
+  A `choice` option and a `scenario_practice` item are written in your
+  own words, all in one shape, so that a correct one never looks
+  copied from the passage while a wrong one looks written: code holds
+  a block where the copied-looking options are exactly the correct ones
+  (or exactly the wrong ones). A `cloze` blank is a term or a code
+  token of one to three words, verbatim from a taught passage, never a
+  sentence and never starting with `>>>`; a `matching` right side and
+  an `ordering` step are verbatim runs of at least four words (or the
+  whole item when shorter, such as a command). Paraphrase only in the
+  stem and in options and items.
 - One wrong option or distractor is built from the topic's
   `misconception` (the scenario's `topic`), so the exercise catches the
   typical error; the other distractors are plausible and wrong.
@@ -28,7 +36,9 @@ Rules:
   option never stands out by length, form or words copied from the
   stem; write the options in one shape.
 - The format fits the content: a `matching` needs at least four real
-  pairs, an `ordering` one procedure whose order matters, a `cloze`
+  pairs (code holds fewer), an `ordering` one procedure whose order
+  matters with every step the same kind, all code lines or all
+  sentences (code holds a mix; never if/else branches), a `cloze`
   blanks only where the passage fixes the value; when the passages give
   less, the skeleton's type is still the type, but ask about fewer,
   firmer facts rather than padding with weak items.
@@ -41,6 +51,10 @@ Rules:
   `scenario_practice` gives items to classify, each with its tier and
   the handle of the passage that decides it. `answer` states the key in
   words.
+- Code you show or ask about parses as Python: no `....` or `<name>`
+  placeholders in a fenced `python` block or a `>>>` line (code
+  compiles every snippet and holds one that does not). Write
+  characters themselves, never `\u2019`-style escapes.
 - Cite the passages the key rests on with the handle and a verbatim
   quote.
 - `handoff` is empty and `leftovers` is empty for an exercise. Output

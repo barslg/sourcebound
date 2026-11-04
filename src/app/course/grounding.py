@@ -388,16 +388,21 @@ _CLAUSE_SPLIT_RE = re.compile(r"\s*(?:;|—|–| - |\.\s+|\n)\s*")
 def answer_key_claims(output: dict[str, Any], block_type: str = "") -> list[str]:
     """The claims an exercise's key asserts.
 
-    Choice: the correct options. Cloze: the blanks. Matching: the right
-    sides. Ordering: every step. Scenario practice: the items labelled correct and every
-    clause of the free `answer` (that is where its key lives). Never a
+    Choice and scenario practice: the clauses of the free `answer` (the
+    quote the key rests on); their options and items are the writer's own
+    words, so a learner cannot tell the key by its shape. Only an exercise
+    with no `answer` falls back to its correct options or items. Cloze:
+    the blanks. Matching: the right sides. Ordering: every step. Never a
     distractor (the exercise's own invention), a question item or a
     label: those assert nothing about the sources.
     """
     claims: list[str] = []
-    for option in output.get("options", []) if isinstance(output.get("options"), list) else []:
-        if isinstance(option, dict) and option.get("correct"):
-            claims.append(str(option.get("text", "")))
+    answer_clauses = [c for c in _CLAUSE_SPLIT_RE.split(str(output.get("answer", ""))) if c.strip()]
+    quoted_answer = block_type in ("choice", "scenario_practice") and bool(answer_clauses)
+    if not quoted_answer:
+        for option in output.get("options", []) if isinstance(output.get("options"), list) else []:
+            if isinstance(option, dict) and option.get("correct"):
+                claims.append(str(option.get("text", "")))
     for blank in output.get("blanks", []) if isinstance(output.get("blanks"), list) else []:
         claims.append(str(blank))
     for pair in output.get("pairs", []) if isinstance(output.get("pairs"), list) else []:
@@ -405,11 +410,12 @@ def answer_key_claims(output: dict[str, Any], block_type: str = "") -> list[str]
             claims.append(str(pair.get("right", "")))
     for step in output.get("steps", []) if isinstance(output.get("steps"), list) else []:
         claims.append(str(step))
-    if block_type == "scenario_practice":
+    if block_type == "scenario_practice" and not quoted_answer:
         for item in output.get("items", []) if isinstance(output.get("items"), list) else []:
             if isinstance(item, dict) and str(item.get("tier", "")).lower() in _CORRECT_TIERS:
                 claims.append(str(item.get("text", "")))
-        claims += _CLAUSE_SPLIT_RE.split(str(output.get("answer", "")))
+    if quoted_answer:
+        claims += answer_clauses
     return [claim.strip() for claim in claims if claim.strip()]
 
 

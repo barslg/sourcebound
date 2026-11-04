@@ -2205,6 +2205,13 @@ async def generate_block_step(
         # Fix list) up to CODE_REASKS times; only what passes code reaches
         # the reader, who judges meaning, never a line code already knew.
         async def judge(output: dict[str, Any]) -> _CodeVerdict:
+            from app.course.text_checks import decode_escapes_in, narration_holds, python_code_holds
+
+            # a literal \\uXXXX in the prose is repaired, never a reason to ask again
+            output = {
+                **decode_escapes_in({k: v for k, v in output.items() if k != "citations"}),
+                "citations": output.get("citations", []),
+            }
             text = str(output.get("text", ""))
             stored = {
                 **await _stored_passage_texts(
@@ -2267,6 +2274,10 @@ async def generate_block_step(
                     cited=[str(c.get("passage_id", "")) for c in output.get("citations", [])],
                     leftovers=[x for x in output.get("leftovers", []) if isinstance(x, dict)],
                 )
+            if is_reading and block_type not in ("figure", "diagram"):
+                holds += narration_holds(text)
+            if block_type != "cloze":
+                holds += python_code_holds(text)
             if block_type == "figure":
                 from app.course.grounding import passage_kind
 
@@ -2274,6 +2285,7 @@ async def generate_block_step(
                 if cited_kinds and cited_kinds <= {"prose"}:
                     holds.append("figure: cited passage has no numbers or structure to draw")
             if is_question and block_type != "spot_the_error":
+                from app.course.exercise_shape import exercise_holds
                 from app.course.grounding import taught_holds
 
                 if taught_pids:
@@ -2293,6 +2305,7 @@ async def generate_block_step(
                 else:
                     taught_texts = [stored.get(pid, "") for pid in citation_pids]
                 holds += taught_holds(output, taught_texts, block_type)
+                holds += exercise_holds(output, block_type, taught_texts)
             holds += check_language(text, course_language=str(entry.get("course_language", "en")))
             content, key, type_errors = _typed_content(
                 output, block_type=block_type, citations=resolved_citations

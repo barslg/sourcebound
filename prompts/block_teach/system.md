@@ -66,7 +66,9 @@ Rules:
   sources", "the brief", "as given". The learner reads about the
   subject, with the citation chips beside it.
 - Code you show runs as shown: names defined before use, and a `>>>`
-  transcript prints exactly what the interpreter prints.
+  transcript prints exactly what the interpreter prints. A fenced `python` block or a `>>>` line parses as Python
+  (code compiles it): no `....` or `<name>` placeholders. Write characters
+  themselves, never `\u2019`-style escapes.
 - Begin with the substance (the definition, the rule, a concrete case),
   not a scene-setting introduction. Length follows the passages: no
   padding, no preview of later topics, no closing summary, no quiz or

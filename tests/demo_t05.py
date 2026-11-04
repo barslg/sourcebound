@@ -318,7 +318,7 @@ def mock_demo_handler() -> Any:
                 for key in ("body", "stem", "text", "scenario", "caption"):
                     if isinstance(content.get(key), str) and content[key].strip():
                         return str(content[key])[:30]
-                return str(block.get("text", ""))[:30] or "Staff apply the cited passage"
+                return str(block.get("text", ""))[:30] or "Staff apply the cited rule"
 
             reply = {
                 "verdicts": [
@@ -357,11 +357,14 @@ def mock_demo_handler() -> Any:
             quote = str(first["text"])[:40]
             reply = {
                 "block_type": wanted_type,
-                "text": "Staff apply the cited passage at work.",
+                "text": "Staff apply the cited rule at work.",
                 "citations": [{"passage_id": str(first.get("handle", "P1")), "quote": quote}],
                 # keys are quoted from the passage: the taught check asks provenance
                 "answer": quote,
-                "options": [{"text": quote, "correct": True}, {"text": "No", "correct": False}],
+                "options": [
+                    {"text": "Staff must follow the cited rule", "correct": True},
+                    {"text": "No", "correct": False},
+                ],
                 "pairs": [{"left": "a", "right": quote}],
                 "numbers": [15, 35],
                 "blanks": [quote.split()[0]],

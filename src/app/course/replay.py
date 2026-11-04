@@ -19,6 +19,13 @@ CODE_HOLD_PREFIXES = (
     "false adjacency: ",
     "not taught: the key claim ",
     "figure: cited passage has no numbers",
+    "cloze: ",
+    "matching: ",
+    "ordering: ",
+    "giveaway: ",
+    "narration: ",
+    "code: ",
+    "escape: ",
 )
 
 
@@ -96,6 +103,8 @@ def replay_blocks(
 ) -> list[dict[str, Any]]:
     """Run every code check over the stored blocks; one row per generated block."""
     from app.course import grounding
+    from app.course.exercise_shape import exercise_holds
+    from app.course.text_checks import escape_holds, narration_holds, python_code_holds
 
     by_id: dict[str, dict[str, Any]] = {}
     handle_of: dict[str, str] = {}
@@ -135,6 +144,14 @@ def replay_blocks(
                 text,
                 [{"handle": handle_of.get(pid, "?"), "quote": quote} for pid, quote in citations],
             )
+        if block["role"] in ("teach", "example") and block["block_type"] not in (
+            "figure",
+            "diagram",
+        ):
+            holds += narration_holds(text)
+        if block["block_type"] != "cloze":
+            holds += python_code_holds(text)
+        holds += escape_holds(text)
         if block["block_type"] == "figure":
             kinds = {
                 grounding.passage_kind(by_id.get(pid, {}).get("text", "")) for pid in cited_pids
@@ -156,6 +173,7 @@ def replay_blocks(
             holds += grounding.taught_holds(
                 generator_output(block), taught_texts, block["block_type"]
             )
+            holds += exercise_holds(generator_output(block), block["block_type"], taught_texts)
         for pid, quote in citations:
             if (
                 quote

@@ -25,7 +25,9 @@ Rules:
   call whose result you state is shown, and an interactive transcript
   (`>>>` lines) shows exactly what the interpreter prints for those
   lines in that order. A number the text attaches to the code is the
-  number the code computes.
+  number the code computes. A fenced `python` block or a `>>>` line
+  parses as Python (code compiles it): no `....` or `<name>`
+  placeholders. Write characters themselves, never `\u2019`-style escapes.
 - Cite the passages the action draws on with the handle and a verbatim
   quote; put the marker ⟦P<n>⟧ at the start of the first sentence drawn
   from a new passage, inside the paragraph.
