@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { ChevronDown, ChevronRight } from 'lucide-vue-next'
 import InputText from 'primevue/inputtext'
 import { ApiError, request } from '@/api/client'
-import { courseItem, coursePlan, coursePlanSubmit, courseProfile, courseRuns, courseSources } from '@/api/endpoints'
-import type { CourseDoc, RunListItem, SourceRow } from '@/api/types'
+import { courseBuild, courseItem, coursePlan, coursePlanSubmit, courseProfile, courseRuns, courseSources } from '@/api/endpoints'
+import type { BuildReply, CourseDoc, RunListItem, SourceRow } from '@/api/types'
 import CourseHeader from '@/components/CourseHeader.vue'
 import ActionButton from '@/components/ActionButton.vue'
 import AppDialog from '@/components/AppDialog.vue'
@@ -176,6 +176,18 @@ const methodologies = ref<string[]>([])
 const queriesText = ref('')
 const building = ref(false)
 const buildError = ref<string | null>(null)
+const cap = ref('15')
+const buildingWhole = ref(false)
+const wholeQueued = ref(false)
+const buildRes = useResource<BuildReply>(`build:${courseId.value}`, (signal) => request<BuildReply>(courseBuild(courseId.value), { signal }))
+const buildLive = computed(() => wholeQueued.value || buildRes.data.value?.build?.state === 'building')
+/** While a build runs the plan appears under this page: reload what it shows every few seconds. */
+let follow: ReturnType<typeof setInterval> | null = null
+watch(buildLive, (live) => {
+  if (follow) { clearInterval(follow); follow = null }
+  if (live) follow = setInterval(() => { void Promise.all([buildRes.reload(true), plan.reload(true), courseRes.reload(true)]).then(() => { if (buildRes.data.value?.build?.state !== 'building') wholeQueued.value = false }) }, 4000)
+}, { immediate: true })
+onScopeDispose(() => { if (follow) clearInterval(follow) })
 const rebuildOpen = ref(false)
 const runs = useResource<RunListItem[]>(`runs:${courseId.value}`, (signal) => request<RunListItem[]>(courseRuns(courseId.value), { signal }))
 const latestPlanRun = computed(() => (runs.data.value ?? []).find((r) => r.kind === 'plan') ?? null)
@@ -192,6 +204,23 @@ async function buildPlan(): Promise<void> {
     buildError.value = cause instanceof ApiError ? cause.message : String(cause)
   } finally {
     building.value = false
+  }
+}
+
+/** One click for the whole course: the profile the form holds, then the autopilot under the cap. */
+async function buildCourse(): Promise<void> {
+  buildingWhole.value = true
+  buildError.value = null
+  try {
+    await request(courseProfile(courseId.value), { method: 'POST', body: { methodology_codes: methodologies.value, bloom_level: 'understand', audience: courseRes.data.value?.profile?.audience ?? '' } })
+    await request<{ operation_id: string }>(courseBuild(courseId.value), { method: 'POST', body: { queries: queriesText.value.split('\n').map((q) => q.trim()).filter(Boolean), cap_usd: cap.value.trim(), continue: false, idempotency_key: crypto.randomUUID() } })
+    wholeQueued.value = true
+    dropCached(`build:${courseId.value}`)
+    await header.value?.reload()
+  } catch (cause) {
+    buildError.value = cause instanceof ApiError ? cause.message : String(cause)
+  } finally {
+    buildingWhole.value = false
   }
 }
 
@@ -255,7 +284,7 @@ watch(() => route.hash, (hash) => {
       <ResourceState :loading="plan.loading.value" :error="plan.error.value" :empty="isEmpty" :empty-text="t('plan.buildCard')" @retry="plan.reload()">
         <template #empty-actions>
           <p v-if="latestPlanRun?.status === 'stopped'" class="mono danger-text" role="alert" data-testid="plan-stopped">{{ latestPlanRun.stop_marker ?? t('plan.buildStopped') }}</p>
-          <PlanBuildForm v-model:methodologies="methodologies" v-model:queries-text="queriesText" :course-id="courseId" form-id="build-plan" field-prefix="b" choice-prefix="m" card-testid="build-card" submit-testid="plan-build" :submit-label="latestPlanRun?.status === 'stopped' ? t('plan.buildAgain') : t('plan.buildButton')" :building="building" :build-error="buildError" :no-sources="noSources" :op-queued="planQueue.queued.value" @submit="buildPlan" />
+          <PlanBuildForm v-model:methodologies="methodologies" v-model:queries-text="queriesText" v-model:cap="cap" :course-id="courseId" form-id="build-plan" field-prefix="b" choice-prefix="m" card-testid="build-card" submit-testid="plan-build" :submit-label="latestPlanRun?.status === 'stopped' ? t('plan.buildAgain') : t('plan.buildButton')" :building="building" :build-error="buildError" :no-sources="noSources" :op-queued="planQueue.queued.value || buildLive" :no-key="noKey" :building-whole="buildingWhole" @submit="buildPlan" @build="buildCourse" />
         </template>
 
         <section v-if="latestPlanRun?.status === 'stopped'" class="stack" data-testid="plan-stopped">
@@ -264,7 +293,7 @@ watch(() => route.hash, (hash) => {
           <div>
             <ActionButton action="build-plan" :label="t('plan.buildAgain')" :reason="firstReason(noKey, lacking('course.plan'))" data-testid="plan-rebuild" @click="rebuildOpen = true" />
           </div>
-          <PlanBuildForm v-if="rebuildOpen" v-model:methodologies="methodologies" v-model:queries-text="queriesText" :course-id="courseId" form-id="rebuild-plan" field-prefix="rb" choice-prefix="rb-m" card-testid="rebuild-card" submit-testid="plan-rebuild-submit" :submit-label="t('plan.buildAgain')" :building="building" :build-error="buildError" :no-sources="noSources" :op-queued="planQueue.queued.value" @submit="buildPlan" />
+          <PlanBuildForm v-if="rebuildOpen" v-model:methodologies="methodologies" v-model:queries-text="queriesText" v-model:cap="cap" :course-id="courseId" form-id="rebuild-plan" field-prefix="rb" choice-prefix="rb-m" card-testid="rebuild-card" submit-testid="plan-rebuild-submit" :submit-label="t('plan.buildAgain')" :building="building" :build-error="buildError" :no-sources="noSources" :op-queued="planQueue.queued.value || buildLive" :no-key="noKey" :building-whole="buildingWhole" @submit="buildPlan" @build="buildCourse" />
         </section>
 
         <section class="stack" :aria-label="t('plan.outline')">

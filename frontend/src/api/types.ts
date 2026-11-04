@@ -48,6 +48,26 @@ export interface Operation {
 export interface AcceptResult { scopes: string[] }
 export interface RunListItem { id: string; status: string; kind: string | null; created_at: string; stop_marker: string | null; cost_so_far: string }
 
+export type BuildState = 'building' | 'ready' | 'stopped'
+export interface BuildDoc {
+  operation_id: string
+  state: BuildState
+  stage: string
+  cap_usd: string
+  spent_usd: string
+  started_at: string
+  current_run_id: string | null
+  can_stop: boolean
+  events: string[]
+  assumed: Array<{ key: string; question: string | null; value: string }>
+  held_count: number
+  forecast: Estimate | null
+  error: string | null
+  stop_code: string | null
+  resumes: number
+}
+export interface BuildReply { build: BuildDoc | null }
+
 export interface CallTotals { tokens_input: number; tokens_cached: number; tokens_output: number; tokens_reasoning: number; cost_usd: string }
 export interface CallSummaryRow extends CallTotals { agent: string; model: string; display_name: string; calls: number }
 export interface CallRow extends CallTotals {

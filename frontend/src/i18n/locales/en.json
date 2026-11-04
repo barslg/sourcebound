@@ -113,7 +113,8 @@
       "submit_plan": "Writing the plan",
       "submit_generate": "Generating the course",
       "submit_translate": "Translating the course",
-      "resume_run": "Resuming the run"
+      "resume_run": "Resuming the run",
+      "build_course": "Building the whole course"
     },
     "statuses": {
       "queued": "Queued",
@@ -722,7 +723,9 @@
     "export": "Export CSV",
     "add-module": "Add module",
     "add-topic": "Add topic",
-    "details": "Show details"
+    "details": "Show details",
+    "build-course": "Build the whole course",
+    "continue-build": "Continue the build"
   },
   "form": {
     "required": "required",
@@ -1107,5 +1110,51 @@
       "tutor": "Tutor",
       "transcriber": "Transcriber"
     }
+  },
+  "build": {
+    "title": "Build the whole course",
+    "help": "One click: the plan, the writing and one rewrite of held blocks run by themselves, within the cap you set. Publishing stays your decision.",
+    "capLabel": "Spending cap (USD)",
+    "capHint": "The build stops by itself when it has spent this much. A stopped build continues where it left off.",
+    "capInvalid": "Enter a cap above zero",
+    "forecastLater": "The forecast appears once the plan is built.",
+    "forecast": "Forecast for the plan: {cost}. A forecast, not a limit; only the cap stops the build.",
+    "startRest": "Build the rest automatically",
+    "runGoing": "A run is already going",
+    "building": "Building the course",
+    "stage": {
+      "starting": "Starting",
+      "plan": "Planning",
+      "answers": "Assuming open questions",
+      "generate": "Writing and reading the blocks",
+      "rewrite": "Rewriting held blocks",
+      "ready": "Done"
+    },
+    "stageLine": "Stage: {stage}",
+    "spent": "Spent {spent} of the {cap} cap",
+    "latest": "Latest: {event}",
+    "runLink": "Open the current run",
+    "crashNote": "If the worker stops in the middle of a call, that one step may be paid twice.",
+    "stop": "Stop the build",
+    "stopTitle": "Stop the build?",
+    "stopBody": "The current run stops after the call in flight. Blocks already written are kept and you can continue later.",
+    "stopWait": "There is no run to stop right now; the next stage is starting.",
+    "stopped": "Build stopped",
+    "stoppedCap": "Build stopped: the spending cap was reached",
+    "stoppedWhy": "Why: {reason}",
+    "stoppedHelp": "Everything paid so far is kept. Continue picks up at the first unfinished step.",
+    "goSources": "Open the sources",
+    "goPlan": "Open the plan",
+    "ready": "The course is built",
+    "readyHeld": "{count} blocks are held for your review.",
+    "readyClean": "No block is held.",
+    "goFix": "Review held blocks",
+    "goPreview": "Preview the course",
+    "goPublish": "Publish the course",
+    "assumedTitle": "Questions assumed, not answered",
+    "assumedHelp": "The plan follows the sources and the profile as they stand. Answer on the plan page and rebuild to change it.",
+    "unknown": "Build status could not be loaded",
+    "confirmed": "Build queued.",
+    "stopRequested": "Stop requested."
   }
 }

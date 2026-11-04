@@ -113,7 +113,8 @@
       "submit_plan": "Skriver planen",
       "submit_generate": "Genererer kurset",
       "submit_translate": "Oversetter kurset",
-      "resume_run": "Gjenopptar kjøringen"
+      "resume_run": "Gjenopptar kjøringen",
+      "build_course": "Bygger hele kurset"
     },
     "statuses": {
       "queued": "I kø",
@@ -722,7 +723,9 @@
     "export": "Eksporter CSV",
     "add-module": "Legg til modul",
     "add-topic": "Legg til emne",
-    "details": "Vis detaljer"
+    "details": "Vis detaljer",
+    "build-course": "Bygg hele kurset",
+    "continue-build": "Fortsett byggingen"
   },
   "form": {
     "required": "påkrevd",
@@ -1107,5 +1110,51 @@
       "tutor": "Veileder",
       "transcriber": "Transkribering"
     }
+  },
+  "build": {
+    "title": "Bygg hele kurset",
+    "help": "Ett klikk: planen, skrivingen og én omskriving av holdte blokker går av seg selv, innenfor taket du setter. Publisering er fortsatt ditt valg.",
+    "capLabel": "Utgiftstak (USD)",
+    "capHint": "Byggingen stopper av seg selv når den har brukt så mye. En stoppet bygging fortsetter der den slapp.",
+    "capInvalid": "Skriv inn et tak over null",
+    "forecastLater": "Prognosen vises når planen er bygget.",
+    "forecast": "Prognose for planen: {cost}. En prognose, ikke en grense; bare taket stopper byggingen.",
+    "startRest": "Bygg resten automatisk",
+    "runGoing": "En kjøring pågår allerede",
+    "building": "Bygger kurset",
+    "stage": {
+      "starting": "Starter",
+      "plan": "Planlegger",
+      "answers": "Antar åpne spørsmål",
+      "generate": "Skriver og leser blokkene",
+      "rewrite": "Skriver om holdte blokker",
+      "ready": "Ferdig"
+    },
+    "stageLine": "Trinn: {stage}",
+    "spent": "Brukt {spent} av taket på {cap}",
+    "latest": "Sist: {event}",
+    "runLink": "Åpne den pågående kjøringen",
+    "crashNote": "Hvis arbeideren stopper midt i et kall, kan det trinnet bli betalt to ganger.",
+    "stop": "Stopp byggingen",
+    "stopTitle": "Stoppe byggingen?",
+    "stopBody": "Kjøringen stopper etter kallet som pågår. Blokker som er skrevet beholdes, og du kan fortsette senere.",
+    "stopWait": "Det er ingen kjøring å stoppe akkurat nå; neste trinn starter.",
+    "stopped": "Byggingen er stoppet",
+    "stoppedCap": "Byggingen er stoppet: utgiftstaket er nådd",
+    "stoppedWhy": "Årsak: {reason}",
+    "stoppedHelp": "Alt som er betalt beholdes. Fortsett tar opp det første uferdige trinnet.",
+    "goSources": "Åpne kildene",
+    "goPlan": "Åpne planen",
+    "ready": "Kurset er bygget",
+    "readyHeld": "{count} blokker holdes tilbake for din gjennomgang.",
+    "readyClean": "Ingen blokk holdes tilbake.",
+    "goFix": "Gå gjennom holdte blokker",
+    "goPreview": "Forhåndsvis kurset",
+    "goPublish": "Publiser kurset",
+    "assumedTitle": "Spørsmål som er antatt, ikke besvart",
+    "assumedHelp": "Planen følger kildene og profilen slik de er. Svar på plansiden og bygg på nytt for å endre den.",
+    "unknown": "Byggestatus kunne ikke lastes",
+    "confirmed": "Bygging i kø.",
+    "stopRequested": "Stopp forespurt."
   }
 }

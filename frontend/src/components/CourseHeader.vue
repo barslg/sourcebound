@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, watchEffect } from 'vue'
+import { computed, onBeforeUnmount, ref, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { request } from '@/api/client'
 import { courseHeld, courseItem, coursePlan, coursePlanValidate, courseRuns, courseSources } from '@/api/endpoints'
 import type { CourseDoc, HeldDoc, RunListItem, SourceRow, Validation } from '@/api/types'
 import ActionButton from '@/components/ActionButton.vue'
+import BuildPanel from '@/components/BuildPanel.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import StatusChip from '@/components/StatusChip.vue'
 import ResourceState from '@/components/ResourceState.vue'
@@ -31,6 +32,9 @@ const sources = useResource<SourceRow[]>(`sources:${id}`, (signal) => request<So
 const held = useResource<HeldDoc>(`held:${id}`, (signal) => request<HeldDoc>(courseHeld(id), { signal }))
 const plan = useResource<PlanTree>(`plan:${id}`, (signal) => request<PlanTree>(coursePlan(id), { signal }))
 const runs = useResource<RunListItem[]>(`runs:${id}`, (signal) => request<RunListItem[]>(courseRuns(id), { signal }))
+
+const buildPanel = ref<InstanceType<typeof BuildPanel> | null>(null)
+const runGoing = computed(() => (runs.data.value ?? []).some((r) => r.status === 'running' || r.status === 'queued'))
 
 const facts = computed(() => {
   const c = course.data.value
@@ -63,7 +67,7 @@ const context = useCourseContext()
 watchEffect(() => { if (course.data.value) context.set(id, course.data.value.title, strip.value) })
 onBeforeUnmount(() => context.clear())
 async function reload(): Promise<void> {
-  await Promise.all([course.reload(true), validation.reload(true), sources.reload(true), held.reload(true), plan.reload(true), runs.reload(true)])
+  await Promise.all([course.reload(true), validation.reload(true), sources.reload(true), held.reload(true), plan.reload(true), runs.reload(true), buildPanel.value?.reload()])
 }
 defineExpose({ reload })
 </script>
@@ -94,6 +98,7 @@ defineExpose({ reload })
           </router-link>
         </li>
       </ol>
+      <BuildPanel v-if="course.data.value" ref="buildPanel" :course-id="id" :draft-count="course.data.value.draft_count" :block-count="course.data.value.block_count" :run-going="runGoing" @changed="reload" />
       <div v-if="action" class="next-action" data-testid="needs-now">
         <span class="muted">{{ t('course.needsNowLabel') }}</span>
         <router-link v-if="action.to" :to="action.to" data-testid="needs-link"><strong>{{ t(action.key, action.params ?? {}) }}</strong></router-link>

@@ -1,6 +1,6 @@
 import type { Component } from 'vue'
 import {
-  ArchiveX, ArrowDown, ArrowRight, ChevronRight, ClipboardCheck, Download, FileCheck, MessageCircleQuestion, RotateCcw, ArrowUp, Ban, Bell, CircleCheck, CircleX, CloudDownload, CloudUpload, Copy, Ellipsis, Eye, EyeOff, FileUp, FileX, Globe, Keyboard, Languages,
+  ArchiveX, ArrowDown, FastForward, Hammer, ArrowRight, ChevronRight, ClipboardCheck, Download, FileCheck, MessageCircleQuestion, RotateCcw, ArrowUp, Ban, Bell, CircleCheck, CircleX, CloudDownload, CloudUpload, Copy, Ellipsis, Eye, EyeOff, FileUp, FileX, Globe, Keyboard, Languages,
   Link2Off, ListChecks, ListPlus, ListTree, LogIn, LogOut, Pencil, PencilLine, Play, Plus, RefreshCcwDot, RefreshCw, RotateCw, Save, Search, Send, ShieldCheck, SquarePlus,
   Sparkles, Square, SunMoon, TextCursorInput, Trash2, Upload, UserCheck, UserPlus, X,
 } from 'lucide-vue-next'
@@ -22,6 +22,8 @@ export const ACTION_ICONS: Record<ActionId, Component> = {
   'add-address': Globe,
   generate: Sparkles,
   'build-plan': ListTree,
+  'build-course': Hammer,
+  'continue-build': FastForward,
   'add-module': ListPlus,
   'add-topic': SquarePlus,
   rewrite: RefreshCw,

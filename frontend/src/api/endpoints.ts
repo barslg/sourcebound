@@ -39,6 +39,7 @@ export const courseProfile = (id: string): string => `${courseItem(id)}/profile`
 export const coursePlan = (id: string): string => `${courseItem(id)}/plan`
 export const coursePlanValidate = (id: string): string => `${coursePlan(id)}/validate`
 export const coursePlanSubmit = (id: string): string => `${coursePlan(id)}/submit`
+export const courseBuild = (id: string): string => `${courseItem(id)}/build`
 export const courseGenerate = (id: string): string => `${courseItem(id)}/generate/submit`
 export const sourceApprove = (id: string): string => `${ENDPOINTS.sources}/${enc(id)}/approve`
 export const runItem = (id: string): string => `${API}/runs/${enc(id)}`

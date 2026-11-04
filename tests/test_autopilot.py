@@ -462,13 +462,15 @@ async def test_the_build_routes_are_owner_scoped_and_a_live_build_blocks_a_block
     await sync_catalogue(t03_session)
     await create_role(
         t03_session,
-        name="builder",
+        name=f"builder-{first.hex[:8]}",
         permission_codes=["course.edit", "run.start", "course.plan", "course.generate"],
         actor=None,
     )
     stranger = await make_user(t03_session, "stranger")
     for account in (user_id, stranger):
-        await assign_role(t03_session, account, "builder", scope_tags=[], actor=None)
+        await assign_role(
+            t03_session, account, f"builder-{first.hex[:8]}", scope_tags=[], actor=None
+        )
     nobody = await make_user(t03_session, "nobody")
     await t03_session.commit()
     owner = await cookie_for(t03_session, user_id)

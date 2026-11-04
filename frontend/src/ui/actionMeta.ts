@@ -34,6 +34,8 @@ export const ACTIONS = [
   a('add-address', 'primary', ['sources']),
   a('generate', 'primary', ['generate']),
   a('build-plan', 'primary', ['plan']),
+  a('build-course', 'primary', ['plan', 'course header']),
+  a('continue-build', 'primary', ['course header']),
   a('add-module', 'primary', ['plan']),
   a('add-topic', 'secondary', ['plan']),
   a('rewrite', 'secondary', ['fix']),
