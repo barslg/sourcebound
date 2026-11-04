@@ -104,6 +104,18 @@ class UnparseableReplyError(LLMError):
         self.reasoning_tokens = reasoning_tokens
 
 
+class SpendCapReached(AppError):
+    """A run reached its spend ceiling: no further paid call is made.
+
+    Deliberately not an LLMError: the rework loop turns an LLMError into a
+    held block, while a cap must stop the run and the build.
+    """
+
+    status_code = 402
+    error_code = "cap_reached"
+    plain_message = True
+
+
 class ConfigurationError(AppError):
     """The service is misconfigured (a missing key, a bad setting)."""
 
@@ -121,6 +133,7 @@ EXCEPTION_STATUS_TABLE: dict[type[Exception], int] = {
     UnsupportedMediaError: 415,
     RateLimitedError: 429,
     LLMError: 502,
+    SpendCapReached: 402,
     ConfigurationError: 500,
     AppError: 500,
 }

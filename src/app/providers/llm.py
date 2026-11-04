@@ -46,6 +46,7 @@ from app.errors import (
     ConfigurationError,
     ForbiddenError,
     LLMError,
+    SpendCapReached,
     UnparseableReplyError,
     ValidationError,
 )
@@ -99,6 +100,28 @@ class MetaProvider:
             else:
                 self._client = MetaClient(self._settings, self._http_client)
         return self._client
+
+    async def _guard_spend(self, run_id: UUID | None) -> None:
+        """Refuse a paid call when the run has spent its ceiling (NULL = no ceiling).
+
+        Read through the ledger session, so the sum sees every committed call;
+        the overshoot is at most the one call already in flight.
+        """
+        if run_id is None:
+            return
+        async with self._ledger_factory() as ledger:
+            row = (
+                await ledger.execute(
+                    sa.text(
+                        "SELECT r.spend_ceiling_usd,"
+                        " (SELECT COALESCE(SUM(l.cost_usd), 0) FROM llm_calls l"
+                        " WHERE l.run_id = r.id) FROM runs r WHERE r.id = :run"
+                    ),
+                    {"run": str(run_id)},
+                )
+            ).first()
+        if row is not None and row[0] is not None and row[1] >= row[0]:
+            raise SpendCapReached("The spending cap of this run was reached.")
 
     @staticmethod
     def instructions_for(agent: str) -> str | None:
@@ -231,6 +254,7 @@ class MetaProvider:
         started = time.monotonic()
         budget = resolved_tokens
         for ask in (1, 2):
+            await self._guard_spend(run_id)
             try:
                 answered = await self._get_client().respond_json(
                     model=resolved_model,
@@ -312,6 +336,7 @@ class MetaProvider:
         """
         resolved_model, resolved_effort, resolved_tokens = resolve_step(agent, None, None, None)
         resolved_model = serving_model(resolved_model, self._settings.model_provider)
+        await self._guard_spend(run_id)
         started = time.monotonic()
         answered = await self._get_client().search_web(
             model=resolved_model,
@@ -376,6 +401,7 @@ class MetaProvider:
             instructions=instructions,
             safety_identifier=safety_identifier,
         )
+        await self._guard_spend(run_id)
         response_id = await self._get_client().start_background(
             model=resolved_model,
             prompt=prompt,

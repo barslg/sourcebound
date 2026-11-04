@@ -840,8 +840,7 @@ def test_0026_adds_is_public_false_and_gives_roleless_accounts_the_tagless_stude
         assert default == ("false", "NO"), default
         conn.execute("DELETE FROM users WHERE email = 'm26@example.com'")
         user = conn.execute(
-            "INSERT INTO users (email, display_name) VALUES ('m26@example.com', 'm26')"
-            " RETURNING id"
+            "INSERT INTO users (email, display_name) VALUES ('m26@example.com', 'm26') RETURNING id"
         ).fetchone()[0]  # type: ignore[index]
     command.downgrade(_cfg(url), "0025")
     assert "is_public" not in _harness_tables(url)["courses"]
@@ -854,3 +853,22 @@ def test_0026_adds_is_public_false_and_gives_roleless_accounts_the_tagless_stude
         ).fetchall()
         assert grants == [("student", [])], grants
         conn.execute("DELETE FROM users WHERE id = %s", (user,))
+
+
+def test_0027_adds_nullable_run_spend_ceiling_and_downgrade_drops_only_it() -> None:
+    url = _db_url()
+    require_postgres(url)
+    command.upgrade(_cfg(url), "head")
+    sync = _sync_url(url)
+    with psycopg.connect(sync, autocommit=True) as conn:
+        column = conn.execute(
+            "SELECT data_type, numeric_precision, numeric_scale, is_nullable"
+            " FROM information_schema.columns"
+            " WHERE table_name = 'runs' AND column_name = 'spend_ceiling_usd'"
+        ).fetchone()
+    assert column == ("numeric", 12, 6, "YES"), column
+    command.downgrade(_cfg(url), "0026")
+    assert "spend_ceiling_usd" not in _harness_tables(url)["runs"]
+    assert "is_public" in _harness_tables(url)["courses"]
+    command.upgrade(_cfg(url), "head")
+    assert "spend_ceiling_usd" in _harness_tables(url)["runs"]

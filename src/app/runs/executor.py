@@ -22,9 +22,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.course.grounding import locate_verbatim
 from app.course.handles import address_sort_key, handle_map
-from app.errors import LLMError, ValidationError
+from app.errors import LLMError, UnparseableReplyError, ValidationError
 from app.llm.registry import resolve_step
-from app.runs.stop_text import EMPTY_PLAN, MODEL_DOWN, plain_marker, plain_step_error, plain_stop
+from app.runs.stop_text import (
+    CAP_REACHED,
+    EMPTY_PLAN,
+    MODEL_DOWN,
+    plain_marker,
+    plain_step_error,
+    plain_stop,
+)
 
 RUN_LOCK_PREFIX = "run:"
 MAX_WEB_SEARCHES_PER_QUERY = 3
@@ -2147,16 +2154,50 @@ async def generate_block_step(
     else:
         from app.llm.prompts import cache_key
 
-        output = await provider.generate_json(
-            agent=agent,
-            prompt=prompt,
-            schema=generate_block.schema_for(block_type),
-            cache_key=cache_key(agent, block_type, course_id),
-            run_id=run_id,
-            step_id=claim["step_id"],
-            variant=int(claim["attempt"]) - 1 + int(entry.get("variant_offset", 0)),
-            check=lambda reply: generate_block.check_block_output(reply, block_type),
-        )
+        # a first reply that fails the schema check or cannot be parsed is asked
+        # again under the next variant (up to CODE_REASKS times); a model that
+        # is down (LLMError) still stops the run, a cap (SpendCapReached) too
+        output = None
+        unusable: Exception | None = None
+        for first_ask in range(CODE_REASKS + 1):
+            try:
+                output = await provider.generate_json(
+                    agent=agent,
+                    prompt=prompt,
+                    schema=generate_block.schema_for(block_type),
+                    cache_key=cache_key(agent, block_type, course_id),
+                    run_id=run_id,
+                    step_id=claim["step_id"],
+                    variant=int(claim["attempt"])
+                    - 1
+                    + int(entry.get("variant_offset", 0))
+                    + first_ask,
+                    check=lambda reply: generate_block.check_block_output(reply, block_type),
+                )
+                break
+            except (ValidationError, UnparseableReplyError) as bad:
+                unusable = bad
+        if output is None:
+            if entry.get("rewrite") and unusable is not None:
+                raise unusable
+            reason = f"The writer returned no usable result after {CODE_REASKS + 1} tries."
+            await _persist_block(
+                session,
+                course_id=course_id,
+                node_id=node_id,
+                content={"text": "", "handoff": ""},
+                answer_key=None,
+                step_id=claim["step_id"],
+                status="held",
+                hold_reason=reason,
+            )
+            await finish_step(
+                session,
+                step_id=claim["step_id"],
+                output={"held": True, "hold_reason": reason, "error": str(unusable)[:500]},
+            )
+            await session.commit()
+            return
 
         # code verdicts before acceptance: verbatim citations, coverage,
         # adjacency, assignment, language, shape. A draft that fails one is
@@ -3168,7 +3209,11 @@ GENERATION_HANDLERS: dict[str, str] = {
 
 def _code_of_plain(marker: str | None) -> str | None:
     """Machine code for a marker already written as a plain sentence."""
-    return {EMPTY_PLAN: "empty_plan", MODEL_DOWN: "model_down"}.get(marker or "")
+    return {
+        EMPTY_PLAN: "empty_plan",
+        MODEL_DOWN: "model_down",
+        CAP_REACHED: "cap_reached",
+    }.get(marker or "")
 
 
 def generation_handlers() -> dict[str, Any]:

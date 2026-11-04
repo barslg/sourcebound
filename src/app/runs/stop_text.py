@@ -25,6 +25,7 @@ _SCHEMA_TRACE = re.compile(
 
 EMPTY_PLAN = "The planner returned no modules. Add sources with more content and try again."
 MODEL_DOWN = "The model service did not answer. Try again in a minute."
+CAP_REACHED = "The spending cap was reached. Raise the cap and continue the build."
 
 
 def _label(step_key: str) -> str:
@@ -32,7 +33,9 @@ def _label(step_key: str) -> str:
 
 
 def plain_stop(step_key: str, error_class: str, message: str) -> tuple[str, str | None]:
-    """The sentence and the machine code (empty_plan, model_down, bad_result) for one failure."""
+    """The sentence and the machine code (empty_plan, model_down, cap_reached, bad_result)."""
+    if error_class == "SpendCapReached":
+        return CAP_REACHED, "cap_reached"
     if error_class in {"LLMError", "ReadTimeout", "ConnectError", "HTTPStatusError"}:
         return MODEL_DOWN, "model_down"
     if _SCHEMA_TRACE.search(message):
