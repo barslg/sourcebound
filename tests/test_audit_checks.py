@@ -133,8 +133,8 @@ def test_cloze_blank_longer_than_three_words_or_starting_with_a_prompt_is_held()
     assert len(cloze_holds(["one two three four"])) == 1
 
 
-def test_matching_with_two_pairs_is_held_and_four_pairs_pass() -> None:
-    """a37a66c1 has two pairs (guessable by elimination); 6ffd6545 has four."""
+def test_matching_with_two_pairs_is_held_and_three_or_four_pairs_pass() -> None:
+    """a37a66c1 has two pairs (guessable by elimination); f21158f3 has three, 6ffd6545 four."""
     two = [
         {"left": "the stop entry that should end entry reading", "right": "breaks out of the loop"},
         {"left": "the blank entry that should be left unprocessed", "right": "continues"},
@@ -142,6 +142,7 @@ def test_matching_with_two_pairs_is_held_and_four_pairs_pass() -> None:
     four = [{"left": f"left {i}", "right": f"right {i}"} for i in range(4)]
     assert matching_holds(two)[0].startswith("matching: 2 pairs")
     assert matching_holds(four) == []
+    assert matching_holds(four[:3]) == []
 
 
 def test_ordering_that_mixes_code_lines_and_prose_steps_is_held() -> None:
@@ -296,3 +297,18 @@ def test_replay_holds_a_stored_giveaway_choice_through_the_same_checks_as_the_ex
     rows = {r["node"]: r["holds"] for r in replay_blocks(stored, numbered)}
     assert rows["t1-b1"] == []
     assert len(rows["t1-b3"]) == 1 and rows["t1-b3"][0].startswith("giveaway: ")
+
+
+def test_a_choice_with_no_wrong_option_has_no_shape_to_give_away() -> None:
+    """With every option correct the shape cannot split right from wrong, so nothing is held."""
+    every = {
+        **GUESSABLE_8997,
+        "options": [o for o in GUESSABLE_8997["options"] if o["correct"]],
+    }
+    assert exercise_holds(every, "choice", HASH_TAUGHT) == []
+
+
+def test_an_eight_word_step_with_an_equals_sign_is_prose_and_a_shorter_one_is_code() -> None:
+    """The prose boundary is eight words: a sentence that mentions `=` is still a sentence."""
+    assert ordering_holds(["x = 1", "y = 2", "we set the total = sum of amounts"]) != []
+    assert ordering_holds(["x = 1", "y = 2", "set the total = sum of amounts"]) == []

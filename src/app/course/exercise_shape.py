@@ -56,7 +56,7 @@ def cloze_holds(blanks: list[str]) -> list[str]:
 
 
 def matching_holds(pairs: list[Any]) -> list[str]:
-    """Hold a matching with fewer than four pairs: two or three are guessable by elimination."""
+    """Hold a matching with fewer pairs than MIN_MATCHING_PAIRS (two are guessed by elimination)."""
     count = len([p for p in pairs if isinstance(p, dict)])
     if count < MIN_MATCHING_PAIRS:
         return [
