@@ -63,7 +63,12 @@ Rules:
     procedure); alternatives that never run together (if/elif/else
     branches, except clauses, cases) are a `choice` or a `matching`,
     never an ordering. A stem's numbers are the numbers the shown code
-    computes.
+    computes. The key of a `cloze`, `matching` or `ordering` is quoted
+    verbatim from the cited passages, so its brief asks only for values
+    those passages show (a `range()` call a passage prints, never a new
+    one); the new situation is the story around them. A `spot_the_error`
+    brief names the passage claim the learner checks and sets no scene
+    of its own: its planted error is a changed passage sentence.
 - Every block cites at least one passage, and a lesson block cites only
   passages marked with its own topic. A passage of the module no block
   draws on goes to `uncovered` with a reason.
