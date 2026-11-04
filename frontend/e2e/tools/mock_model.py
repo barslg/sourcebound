@@ -318,9 +318,7 @@ def reply_for(prompt, schema, instructions=""):
             {"text": "Rinse once at the end of the day", "correct": False},
         ],
         # three pairs (the matching floor); every right side is quoted from a passage
-        "pairs": [
-            {"left": f"Fact {i + 1}", "right": rights[i % len(rights)]} for i in range(3)
-        ],
+        "pairs": [{"left": f"Fact {i + 1}", "right": rights[i % len(rights)]} for i in range(3)],
         # a blank is one term taken verbatim from a passage
         "blanks": [quote.split()[0] if quote.split() else "x"],
         "items": [{"text": quote, "passage_id": h, "tier": "correct"}],
