@@ -26,6 +26,7 @@ from app.services import learner
 NOT_IN_MATERIALS = "not_in_materials"
 QUOTES = "quotes"
 TUTOR_DAILY_LIMIT = 20
+TUTOR_SITE_DAILY_LIMIT = 300
 NOT_IN_MATERIALS_HINT = (
     "The course materials do not answer this question. Reread the topic or ask your teacher."
 )
@@ -116,7 +117,11 @@ async def ask(
 
 
 async def _within_daily_limit(session: AsyncSession, user_id: UUID) -> None:
-    """429 once this user's paid tutor calls of the last 24 hours reach the limit.
+    """429 once this user's, or the whole site's, paid tutor calls of the last day reach a limit.
+
+    The per-user advisory lock lives until the request's transaction ends, so
+    one user's parallel questions run one after another and each sees the
+    row the previous paid call wrote (the ledger commits in its own session).
 
     Counts llm_calls rows of agent "tutor" attributed to the user: only
     questions that reached the model cost the course owner money, so an
@@ -124,6 +129,23 @@ async def _within_daily_limit(session: AsyncSession, user_id: UUID) -> None:
     """
     from app.errors import RateLimitedError
 
+    await session.execute(
+        sa.text("SELECT pg_advisory_xact_lock(hashtext('tutor:' || :user))"),
+        {"user": str(user_id)},
+    )
+    site = (
+        await session.execute(
+            sa.text(
+                "SELECT count(*) FROM llm_calls WHERE agent = 'tutor'"
+                " AND created_at > now() - interval '1 day'"
+            )
+        )
+    ).scalar_one()
+    if int(site) >= TUTOR_SITE_DAILY_LIMIT:
+        raise RateLimitedError(
+            "The tutor has answered its daily number of questions on this site;"
+            " it opens again tomorrow."
+        )
     used = (
         await session.execute(
             sa.text(
