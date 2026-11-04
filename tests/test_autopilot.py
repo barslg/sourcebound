@@ -514,7 +514,8 @@ async def test_the_build_routes_are_owner_scoped_and_a_live_build_blocks_a_block
         rewrite = await client.post(f"/api/v1/blocks/{block}/rewrite", headers=headers)
         assert rewrite.status_code == 409, rewrite.text
         assert (await client.post(url, json={"cap_usd": "0"}, headers=headers)).status_code == 422
-        assert (await client.post(f"{url}/stop", headers=headers)).status_code == 200
+        stopped = await client.post(f"{url}/stop", headers=headers)
+        assert stopped.status_code == 200 and stopped.json() == {"ok": True}, stopped.text
         ended = (await client.get(url)).json()["build"]
         assert ended["state"] == "stopped" and ended["error"] == build.STOPPED_BY_AUTHOR
         assert (await client.post(f"{url}/stop", headers=headers)).status_code == 409

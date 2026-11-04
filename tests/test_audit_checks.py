@@ -129,6 +129,8 @@ def test_cloze_blank_longer_than_three_words_or_starting_with_a_prompt_is_held()
     prompt = cloze_holds([">>> f = open('workfile', 'w')"])
     assert len(prompt) == 1 and "prompt" in prompt[0]
     assert cloze_holds(["range()", "end point", "with"]) == []
+    assert cloze_holds(["one two three"]) == []
+    assert len(cloze_holds(["one two three four"])) == 1
 
 
 def test_matching_with_two_pairs_is_held_and_four_pairs_pass() -> None:

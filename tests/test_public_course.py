@@ -269,3 +269,36 @@ async def test_twenty_fresh_accounts_asking_at_once_cannot_pass_the_site_limit(
 
     outcomes = await asyncio.gather(*(ask(user) for user in users))
     assert outcomes.count("paid") == limit, outcomes
+
+
+async def test_recheck_holds_accepted_blocks_only_on_an_unpublished_course(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The author's Re-check reaches accepted blocks on a draft, never on a published course."""
+    import app.services.recheck as recheck
+
+    seen: list[bool] = []
+
+    async def spy(
+        session: AsyncSession, *, course_id: uuid.UUID, hold_accepted: bool
+    ) -> dict[str, int]:
+        seen.append(hold_accepted)
+        return {"rechecked": 0, "released": 0, "unread": 0, "held": 0, "newly_held": 0}
+
+    monkeypatch.setattr(recheck, "recheck_held", spy)
+    await world.s.execute(
+        sa.text(
+            "INSERT INTO role_permissions (role_id, permission_code)"
+            " SELECT id, 'course.generate' FROM roles WHERE name = 't06i-author'"
+            " ON CONFLICT DO NOTHING"
+        )
+    )
+    draft = await seed_world(world.s, prefix="t06r", publish=False)
+    await assign_role(world.s, draft["user_id"], "t06i-author")
+    await world.s.commit()
+    for user, course in (
+        (draft["user_id"], draft["course_id"]),
+        (world.w["user_id"], world.course),
+    ):
+        assert await _as(world.s, user, "POST", f"/api/v1/courses/{course}/held/recheck") == 200
+    assert seen == [True, False], seen
