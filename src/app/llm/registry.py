@@ -222,7 +222,8 @@ def compute_cost_usd(
 ) -> Decimal:
     """Cost in USD from the registry's dated prices; cached input is billed
     once at the cached rate, never double-counted as fresh input.
-    Reasoning tokens are billed at the output rate."""
+    Reasoning tokens are part of output_tokens already (the API reports them
+    as a detail of the output count), so they are never added a second time."""
     spec = get_model(model_id)
     prices = (spec.input_per_1m_usd, spec.cached_per_1m_usd, spec.output_per_1m_usd)
     if spec.unit != "token" or any(price is None for price in prices):
@@ -231,7 +232,7 @@ def compute_cost_usd(
     assert spec.cached_per_1m_usd is not None
     assert spec.output_per_1m_usd is not None
     fresh_input = max(input_tokens - cached_tokens, 0)
-    billed_output = max(output_tokens, 0) + max(reasoning_tokens, 0)
+    billed_output = max(output_tokens, max(reasoning_tokens, 0))
     cost = (
         Decimal(fresh_input) * spec.input_per_1m_usd
         + Decimal(cached_tokens) * spec.cached_per_1m_usd
