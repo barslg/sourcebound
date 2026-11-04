@@ -33,6 +33,9 @@ CODE_HOLD_PREFIXES = (
 # cannot recompute them from it: recheck keeps such a line as stored (unknown is not passed).
 KEY_HOLD_PREFIXES = ("giveaway: ", "cloze: ", "not taught: ")
 
+# Block types whose key lines are judged on the stored key, not rebuilt from the content.
+KEY_JUDGED_TYPES = ("choice", "scenario_practice", "cloze")
+
 
 def join_hold_lines(lines: list[str]) -> str:
     """The stored `hold_reason`: lines joined by "; ", none of which may carry "; " itself.

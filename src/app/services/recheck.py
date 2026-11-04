@@ -19,6 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.course.replay import (
     KEY_HOLD_PREFIXES,
+    KEY_JUDGED_TYPES,
+    QUESTION_ROLES,
     is_code_hold,
     join_hold_lines,
     plan_coverage_errors,
@@ -115,6 +117,20 @@ async def _reader_passed_this_version(
     return row is not None
 
 
+KEYLESS_QUESTION_LINE = "answer key: this held draft was stored without its key - rewrite it"
+
+
+def remaining_lines(row: dict[str, Any]) -> list[str]:
+    """The hold lines of one replayed held block after the current checks ran."""
+    key_unread = not row["keyed"] and row["type"] in KEY_JUDGED_TYPES
+    kept = [
+        line
+        for line in row["stored_reason"].split("; ")
+        if line and (not is_code_hold(line) or (key_unread and line.startswith(KEY_HOLD_PREFIXES)))
+    ]
+    return list(dict.fromkeys(kept + list(row["holds"])))
+
+
 async def recheck_held(
     session: AsyncSession, *, course_id: UUID, hold_accepted: bool = False
 ) -> dict[str, int]:
@@ -146,16 +162,9 @@ async def recheck_held(
         if row["stored_status"] != "held":
             continue
         rechecked += 1
-        stored = row["stored_reason"].split("; ")
-        kept = [
-            line
-            for line in stored
-            if line
-            and (
-                not is_code_hold(line) or (not row["keyed"] and line.startswith(KEY_HOLD_PREFIXES))
-            )
-        ]
-        lines = kept + list(row["holds"])
+        lines = remaining_lines(row)
+        if not lines and row["role"] in QUESTION_ROLES and not row["keyed"]:
+            lines = [KEYLESS_QUESTION_LINE]
         if not lines:
             if await _reader_passed_this_version(
                 session,

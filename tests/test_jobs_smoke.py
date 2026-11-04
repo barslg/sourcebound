@@ -2618,3 +2618,59 @@ async def test_recheck_drops_a_giveaway_line_only_for_a_block_whose_key_it_can_r
     await recheck_held(t03_session, course_id=demo["course_id"])
     await t03_session.commit()
     assert (await _smoke_blocks(t03_session, demo["course_id"]))["b2"] == ("held", line)
+
+
+async def test_recheck_never_releases_a_question_block_held_without_its_key(
+    t03_session: AsyncSession,
+) -> None:
+    """A keyless held choice whose only line no check finds today stays held for a rewrite."""
+    from app.services.recheck import KEYLESS_QUESTION_LINE, recheck_held
+
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-recheck-keyless")
+    final = await _smoke_run(t03_session, demo, dag, demo_t05.mock_demo_handler())
+    assert final["status"] == "done", final["stop_marker"]
+    block_sql = (
+        " WHERE plan_node_id = 'b2' AND topic_id IN (SELECT t.id FROM topics t"
+        " JOIN modules m ON m.id = t.module_id WHERE m.course_id = :c)"
+    )
+    course = str(demo["course_id"])
+    await t03_session.execute(
+        sa.text(
+            "UPDATE blocks SET status = 'held', accepted_version_id = NULL,"
+            " hold_reason = 'code: a python block does not compile (line 1)'" + block_sql
+        ),
+        {"c": course},
+    )
+    await t03_session.execute(
+        sa.text(
+            "UPDATE block_versions SET answer_key = NULL WHERE id IN"
+            " (SELECT current_version_id FROM blocks" + block_sql + ")"
+        ),
+        {"c": course},
+    )
+    await t03_session.commit()
+    result = await recheck_held(t03_session, course_id=demo["course_id"])
+    await t03_session.commit()
+    assert (await _smoke_blocks(t03_session, demo["course_id"]))["b2"] == (
+        "held",
+        KEYLESS_QUESTION_LINE,
+    )
+    assert result["released"] == 0 and result["unread"] == 0, result
+
+
+def test_recheck_lines_keep_key_lines_only_where_the_key_is_unreadable_and_never_twice() -> None:
+    """Key lines stay for keyless choice and cloze; matching recomputes its own; no line repeats."""
+    from app.services.recheck import remaining_lines
+
+    taught = "not taught: the key claim 'x' is not in a passage the topic taught"
+    giveaway = "giveaway: only the right option copies a passage line"
+    cloze = "cloze: blank 1 has 6 words - a blank is 1-3 words"
+
+    def row(kind: str, stored: list[str], holds: list[str]) -> dict[str, Any]:
+        return {"type": kind, "keyed": False, "stored_reason": "; ".join(stored), "holds": holds}
+
+    assert remaining_lines(row("matching", [taught, taught + " 2"], [taught])) == [taught]
+    assert remaining_lines(row("choice", [giveaway], [giveaway])) == [giveaway]
+    assert remaining_lines(row("choice", [taught], [])) == [taught]
+    assert remaining_lines(row("cloze", [cloze], [])) == [cloze]
+    assert remaining_lines({**row("choice", [taught], []), "keyed": True}) == []
