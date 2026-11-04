@@ -25,7 +25,9 @@ from t06_helpers import (
     SERVED_VALUES,
     TIERS,
     World,
+    cookie_for,
     http,
+    sign_in_new_user,
 )
 from transport_guard import guarded_client
 
@@ -106,6 +108,33 @@ async def test_no_key_value_leaves_any_learner_route_on_a_wrong_partial_or_right
     """
     auth = world.cookies["student"]
     assert auth is not None
+    await _walk_without_leaks(world, auth)
+
+
+async def test_a_signed_in_user_without_an_invite_walks_a_public_course_without_a_leak(
+    world: World,
+) -> None:
+    """Public course: a first-time sign-in with no invite reads and answers every block.
+
+    The owner flips the course public through the route; the visitor holds only
+    the empty student grant sign-in gives. The same walk as the invited student
+    runs, and no key value leaves any route.
+    """
+    owner = world.cookies["owner"]
+    assert owner is not None
+    async with http(owner[0]) as client:
+        flipped = await client.patch(
+            f"/api/v1/courses/{world.course}/visibility",
+            json={"public": True},
+            headers={"X-CSRF-Token": owner[1]},
+        )
+    assert flipped.status_code == 200, flipped.text
+    visitor = await sign_in_new_user(world.s, "visitor")
+    auth = await cookie_for(world.s, visitor)
+    await _walk_without_leaks(world, auth)
+
+
+async def _walk_without_leaks(world: World, auth: tuple[dict[str, str], str]) -> None:
     spot_keys = {
         b["block_id"]: b["key"] for b in world.w["blocks"].values() if b["type"] == "spot_the_error"
     }

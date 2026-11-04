@@ -437,6 +437,19 @@ async def publish_course(ctx: RequestContext, *, course_id: str) -> dict[str, st
     return {"version_id": str(version_id)}
 
 
+async def set_visibility(ctx: RequestContext, *, course_id: str, public: bool) -> dict[str, bool]:
+    from app.services.courses import get_course as get_use_case
+    from app.services.courses import set_visibility as visibility_use_case
+
+    actor = require_auth(ctx)
+    require(actor, "course.publish")
+    course = await get_use_case(ctx.db, course_id=UUID(course_id))
+    _owner_or_404(course, actor.user_id, actor.is_superadmin)
+    is_public = await visibility_use_case(ctx.db, course_id=UUID(course_id), public=public)
+    await ctx.db.commit()
+    return {"is_public": is_public}
+
+
 async def validate_plan(ctx: RequestContext, *, course_id: str) -> dict[str, Any]:
     from app.services.courses import blocking_questions, validate_course_tree
     from app.services.courses import get_course as get_use_case

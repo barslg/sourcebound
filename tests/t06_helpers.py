@@ -124,6 +124,44 @@ async def make_user(session: AsyncSession, prefix: str) -> UUID:
     return UUID(str(row[0]))
 
 
+class _FakeGoogle:
+    """The identity provider's side of a sign-in: the outside world, not the code under test."""
+
+    name = "google"
+
+    def __init__(self, email: str) -> None:
+        self.email = email
+
+    async def authorize_url(self, *, state: str, nonce: str, code_challenge: str) -> str:
+        return "https://accounts.example/authorize"
+
+    async def exchange_code(self, *, code: str, code_verifier: str) -> dict[str, object]:
+        return {"id_token": "token"}
+
+    async def verify_id_token(self, id_token: str, *, nonce: str) -> Any:
+        from app.auth.oidc import Identity
+
+        return Identity(
+            provider="google",
+            subject=f"sub-{self.email}",
+            email=self.email,
+            name="Visitor",
+            avatar="",
+            email_verified=True,
+        )
+
+
+async def sign_in_new_user(session: AsyncSession, prefix: str) -> UUID:
+    """A first Google sign-in through the real begin_login/finish_login; no invite."""
+    from app.services.auth import begin_login, finish_login
+
+    provider = _FakeGoogle(demo_t05.fresh_email(prefix))
+    _, state = await begin_login(session, provider)  # type: ignore[arg-type]
+    user, _ = await finish_login(session, provider, state=state, code="code")  # type: ignore[arg-type]
+    await session.commit()
+    return user.id
+
+
 async def enrol(session: AsyncSession, *, owner_id: UUID, user_id: UUID, tag: str) -> None:
     """Enrol through the real invite path (student role scoped to `tag`)."""
     from app.rbac.catalogue import sync_catalogue
@@ -424,7 +462,7 @@ class World:
                 " SELECT r.id, c FROM roles r, unnest(CAST(:codes AS text[])) c"
                 " WHERE r.name = 't06i-author' ON CONFLICT DO NOTHING"
             ),
-            {"codes": ["invite.create", "invite.revoke"]},
+            {"codes": ["invite.create", "invite.revoke", "course.publish"]},
         )
         for owner in (self.w["user_id"], self.other["user_id"]):
             await assign_role(session, owner, "t06i-author")

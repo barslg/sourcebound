@@ -170,6 +170,16 @@ async def publish_course(
     return await controller.publish_course(ctx, course_id=course_id)
 
 
+@courses_router.patch("/{course_id}/visibility")
+async def set_visibility(
+    course_id: Annotated[str, Depends(course_id_param)],
+    body: dto.VisibilityRequest,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, bool]:
+    """Open a published course to every signed-in user, or close it again."""
+    return await controller.set_visibility(ctx, course_id=course_id, public=body.public)
+
+
 @courses_router.get("/{course_id}/plan/validate")
 async def validate_plan(
     course_id: Annotated[str, Depends(course_id_param)],

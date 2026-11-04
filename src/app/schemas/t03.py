@@ -13,6 +13,10 @@ class CourseCreateRequest(BaseModel):
     scope_tags: list[str] = Field(default_factory=list)
 
 
+class VisibilityRequest(BaseModel):
+    public: bool
+
+
 class ProfileRequest(BaseModel):
     methodology_codes: list[str] = Field(min_length=1)
     bloom_level: str = Field(default="understand")

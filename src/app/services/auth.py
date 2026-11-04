@@ -218,7 +218,8 @@ async def finish_login(
     The state must be fresh (10-minute TTL) and bound to the pre-login
     session that started it. Accounts are keyed only by (provider,
     subject): an unknown subject whose email already exists is refused
-    and never linked. The first login creates the user with NO roles;
+    and never linked. The first login creates the user with only the tagless student
+    role (public courses); no other role;
     later logins update name and avatar. A banned or legacy identity,
     or a banned email, is refused before any account is created.
     """
@@ -324,6 +325,10 @@ async def finish_login(
         },
     )
     await refuse_if_unusable(session, user_id)
+    if is_new:
+        from app.services.invites import grant_public_student
+
+        await grant_public_student(session, user_id)
 
     applied: tuple[str, ...] | None = None
     if pending_invite_id:

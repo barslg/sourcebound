@@ -1,8 +1,10 @@
 """Learner read side: enrolment, outline, topic view, passages, progress.
 
 Enrolment is a student grant scoped (by an invite) to the course id or
-to one of the course's scope tags; the permission code alone never
-enrols (learner.view is a teacher code). A learner reads the PUBLISHED
+to one of the course's scope tags, or the course being flagged public
+(then any holder of the learn code is admitted); the permission code
+alone never enrols (learner.view is a teacher code) and a grant with no
+tags enrols in nothing. A learner reads the PUBLISHED
 snapshot only, at the block versions pinned in it, through each type's
 learner serializer and the translation layer; answer keys never leave
 the grader. Caller: controllers/learn.py (the learner screens).
@@ -44,13 +46,14 @@ def _not_found() -> NotFoundError:
 async def enrolled_course(
     session: AsyncSession, principal: Principal, course_id: UUID, *, code: str
 ) -> dict[str, Any]:
-    """The published course with its snapshot, or 404 (also when not enrolled)."""
+    """The published course with its snapshot, or 404 (not enrolled and not public)."""
     require(principal, code)
     row = (
         await session.execute(
             sa.text(
-                "SELECT c.id, c.title, c.language, c.scope_tags, cv.snapshot, c.owner_id"
-                " FROM courses c JOIN course_versions cv ON cv.id = c.published_version_id"
+                "SELECT c.id, c.title, c.language, c.scope_tags, cv.snapshot, c.owner_id,"
+                " c.is_public FROM courses c"
+                " JOIN course_versions cv ON cv.id = c.published_version_id"
                 " WHERE c.id = :course AND c.status = 'published'"
             ),
             {"course": str(course_id)},
@@ -59,13 +62,15 @@ async def enrolled_course(
     if row is None:
         raise _not_found()
     tags = enrolment_tags(principal)
-    if str(row[0]) not in tags and not (set(group_keys_of(row[5], row[3] or [])) & tags):
+    enrolled = str(row[0]) in tags or bool(set(group_keys_of(row[5], row[3] or [])) & tags)
+    if not enrolled and not row[6]:
         raise _not_found()
     return {
         "id": str(row[0]),
         "title": str(row[1]),
         "language": str(row[2]),
         "snapshot": dict(row[4] or {}),
+        "is_public": bool(row[6]),
     }
 
 
@@ -93,17 +98,16 @@ async def preview_course(session: AsyncSession, course_id: UUID) -> dict[str, An
 async def list_enrolled(
     session: AsyncSession, principal: Principal, *, threshold: float
 ) -> list[dict[str, Any]]:
-    """Published courses the principal is enrolled in, with progress."""
+    """Published courses the principal is enrolled in, and public ones, with progress."""
     require(principal, "learn.read")
     tags = sorted(enrolment_tags(principal))
-    if not tags:
-        return []
     rows = (
         await session.execute(
             sa.text(
                 "SELECT c.id FROM courses c WHERE c.status = 'published'"
                 " AND c.published_version_id IS NOT NULL"
-                " AND (c.id::text = ANY(:tags) OR EXISTS (SELECT 1 FROM unnest(c.scope_tags) t"
+                " AND (c.is_public OR c.id::text = ANY(:tags)"
+                " OR EXISTS (SELECT 1 FROM unnest(c.scope_tags) t"
                 " WHERE (c.owner_id::text || ':' || t) = ANY(:tags)))"
                 " ORDER BY c.created_at, c.id"
             ),
@@ -127,6 +131,7 @@ async def list_enrolled(
                 "title": course["title"],
                 "language": course["language"],
                 "audience": str((course["snapshot"].get("profile") or {}).get("audience", "")),
+                "is_public": course["is_public"],
                 "progress": progress,
             }
         )

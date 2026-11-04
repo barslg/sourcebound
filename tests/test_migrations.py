@@ -825,3 +825,32 @@ def test_0024_adds_topic_scenario_defaulting_to_empty_and_downgrade_drops_it() -
     assert "scenario" not in _harness_tables(url)["topics"]
     command.upgrade(_cfg(url), "head")
     assert "scenario" in _harness_tables(url)["topics"]
+
+
+def test_0026_adds_is_public_false_and_gives_roleless_accounts_the_tagless_student_grant() -> None:
+    url = _db_url()
+    require_postgres(url)
+    command.upgrade(_cfg(url), "head")
+    sync = _sync_url(url)
+    with psycopg.connect(sync, autocommit=True) as conn:
+        default = conn.execute(
+            "SELECT column_default, is_nullable FROM information_schema.columns"
+            " WHERE table_name = 'courses' AND column_name = 'is_public'"
+        ).fetchone()
+        assert default == ("false", "NO"), default
+        conn.execute("DELETE FROM users WHERE email = 'm26@example.com'")
+        user = conn.execute(
+            "INSERT INTO users (email, display_name) VALUES ('m26@example.com', 'm26')"
+            " RETURNING id"
+        ).fetchone()[0]  # type: ignore[index]
+    command.downgrade(_cfg(url), "0025")
+    assert "is_public" not in _harness_tables(url)["courses"]
+    command.upgrade(_cfg(url), "head")
+    with psycopg.connect(sync, autocommit=True) as conn:
+        grants = conn.execute(
+            "SELECT r.name, ur.scope_tags FROM user_roles ur JOIN roles r ON r.id = ur.role_id"
+            " WHERE ur.user_id = %s",
+            (user,),
+        ).fetchall()
+        assert grants == [("student", [])], grants
+        conn.execute("DELETE FROM users WHERE id = %s", (user,))

@@ -60,6 +60,14 @@ class UnsupportedMediaError(AppError):
     error_code = "unsupported_media"
 
 
+class RateLimitedError(AppError):
+    """A per-user allowance is used up; the message says when it opens again."""
+
+    status_code = 429
+    error_code = "rate_limited"
+    plain_message = True
+
+
 class LLMError(AppError):
     """The model call failed after the retry policy was exhausted."""
 
@@ -111,6 +119,7 @@ EXCEPTION_STATUS_TABLE: dict[type[Exception], int] = {
     ConflictError: 409,
     UnprocessableError: 422,
     UnsupportedMediaError: 415,
+    RateLimitedError: 429,
     LLMError: 502,
     ConfigurationError: 500,
     AppError: 500,

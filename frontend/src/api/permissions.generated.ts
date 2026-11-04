@@ -48,6 +48,7 @@ export const ROUTE_CODES: Readonly<Record<string, readonly string[]>> = {
   "GET /api/v1/users": ["user.list"],
   "PATCH /api/v1/blocks/{block_id}": ["course.edit"],
   "PATCH /api/v1/courses/{course_id}/plan": ["course.edit"],
+  "PATCH /api/v1/courses/{course_id}/visibility": ["course.publish"],
   "PATCH /api/v1/sources/{source_id}/language": ["source.edit"],
   "POST /api/v1/auth/logout": [],
   "POST /api/v1/blocks/{block_id}/accept": ["course.edit"],

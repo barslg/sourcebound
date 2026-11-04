@@ -25,6 +25,7 @@ from app.services import learner
 
 NOT_IN_MATERIALS = "not_in_materials"
 QUOTES = "quotes"
+TUTOR_DAILY_LIMIT = 20
 NOT_IN_MATERIALS_HINT = (
     "The course materials do not answer this question. Reread the topic or ask your teacher."
 )
@@ -55,6 +56,7 @@ async def ask(
     from app.runs.executor import tutor_call
 
     course = await learner.enrolled_course(session, principal, course_id, code="learn.ask")
+    await _within_daily_limit(session, principal.user_id)
     text = " ".join(question.split())
     if not text or len(text) > max_chars:
         raise ValidationError(f"the question must be 1 to {max_chars} characters")
@@ -111,6 +113,31 @@ async def ask(
     if not kept:
         return _not_in_materials()
     return {"mode": QUOTES, "quotes": kept}
+
+
+async def _within_daily_limit(session: AsyncSession, user_id: UUID) -> None:
+    """429 once this user's paid tutor calls of the last 24 hours reach the limit.
+
+    Counts llm_calls rows of agent "tutor" attributed to the user: only
+    questions that reached the model cost the course owner money, so an
+    off-topic question answered "not in the materials" never counts.
+    """
+    from app.errors import RateLimitedError
+
+    used = (
+        await session.execute(
+            sa.text(
+                "SELECT count(*) FROM llm_calls WHERE agent = 'tutor'"
+                " AND subject_user_id = :user AND created_at > now() - interval '1 day'"
+            ),
+            {"user": str(user_id)},
+        )
+    ).scalar_one()
+    if int(used) >= TUTOR_DAILY_LIMIT:
+        raise RateLimitedError(
+            f"You have asked the tutor {TUTOR_DAILY_LIMIT} questions in the last day;"
+            " the tutor opens again tomorrow."
+        )
 
 
 async def _covers_question(

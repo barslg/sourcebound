@@ -133,7 +133,7 @@ async def get_course(session: AsyncSession, *, course_id: UUID) -> dict[str, Any
         await session.execute(
             sa.text(
                 "SELECT id, owner_id, title, language, status, scope_tags,"
-                " row_version, published_version_id FROM courses WHERE id = :course"
+                " row_version, published_version_id, is_public FROM courses WHERE id = :course"
             ),
             {"course": str(course_id)},
         )
@@ -208,6 +208,7 @@ async def get_course(session: AsyncSession, *, course_id: UUID) -> dict[str, Any
         "scope_tags": list(row[5] or []),
         "row_version": row[6],
         "published_version_id": str(row[7]) if row[7] else None,
+        "is_public": bool(row[8]),
         "current_version_id": str(current_version) if current_version else None,
         "topic_count": int(counts[0]),
         "block_count": int(counts[1]),
@@ -1398,6 +1399,22 @@ async def publish_course(session: AsyncSession, *, course_id: UUID) -> UUID:
             f"course has {int(held)} held block(s); accept or rewrite each first"
         )
     return await snapshot_version(session, course_id=course_id, publish=True)
+
+
+async def set_visibility(session: AsyncSession, *, course_id: UUID, public: bool) -> bool:
+    """Open a published course to every signed-in user, or close it again.
+
+    Turning it on needs a published course (422 with the reason); turning
+    it off is always allowed. Caller: controllers/t03.py set_visibility.
+    """
+    course = await get_course(session, course_id=course_id)
+    if public and course["status"] != "published":
+        raise UnprocessableError("Publish the course first; only a published course can be public.")
+    await session.execute(
+        sa.text("UPDATE courses SET is_public = :public WHERE id = :course"),
+        {"public": public, "course": str(course_id)},
+    )
+    return public
 
 
 def list_methodologies() -> list[dict[str, Any]]:

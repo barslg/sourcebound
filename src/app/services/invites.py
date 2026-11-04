@@ -348,6 +348,18 @@ async def _ensure_student_role(session: AsyncSession, role_name: str) -> None:
         )
 
 
+async def grant_public_student(session: AsyncSession, user_id: UUID) -> None:
+    """The student role with NO course tags: reads only courses flagged public.
+
+    Caller: services/auth.py finish_login (a first sign-in). Enrolment never
+    reads an empty tag set as "everything" (learner.enrolment_tags).
+    """
+    from app.rbac.roles import assign_role
+
+    await _ensure_student_role(session, STUDENT_ROLE_NAME)
+    await assign_role(session, user_id, STUDENT_ROLE_NAME, scope_tags=[], actor=None)
+
+
 async def _consume_seat(
     session: AsyncSession,
     *,
