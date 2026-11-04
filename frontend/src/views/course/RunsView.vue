@@ -24,6 +24,7 @@ const kindName = (kind: string | null): string => (kind && te(`runs.kind.${kind}
 
 <template>
   <PageHeader :course="course.data.value" />
+  <div id="runs-list">
   <ResourceState :loading="runs.loading.value" :error="runs.error.value" :empty="(runs.data.value ?? []).length === 0" :empty-text="t('runs.empty')" @retry="runs.reload()">
     <AppTable :value="runs.data.value ?? []" data-key="id" data-testid="runs-table">
       <Column field="created_at" :header="t('runs.started')"><template #body="{ data }"><router-link :to="`/runs/${(data as RunListItem).id}`" data-testid="run-open"><RelTime :value="(data as RunListItem).created_at" /></router-link></template></Column>
@@ -32,4 +33,5 @@ const kindName = (kind: string | null): string => (kind && te(`runs.kind.${kind}
       <Column field="cost_so_far" :header="t('runs.cost')"><template #body="{ data }">{{ usd((data as RunListItem).cost_so_far) }}</template></Column>
     </AppTable>
   </ResourceState>
+  </div>
 </template>
