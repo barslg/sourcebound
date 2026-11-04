@@ -49,8 +49,8 @@ sources (every claim has an address in a source), and when the model is wrong th
   reads the teach text, exercises read both and target the topic's misconception; the reader's evidence is verified verbatim by
   code; no figure block is planned; the continuity agent is retired. Agents: outline, architect, researcher (+ web_search),
   block_teach, block_example, block_exercise, reader, saboteur, translator, tutor, librarian.
-- Muse Code was the implementer until 2026-11-02 (owner: «Не используем Muse Code. Оно уже своё сделало»); since then the code is written, verified and committed directly; the Meta API is called only for course runs the owner asks for.
-- Two local kits, one truth: generic agent rules with the Muse Code memory (kept for any tool), and an assistant kit (lobby, floors by path, skills `stand`/`course-run`/`verify-slice`, knowledge incl. the session digests and the credentials map). Both stay out of git, excluded through the local `info/exclude`; `README.md`, `docs/` (minus the planning papers), `prompts/` and `CHANGELOG.md` are tracked since 2026-11-04. Kit in English; owner replies in Russian.
+- Muse Code was the implementer until 2026-11-02 (retired by the owner: it had done its part); since then the code is written, verified and committed directly; the Meta API is called only for course runs the owner asks for.
+- Two local kits, one truth: generic agent rules with the Muse Code memory (kept for any tool), and an assistant kit (lobby, floors by path, skills `stand`/`course-run`/`verify-slice`, knowledge incl. the session digests and the credentials map). Both stay out of git, excluded through the local `info/exclude`; `README.md`, `docs/` (minus the planning papers), `prompts/` and `CHANGELOG.md` are tracked since 2026-11-04. Kit in English.
 - Block types (2026-11-03): ordering and diagram added, multi-select choice, markdown readings, sources page, glossary, review deck; `figure` is never planned. Each author pays with their own Meta key (account page); learners come by a student link.
 
 ## Not built

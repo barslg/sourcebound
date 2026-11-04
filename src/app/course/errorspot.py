@@ -36,7 +36,7 @@ _HABITS = {
 }
 
 _ARTICLE_REF = re.compile(
-    r"(Articles?|Art\.|Artikkel|Artikel|Article|§|paragraph|para\.?|avsnitt|пункт|пункту|статья|статті)"
+    r"(Articles?|Art\.|Artikkel|Artikel|Article|§|paragraph|para\.?|avsnitt|пункт|пункту|статті)"
     r"\s*\d+",
     re.IGNORECASE,
 )
