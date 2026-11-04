@@ -12,7 +12,8 @@ Format — [Keep a Changelog](https://keepachangelog.com/). Versioning — [SemV
 
 - Deploy from `main`: `.github/workflows/deploy.yml` runs after a green `ci`.
   One host runs the whole site from `docker-compose.yml`, which
-  gains `web` (nginx with the static build of `frontend/`, `/api/*` proxied to
+  gains `web` (nginx with the static build of `frontend/`, built on the deploy
+  runner and shipped as `dist/`, `/api/*` proxied to
   `api`, SSE unbuffered) on a loopback `WEB_PORT`, binds `api` to the loopback
   and keeps uploaded sources in the named volume `sources`; the deploy
   workflow writes the production `.env` (Google OAuth client, session and
