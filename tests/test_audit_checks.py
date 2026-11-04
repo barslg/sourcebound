@@ -312,3 +312,163 @@ def test_an_eight_word_step_with_an_equals_sign_is_prose_and_a_shorter_one_is_co
     """The prose boundary is eight words: a sentence that mentions `=` is still a sentence."""
     assert ordering_holds(["x = 1", "y = 2", "we set the total = sum of amounts"]) != []
     assert ordering_holds(["x = 1", "y = 2", "set the total = sum of amounts"]) == []
+
+
+LONG_CODE = "result_value = compute_total(first_amount, second_amount, third_amount)"
+LONG_PROSE = "The loop keeps asking for the next entry until the learner types the stop word"
+
+
+def test_the_ordering_hold_names_the_code_line_and_the_sentence_cut_at_forty_characters() -> None:
+    """The Fix list line quotes the first code item and the first prose item, forty characters."""
+    holds = ordering_holds([LONG_CODE, LONG_PROSE, "print(result_value)"])
+    assert holds == [
+        "ordering: the items mix code and prose ('result_value = compute_total(first_amoun' is"
+        " code, 'The loop keeps asking for the next entry' is a sentence); use one procedure"
+        " whose steps are all code lines or all sentences"
+    ]
+
+
+def test_a_keyword_line_without_equals_or_call_is_code_and_a_blank_step_is_not() -> None:
+    """`try:` is code by its keyword alone; an empty step is nothing, so it mixes with nothing."""
+    assert ordering_holds(["try:", "The loop runs first"])[0].startswith("ordering: ")
+    assert ordering_holds(["", "The loop runs first", "Then the loop ends"]) == []
+
+
+def test_a_short_line_with_an_equals_sign_is_code_and_an_eight_word_one_is_prose() -> None:
+    """Under eight words and an `=` is code; eight words or more is a sentence."""
+    assert ordering_holds(["x = 1", "The loop runs first"])[0].startswith("ordering: ")
+    assert ordering_holds(["we set the total = sum of amounts", "The loop runs first"]) == []
+
+
+def test_a_cloze_hold_quotes_the_blank_cut_at_sixty_characters() -> None:
+    """Both cloze holds show at most sixty characters of the blank."""
+    prompt_blank = ">>> " + "a" * 70
+    long_blank = " ".join(["word"] * 20)
+    assert cloze_holds([prompt_blank]) == [
+        f"cloze: the blank {('>>> ' + 'a' * 56)!r} starts with a prompt character;"
+        " a blank is a term or a code token without the prompt"
+    ]
+    assert cloze_holds([long_blank]) == [
+        f"cloze: the blank {('word ' * 12)!r} is 20 words; a blank is a term or a code"
+        " token of at most 3 words, taken verbatim from a taught passage"
+    ]
+
+
+def test_a_choice_whose_correct_options_are_short_and_whose_wrong_one_is_copied_is_a_giveaway() -> (
+    None
+):
+    """A three-word answer is no passage line, so a copied wrong option alone marks the key."""
+    split = {
+        "answer": "Type after the prompt.",
+        "options": [
+            {"text": "Type after prompt", "correct": True},
+            {"text": HASH_TAUGHT[1][:140], "correct": False},
+        ],
+    }
+    holds = exercise_holds(split, "choice", HASH_TAUGHT)
+    assert len(holds) == 1 and holds[0].startswith("giveaway: only the wrong options")
+
+
+def test_scenario_items_are_split_by_their_tier_into_right_and_wrong_for_the_giveaway() -> None:
+    """Tiers `correct`, `right`, `true` are the key; any other tier is a wrong item."""
+    scenario = {
+        "answer": "",
+        "items": [
+            {"text": HASH_TAUGHT[0][:130], "tier": "Correct"},
+            {"text": "Retype the output lines too", "tier": "wrong"},
+        ],
+    }
+    holds = exercise_holds(scenario, "scenario_practice", HASH_TAUGHT)
+    assert len(holds) == 1 and holds[0].startswith("giveaway: only the correct options")
+
+
+def test_scenario_practice_key_is_its_answer_or_else_its_correct_items_only() -> None:
+    """A quoted answer is the whole key; without one the correct-tier items are, never the wrong."""
+    items = [
+        {"text": "Type after the prompt", "tier": "correct"},
+        {"text": "Retype the output lines", "tier": "wrong"},
+    ]
+    assert answer_key_claims({"answer": "", "items": items}, "scenario_practice") == [
+        "Type after the prompt"
+    ]
+    assert answer_key_claims(
+        {"answer": "Type after the prompt.", "items": items}, "scenario_practice"
+    ) == ["Type after the prompt."]
+    assert answer_key_claims({"answer": "", "items": items}, "reading") == []
+
+
+def _stored(
+    node: str, role: str, kind: str, content: dict[str, Any], key: dict[str, Any]
+) -> dict[str, Any]:
+    return {
+        "id": node,
+        "node": node,
+        "role": role,
+        "block_type": kind,
+        "status": "accepted",
+        "hold_reason": "",
+        "version_id": f"v-{node}",
+        "content": content,
+        "answer_key": key,
+        "topic": "t1",
+        "topic_kind": "lesson",
+        "topic_title": "Run examples",
+        "objectives": [],
+        "plan_content": {
+            "source_handles": ["P1", "P2"],
+            "source_passages": {"P1": "pid1", "P2": "pid2"},
+        },
+        "citations": [("pid1", HASH_TAUGHT[0][:60]), ("pid2", HASH_TAUGHT[1][:60])],
+    }
+
+
+def _replayed(blocks: list[dict[str, Any]]) -> dict[str, list[str]]:
+    numbered = [
+        {"passage_id": f"pid{i}", "handle": f"P{i}", "text": text}
+        for i, text in enumerate(HASH_TAUGHT, 1)
+    ]
+    return {r["node"]: r["holds"] for r in replay_blocks(blocks, numbered)}
+
+
+def test_replay_runs_the_narration_check_on_teaching_blocks_only() -> None:
+    """A reading or example naming its passages is held; a diagram or a question is not."""
+    narrating = "The limit is not given in the passages, so a stand-in is used."
+    rows = _replayed(
+        [
+            _stored("t1-b1", "teach", "reading", {"body": narrating}, {}),
+            _stored("t1-b2", "example", "reading", {"body": narrating}, {}),
+            _stored("t1-b3", "teach", "diagram", {"caption": narrating}, {}),
+            _stored("t1-b4", "check", "choice", {"stem": narrating, "options": ["a", "b"]}, {}),
+        ]
+    )
+    narration = {
+        node: [h for h in holds if h.startswith("narration: ")] for node, holds in rows.items()
+    }
+    assert len(narration["t1-b1"]) == 1 and len(narration["t1-b2"]) == 1
+    assert narration["t1-b3"] == [] and narration["t1-b4"] == []
+
+
+def test_replay_compiles_python_in_every_block_but_a_cloze() -> None:
+    """A cloze text holds blanks, not a program to type: the compile check skips it."""
+    broken = "Type:\n```python\nx = (1\n```"
+    rows = _replayed(
+        [
+            _stored("t1-b1", "teach", "reading", {"body": broken}, {}),
+            _stored("t1-b2", "check", "cloze", {"text": broken}, {"blanks": ["x"]}),
+        ]
+    )
+    assert [h for h in rows["t1-b1"] if h.startswith("code: ")] != []
+    assert [h for h in rows["t1-b2"] if h.startswith("code: ")] == []
+
+
+def test_a_bare_prompt_transcript_is_compiled_and_the_error_window_is_two_hundred_characters() -> (
+    None
+):
+    """An unfenced `>>>` session is a snippet; a SyntaxError named within 200 characters excuses."""
+    bare = "Try this:\n\n>>> for i in range(3)\n... print(i)\n"
+    assert len(python_code_holds(bare)) == 1
+    fenced = "```python\nx = (1\n```"
+    inside = fenced + " " * 189 + "SyntaxError"
+    outside = fenced + " " * 190 + "SyntaxError"
+    assert python_code_holds(inside) == []
+    assert len(python_code_holds(outside)) == 1
