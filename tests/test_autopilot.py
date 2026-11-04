@@ -1130,6 +1130,7 @@ async def test_a_build_the_author_stopped_while_queued_makes_no_call_when_its_jo
         "real_provider_factory",
         lambda _settings: lambda s: MetaProvider(s, settings, client, ledger),
     )
+    _owner_has_a_key(monkeypatch, settings)
     await execute_operation(operation, database_url=_db_url())
     assert handler.state["seen"] == []
     row = (
@@ -1138,6 +1139,83 @@ async def test_a_build_the_author_stopped_while_queued_makes_no_call_when_its_jo
         )
     ).one()
     assert tuple(row) == ("failed", build.STOPPED_BY_AUTHOR)
+
+
+def _owner_has_a_key(monkeypatch: pytest.MonkeyPatch, settings: Any) -> None:
+    """The job finds a model key for the author, so only the build's own state can stop it."""
+    from app.services import model_keys
+
+    async def with_key(_session: Any, _settings: Any, _user: Any) -> Any:
+        return settings
+
+    monkeypatch.setattr(model_keys, "settings_for_user", with_key)
+
+
+def _mock_build_provider(monkeypatch: pytest.MonkeyPatch) -> Any:
+    handler = _build_handler()
+    settings = _plan_settings()
+    client = guarded_client(settings, inner=httpx2.MockTransport(handler))
+    ledger = create_session_factory(_db_url())
+    monkeypatch.setattr(
+        planruns,
+        "real_provider_factory",
+        lambda _settings: lambda s: MetaProvider(s, settings, client, ledger),
+    )
+    _owner_has_a_key(monkeypatch, settings)
+    return handler
+
+
+async def test_a_stop_that_lands_after_the_job_claimed_its_row_is_not_overwritten(
+    t03_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.services import operations
+    from app.services.operations import execute_operation
+
+    user_id, course_id = await _plan_course_with_source(t03_session)
+    await t03_session.execute(
+        sa.text("UPDATE users SET is_superadmin = true WHERE id = :u"), {"u": str(user_id)}
+    )
+    operation = await _queue_build(t03_session, user_id, course_id)
+    await t03_session.commit()
+    handler = _mock_build_provider(monkeypatch)
+    original = operations.load_principal
+
+    async def stop_first(session: AsyncSession, uid: UUID) -> Any:
+        async with create_session_factory(_db_url())() as other:
+            await build.stop_build(
+                other, actor=_plan_actor(user_id, BUILD_CODES), course_id=course_id
+            )
+            await other.commit()
+        return await original(session, uid)
+
+    monkeypatch.setattr(operations, "load_principal", stop_first)
+    await execute_operation(operation, database_url=_db_url())
+    assert handler.state["seen"] == []
+    row = (
+        await t03_session.execute(
+            sa.text("SELECT status, error FROM operations WHERE id = :op"), {"op": str(operation)}
+        )
+    ).one()
+    assert tuple(row) == ("failed", build.STOPPED_BY_AUTHOR)
+
+
+async def test_a_revived_build_row_still_running_is_claimed_and_driven(
+    t03_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.services.operations import execute_operation
+
+    user_id, course_id = await _plan_course_with_source(t03_session)
+    await t03_session.execute(
+        sa.text("UPDATE users SET is_superadmin = true WHERE id = :u"), {"u": str(user_id)}
+    )
+    operation = await _queue_build(t03_session, user_id, course_id)
+    await t03_session.execute(
+        sa.text("UPDATE operations SET status = 'running' WHERE id = :op"), {"op": str(operation)}
+    )
+    await t03_session.commit()
+    handler = _mock_build_provider(monkeypatch)
+    await execute_operation(operation, database_url=_db_url())
+    assert handler.state["seen"]
 
 
 async def test_a_build_row_the_author_ended_between_stages_stops_the_loop_before_its_next_paid_step(

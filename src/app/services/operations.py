@@ -240,8 +240,18 @@ async def execute_operation(
                     else None
                 )
                 require(actor, OPERATION_CODES.get(str(kind), required_code))
-                await _set_status(session, operation_id, status="running", progress=0.5)
+                still_ours = (
+                    await session.execute(
+                        sa.text(
+                            "UPDATE operations SET progress = 0.5, error = NULL, updated_at = now()"
+                            " WHERE id = :op AND status = 'running' RETURNING id"
+                        ),
+                        {"op": str(operation_id)},
+                    )
+                ).first()
                 await session.commit()
+                if still_ours is None:
+                    return
                 detail = await _run_kind(
                     session,
                     str(kind),
