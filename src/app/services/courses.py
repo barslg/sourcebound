@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.course.tree import ConstraintRow, CourseTree
 from app.errors import ConflictError, NotFoundError, UnprocessableError, ValidationError
 from app.rbac.principal import Principal
+from app.services.hold_text import handle_labels, human_hold_reason
 
 PLAN_EDIT_OPS = (
     "rename_module",
@@ -81,8 +82,12 @@ async def course_facts(session: AsyncSession, course_ids: list[UUID]) -> dict[st
     """Counters every reader of a course shares (list rows and the course header).
 
     held_count: blocks held by a check; draft_count: blocks written but not yet
-    read or accepted (status draft); pending_sources and source_count: course sources.
+    read or accepted (status draft); pending_sources and source_count: course sources;
+    live_work: 1 while a run or a plan, generate, translate or build operation is going
+    (the same fact `planruns.live_work_on` refuses a second submit on).
     """
+    from app.services.planruns import LIVE_OPERATION_KINDS
+
     if not course_ids:
         return {}
     ids = [str(item) for item in course_ids]
@@ -108,8 +113,28 @@ async def course_facts(session: AsyncSession, course_ids: list[UUID]) -> dict[st
             {"ids": ids},
         )
     ).all()
+    live_runs = (
+        await session.execute(
+            sa.text(
+                "SELECT DISTINCT course_id FROM runs"
+                " WHERE course_id = ANY(CAST(:ids AS uuid[])) AND status IN ('queued', 'running')"
+            ),
+            {"ids": ids},
+        )
+    ).all()
+    live_ops = (
+        await session.execute(
+            sa.text(
+                "SELECT DISTINCT params->>'course_id' FROM operations WHERE kind = ANY(:kinds)"
+                " AND status IN ('queued', 'running') AND params->>'course_id' = ANY(:ids)"
+            ),
+            {"kinds": list(LIVE_OPERATION_KINDS), "ids": ids},
+        )
+    ).all()
+    live = {str(r[0]) for r in live_runs} | {str(r[0]) for r in live_ops}
     out = {
         item: {
+            "live_work": int(item in live),
             "held_count": 0,
             "draft_count": 0,
             "pending_sources": 0,
@@ -1245,6 +1270,7 @@ async def held_blocks(session: AsyncSession, *, course_id: UUID) -> dict[str, An
     from app.agents.estimator import forecast
 
     await get_course(session, course_id=course_id)
+    labels = handle_labels(await read_tree(session, course_id=course_id))
     rows = (
         await session.execute(
             sa.text(
@@ -1275,7 +1301,7 @@ async def held_blocks(session: AsyncSession, *, course_id: UUID) -> dict[str, An
                 "id": str(block_id),
                 "topic_title": topic_title,
                 "brief": brief,
-                "hold_reason": hold_reason,
+                "hold_reason": human_hold_reason(hold_reason, labels),
                 "passage": cited[0] if cited else "",
                 "address": cited[1] if cited else "",
             }

@@ -113,3 +113,35 @@ async def test_course_row_lists_translations_with_ok_held_failed_counts(
         {"language": "nb", "status": "partial", "ok": 1, "held": 2, "failed": 0},
         {"language": "uk", "status": "failed", "ok": 0, "held": 0, "failed": 1},
     ]
+
+
+async def test_course_row_says_live_work_while_a_build_operation_or_a_run_is_going(
+    t03_session: AsyncSession,
+) -> None:
+    course_id = await _course(t03_session)
+    assert (await course_service.get_course(t03_session, course_id=course_id))["live_work"] == 0
+    operation = (
+        await t03_session.execute(
+            sa.text(
+                "INSERT INTO operations (kind, status, params, progress)"
+                " VALUES ('build_course', 'running', CAST(:p AS jsonb), 0) RETURNING id"
+            ),
+            {"p": f'{{"course_id": "{course_id}"}}'},
+        )
+    ).scalar_one()
+    await t03_session.commit()
+    assert (await course_service.get_course(t03_session, course_id=course_id))["live_work"] == 1
+    await t03_session.execute(
+        sa.text("UPDATE operations SET status = 'done' WHERE id = :o"), {"o": str(operation)}
+    )
+    await t03_session.execute(
+        sa.text("INSERT INTO runs (course_id, status) VALUES (:c, 'running')"),
+        {"c": str(course_id)},
+    )
+    await t03_session.commit()
+    assert (await course_service.get_course(t03_session, course_id=course_id))["live_work"] == 1
+    await t03_session.execute(
+        sa.text("UPDATE runs SET status = 'done' WHERE course_id = :c"), {"c": str(course_id)}
+    )
+    await t03_session.commit()
+    assert (await course_service.get_course(t03_session, course_id=course_id))["live_work"] == 0

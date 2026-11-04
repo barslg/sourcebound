@@ -24,6 +24,7 @@ from app.errors import NotFoundError
 from app.rbac.principal import Principal
 from app.rbac.require import require
 from app.rbac.tags import group_keys_of
+from app.services.hold_text import handle_labels, human_hold_reason
 
 STUDENT_ROLE = "student"
 ASSESSED_TYPES = frozenset(
@@ -153,6 +154,7 @@ async def topic_entries(session: AsyncSession, course: dict[str, Any]) -> list[d
     version_ids = await _version_ids(session, snap_blocks)
     versions = await _versions(session, [v for v in version_ids.values() if v])
     entries: list[dict[str, Any]] = []
+    labels = handle_labels(course["snapshot"].get("tree", {}))
     for module in course["snapshot"].get("tree", {}).get("modules", []):
         for topic in module.get("topics", []):
             blocks: list[dict[str, Any]] = []
@@ -172,7 +174,7 @@ async def topic_entries(session: AsyncSession, course: dict[str, Any]) -> list[d
                         "content": version["content"],
                         "answer_key": version["answer_key"],
                         "status": str(block.get("status") or ""),
-                        "hold_reason": str(block.get("hold_reason") or ""),
+                        "hold_reason": human_hold_reason(block.get("hold_reason"), labels),
                     }
                 )
             entries.append(
@@ -706,24 +708,7 @@ async def _topic(
         await record_served_language(
             session, principal.user_id, [b["id"] for b in blocks], language
         )
-    # Through-line: the handoff of this topic renders as one Next line.
-    handoffs = (course["snapshot"].get("tree", {}).get("through_line") or {}).get("handoffs", [])
-    note = next(
-        (
-            str(h.get("note", ""))
-            for h in handoffs
-            if isinstance(h, dict) and h.get("topic_plan_node_id") == topic.get("plan_node_id")
-        ),
-        "",
-    )
-    all_topics = [
-        t
-        for m in course["snapshot"].get("tree", {}).get("modules", [])
-        for t in m.get("topics", [])
-    ]
-    is_last = bool(all_topics) and topic.get("plan_node_id") == all_topics[-1].get("plan_node_id")
     return {
-        "next_note": note if note and not is_last else "",
         "id": topic["id"],
         "course_id": course["id"],
         "course_title": str(course.get("title", "")),
