@@ -463,3 +463,9 @@ span.cite-mark { cursor: default; color: var(--sb-muted); }
 .stat-value { font-family: var(--sb-font-display); font-size: var(--sb-fs-lg); font-weight: 600; overflow-wrap: anywhere; }
 .stat-label { color: var(--sb-muted); font-size: var(--sb-fs-xs); }
 .call-json { margin: 0; max-height: 40vh; overflow: auto; padding: var(--sb-space-3); background: var(--sb-surface); border: 1px solid var(--sb-border); border-radius: var(--sb-radius); white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--sb-fs-xs); }
+
+.chain-tree, .chain-children { gap: var(--sb-space-2); }
+.chain-node > summary { display: flex; align-items: center; gap: var(--sb-space-3); flex-wrap: wrap; cursor: pointer; padding: var(--sb-space-2) 0; }
+.chain-body { padding-left: var(--sb-space-4); border-left: 1px solid var(--sb-border); margin-left: var(--sb-space-2); }
+.chain-call { display: flex; align-items: center; gap: var(--sb-space-3); flex-wrap: wrap; padding: var(--sb-space-1) 0; }
+.chain-label { font-weight: 500; }

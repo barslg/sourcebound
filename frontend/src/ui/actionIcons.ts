@@ -1,7 +1,7 @@
 import type { Component } from 'vue'
 import {
   ArchiveX, ArrowDown, FastForward, Hammer, ArrowRight, ChevronRight, ClipboardCheck, Download, FileCheck, MessageCircleQuestion, RotateCcw, ArrowUp, Ban, Bell, CircleCheck, CircleX, CloudDownload, CloudUpload, Copy, Ellipsis, Eye, EyeOff, FileUp, FileX, Globe, Keyboard, Languages,
-  Link2Off, ListChecks, ListPlus, ListTree, LogIn, LogOut, Pencil, PencilLine, Play, Plus, RefreshCcwDot, RefreshCw, RotateCw, Save, Search, Send, ShieldCheck, SquarePlus,
+  Link2Off, ListChecks, ListPlus, ListTree, LogIn, LogOut, Pencil, PencilLine, Play, Plus, RefreshCcw, RefreshCcwDot, RefreshCw, RotateCw, Save, Search, Send, ShieldCheck, SquarePlus,
   Sparkles, Square, SunMoon, TextCursorInput, Trash2, Upload, UserCheck, UserPlus, X,
 } from 'lucide-vue-next'
 import type { ActionId } from './actionMeta'
@@ -60,5 +60,6 @@ export const ACTION_ICONS: Record<ActionId, Component> = {
   ask: MessageCircleQuestion,
   continue: ArrowRight,
   export: Download,
+  refresh: RefreshCcw,
   details: ChevronRight,
 }

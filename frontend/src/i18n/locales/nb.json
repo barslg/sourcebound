@@ -726,7 +726,8 @@
     "add-topic": "Legg til emne",
     "details": "Vis detaljer",
     "build-course": "Bygg hele kurset",
-    "continue-build": "Fortsett byggingen"
+    "continue-build": "Fortsett byggingen",
+    "refresh": "Oppdater"
   },
   "form": {
     "required": "påkrevd",
@@ -1099,8 +1100,8 @@
     "status": {
       "completed": "Besvart",
       "pending": "Pågår",
-      "rejected": "Avvist av kontrollene",
-      "replayed": "Gjenbrukt, ingen kostnad"
+      "rejected": "Svaret ble avvist av kontrollene",
+      "replayed": "Hentet fra svarlageret"
     },
     "agent": {
       "librarian": "Kildeleser",
@@ -1110,7 +1111,8 @@
       "translator": "Oversetter",
       "tutor": "Veileder",
       "transcriber": "Transkribering"
-    }
+    },
+    "unavailable": "Dette kallet kunne ikke åpnes. Lukk panelet og prøv igjen."
   },
   "build": {
     "title": "Bygg hele kurset",
@@ -1157,5 +1159,42 @@
     "unknown": "Byggestatus kunne ikke lastes",
     "confirmed": "Bygging i kø.",
     "stopRequested": "Stopp forespurt."
+  },
+  "chains": {
+    "title": "Agentkjeder",
+    "help": "Alle modellkall i dette kurset som et tre: hvilken agent fikk hvilket spørsmål, hva den svarte, og hvilke tidligere kall og blokker hver blokk avhenger av.",
+    "open": "Åpne agentkjedene",
+    "empty": "Ingen modellkall ennå - planlegg kurset først",
+    "live": "En kjøring pågår; treet viser kallene som er gjort så langt.",
+    "searchPlaceholder": "Finn en blokk eller et emne etter id",
+    "heldOnly": "Bare holdte blokker",
+    "noMatch": "Ingen blokk eller noe emne passer. Tøm søket eller filteret.",
+    "groupQuery": "Søk: {query}",
+    "group": {
+      "research": "Kildesøk",
+      "planning": "Disposisjon og modulplaner",
+      "reader": "Emnekontroll av leseren",
+      "other": "Andre trinn"
+    },
+    "role": {
+      "teach": "undervisning",
+      "example": "eksempel",
+      "check": "kontroll",
+      "practice": "øving",
+      "test": "modultest"
+    },
+    "block": {
+      "accepted": "Godkjent",
+      "held": "Holdt",
+      "draft": "Ikke lest ennå"
+    },
+    "totals": "{calls} kall, {cost}",
+    "callLine": "{model}, {cost}, {tokens}, {seconds} s,",
+    "heldBecause": "Holdt fordi:",
+    "openFix": "Åpne denne blokken på Rett-siden",
+    "dependsOn": "Avhenger av:",
+    "readsBlocks": "Leser disse blokkene:",
+    "depCall": "{step}-kall fra {when}",
+    "depBlock": "blokk {id}"
   }
 }

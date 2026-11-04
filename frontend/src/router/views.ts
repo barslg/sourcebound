@@ -19,6 +19,7 @@ export const VIEWS: Record<Exclude<RouteName, 'home'>, Loader> = {
   'course-preview-glossary': () => import('@/views/course/PreviewGlossaryView.vue'),
   'course-publish': () => import('@/views/course/PublishView.vue'),
   'course-runs': () => import('@/views/course/RunsView.vue'),
+  'course-chains': () => import('@/views/course/ChainsView.vue'),
   run: () => import('@/views/RunView.vue'),
   learn: () => import('@/views/LearnView.vue'),
   'learn-course': () => import('@/views/LearnCourseView.vue'),

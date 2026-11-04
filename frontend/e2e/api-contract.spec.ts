@@ -4,7 +4,7 @@ import { expect, ids, recordApi, sessions, signInAs, test } from './fixtures'
 const known = new Set<string>(Object.values(ENDPOINTS))
 const patterns = [
   /^\/api\/v1\/users\/[^/]+(\/ban)?$/, /^\/api\/v1\/roles\/[^/]+(\/assign|\/revoke)?$/,
-  /^\/api\/v1\/courses\/[^/]+(\/(profile|plan|plan\/validate|plan\/submit|generate\/submit|sources|estimate|held|held\/rewrite|held\/recheck|publish|runs|build|build\/stop|visibility))?$/,
+  /^\/api\/v1\/courses\/[^/]+(\/(profile|plan|plan\/validate|plan\/submit|generate\/submit|sources|estimate|held|held\/rewrite|held\/recheck|publish|runs|calls\/tree|build|build\/stop|visibility))?$/,
   /^\/api\/v1\/sources\/[^/]+\/(approve|reject)$/, /^\/api\/v1\/runs\/[^/]+(\/(resume|cancel|calls|calls\/[^/]+))?$/, /^\/api\/v1\/blocks\/[^/]+(\/(rewrite|accept))?$/,
   /^\/api\/v1\/operations\/[^/]+$/, /^\/api\/v1\/human-queue(\/[^/]+\/resolve)?$/, /^\/api\/v1\/invites\/[^/]+\/(revoke|accept)$/, /^\/api\/v1\/notifications\/[^/]+\/read$/,
 ]
@@ -18,7 +18,7 @@ test('every request path comes from the endpoint table and unsafe ones carry CSR
   await expect(page.getByTestId('roles-table')).toBeVisible()
   await page.goto('/courses')
   await expect(page.getByTestId('course-list').or(page.locator('[data-view]'))).toBeVisible()
-  for (const path of [`/courses/${ids().course}/plan`, `/courses/${ids().course}/sources`, `/courses/${ids().fix}/fix`, `/courses/${ids().fix}/publish`, `/runs/${ids().run}`]) {
+  for (const path of [`/courses/${ids().course}/plan`, `/courses/${ids().course}/sources`, `/courses/${ids().fix}/fix`, `/courses/${ids().fix}/publish`, `/courses/${ids().course}/chains`, `/runs/${ids().run}`]) {
     await page.goto(path)
     await expect(page.locator('main h1, main h2').first()).toBeVisible()
     await page.waitForLoadState('networkidle')

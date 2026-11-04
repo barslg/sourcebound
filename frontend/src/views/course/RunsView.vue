@@ -24,6 +24,7 @@ const kindName = (kind: string | null): string => (kind && te(`runs.kind.${kind}
 
 <template>
   <PageHeader :course="course.data.value" />
+  <p><router-link :to="`/courses/${id}/chains`" data-testid="runs-open-chains">{{ t('chains.open') }}</router-link></p>
   <div id="runs-list">
   <ResourceState :loading="runs.loading.value" :error="runs.error.value" :empty="(runs.data.value ?? []).length === 0" :empty-text="t('runs.empty')" @retry="runs.reload()">
     <AppTable :value="runs.data.value ?? []" data-key="id" data-testid="runs-table">

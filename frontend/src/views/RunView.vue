@@ -92,6 +92,7 @@ async function act(kind: 'resume' | 'cancel'): Promise<void> {
         <StatusChip :tone="doc?.status === 'done' ? 'ok' : doc?.status === 'stopped' ? 'danger' : 'info'" :label="t(`run.status.${doc?.status ?? 'running'}`)" data-testid="run-status" />
         <span data-testid="run-line">{{ line }}</span>
         <router-link v-if="courseId && ['empty_plan', 'no_sources'].includes(doc?.stop_code ?? '')" :to="`/courses/${courseId}/sources`" data-testid="run-back-sources">{{ t('run.backToSources') }}</router-link>
+        <router-link v-if="course" :to="`/courses/${course.id}/chains`" data-testid="run-chains">{{ t('chains.open') }}</router-link>
         <router-link v-if="course" :to="`/courses/${course.id}/plan`" data-testid="run-course">{{ t('run.backToCourse', { name: course.title }) }}</router-link>
       </div>
       <Section :title="t('run.costTitle')" :help="t('plan.forecastNote')" />

@@ -726,7 +726,8 @@
     "add-topic": "Add topic",
     "details": "Show details",
     "build-course": "Build the whole course",
-    "continue-build": "Continue the build"
+    "continue-build": "Continue the build",
+    "refresh": "Refresh"
   },
   "form": {
     "required": "required",
@@ -1099,8 +1100,8 @@
     "status": {
       "completed": "Answered",
       "pending": "In progress",
-      "rejected": "Rejected by checks",
-      "replayed": "Replayed, no charge"
+      "rejected": "Reply rejected by the checks",
+      "replayed": "Served from the reply store"
     },
     "agent": {
       "librarian": "Source reader",
@@ -1110,7 +1111,8 @@
       "translator": "Translator",
       "tutor": "Tutor",
       "transcriber": "Transcriber"
-    }
+    },
+    "unavailable": "This call could not be opened. Close this panel and try again."
   },
   "build": {
     "title": "Build the whole course",
@@ -1157,5 +1159,42 @@
     "unknown": "Build status could not be loaded",
     "confirmed": "Build queued.",
     "stopRequested": "Stop requested."
+  },
+  "chains": {
+    "title": "Agent chains",
+    "help": "Every model call of this course as a tree: which agent was asked what, what it returned, and which earlier calls and blocks each block depends on.",
+    "open": "Open the agent chains",
+    "empty": "No model calls yet - plan the course first",
+    "live": "A run is in progress; the tree shows calls made so far.",
+    "searchPlaceholder": "Find a block or topic by its id",
+    "heldOnly": "Held blocks only",
+    "noMatch": "No block or topic matches. Clear the search or the filter.",
+    "groupQuery": "Search: {query}",
+    "group": {
+      "research": "Source search",
+      "planning": "Outline and module plans",
+      "reader": "Topic reader check",
+      "other": "Other steps"
+    },
+    "role": {
+      "teach": "teaching",
+      "example": "example",
+      "check": "check",
+      "practice": "practice",
+      "test": "module test"
+    },
+    "block": {
+      "accepted": "Accepted",
+      "held": "Held",
+      "draft": "Not read yet"
+    },
+    "totals": "{calls} calls, {cost}",
+    "callLine": "{model}, {cost}, {tokens}, {seconds} s,",
+    "heldBecause": "Held because:",
+    "openFix": "Open this block on the Fix page",
+    "dependsOn": "Depends on:",
+    "readsBlocks": "Reads these blocks:",
+    "depCall": "{step} call from {when}",
+    "depBlock": "block {id}"
   }
 }

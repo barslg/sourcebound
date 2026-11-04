@@ -85,6 +85,15 @@ export interface CallRow extends CallTotals {
 }
 export interface RunNumbers { blocks_accepted: number | null; blocks_held: number | null; quotes_verbatim: number | null; quotes_total: number | null }
 export interface RunCallsDoc { summary: CallSummaryRow[]; calls: CallRow[]; total: number; next_offset: number | null; numbers: RunNumbers }
+export interface CallTreeNode {
+  id: string
+  kind: 'course' | 'run' | 'group' | 'module' | 'topic' | 'block' | 'call'
+  label: string
+  status: string | null
+  facts: Record<string, unknown>
+  children: CallTreeNode[]
+  deps: string[]
+}
 export interface RunCallDetail { id: string; agent: string; model: string; display_name: string; status: string; request: Record<string, unknown>; response: unknown }
 
 export interface Constraint {

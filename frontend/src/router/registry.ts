@@ -77,6 +77,7 @@ export const REGISTRY = [
   row({ name: 'course-preview-glossary', path: '/courses/:id/preview/glossary', titleKey: 'glossary.title', purposeKey: 'glossary.help', parent: 'course-preview', access: { kind: 'perm', code: 'learner.view' }, object: 'course', states: LIST }),
   stage('publish', [...ONE, 'queued'], 'publish', courses),
   row({ name: 'course-runs', path: '/courses/:id/runs', titleKey: 'runs.title', purposeKey: 'runs.help', parent: 'course-plan', access: { kind: 'perm', code: 'run.start' }, object: 'course', heading: 'page', states: LIST }),
+  row({ name: 'course-chains', path: '/courses/:id/chains', titleKey: 'chains.title', purposeKey: 'chains.help', parent: 'course-plan', access: { kind: 'perm', code: 'run.start' }, object: 'course', heading: 'page', states: LIST }),
   row({ name: 'run', path: '/runs/:runId', titleKey: 'run.title', purposeKey: 'run.help', parent: 'course-plan', access: { kind: 'perm', code: 'run.start' }, object: 'run', states: ONE, primaryAction: 'resume', entry: 'operation' }),
   row({ name: 'users', path: '/users', titleKey: 'users.title', purposeKey: 'users.help', access: { kind: 'perm', code: 'user.list' }, nav: { section: 'main', icon: 'users', labelKey: 'nav.users' }, states: LIST }),
   row({ name: 'invites', path: '/invites', titleKey: 'invites.title', purposeKey: 'invites.intro', access: { kind: 'perm', code: 'invite.create' }, nav: { section: 'main', icon: 'invites', labelKey: 'nav.invites' }, states: LIST, primaryAction: 'create' }),

@@ -47,6 +47,7 @@ export const runItem = (id: string): string => `${API}/runs/${enc(id)}`
 export const courseRuns = (id: string): string => `${courseItem(id)}/runs`
 export const runCalls = (id: string): string => `${runItem(id)}/calls`
 export const runCall = (id: string, callId: string): string => `${runCalls(id)}/${enc(callId)}`
+export const courseCallTree = (id: string): string => `${courseItem(id)}/calls/tree`
 export const runResume = (id: string): string => `${runItem(id)}/resume`
 
 export const learnCourses = `${API}/learn/courses`

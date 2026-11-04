@@ -3,21 +3,22 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Column from 'primevue/column'
 import { request } from '@/api/client'
-import { runCall, runCalls } from '@/api/endpoints'
-import type { CallRow, CallSummaryRow, RunCallDetail, RunCallsDoc } from '@/api/types'
+import { runCalls } from '@/api/endpoints'
+import type { CallRow, CallSummaryRow, RunCallsDoc } from '@/api/types'
 import ActionButton from '@/components/ActionButton.vue'
-import AppDrawer from '@/components/AppDrawer.vue'
+import CallDetailDrawer from '@/components/CallDetailDrawer.vue'
 import AppTable from '@/components/AppTable.vue'
 import RelTime from '@/components/RelTime.vue'
 import ResourceState from '@/components/ResourceState.vue'
 import Section from '@/components/Section.vue'
 import StatusChip from '@/components/StatusChip.vue'
 import { usdFine } from '@/composables/labels'
-import { notifyError } from '@/composables/notify'
+import StatTiles from '@/components/StatTiles.vue'
+import { useCallLabels } from '@/composables/callLabels'
 import { useResource } from '@/composables/useResource'
 
 const props = defineProps<{ runId: string; live: boolean; compact?: boolean }>()
-const { t, te } = useI18n()
+const { t } = useI18n()
 const calls = useResource<RunCallsDoc>(`calls:${props.runId}`, (signal) => request<RunCallsDoc>(`${runCalls(props.runId)}?limit=200`, { signal }))
 const doc = computed(() => calls.data.value)
 let timer: ReturnType<typeof setInterval> | null = null
@@ -42,40 +43,22 @@ const tiles = computed(() => [
   { id: 'quotes', label: t('calls.tileQuotes'), value: quotes.value },
 ])
 
-const agentName = (agent: string): string => (te(`run.role.${agent}`) ? t(`run.role.${agent}`) : te(`calls.agent.${agent}`) ? t(`calls.agent.${agent}`) : agent)
-const tokens = (row: { tokens_input: number; tokens_cached: number; tokens_output: number; tokens_reasoning: number }): string =>
-  t('calls.tokensLine', { input: row.tokens_input, cached: row.tokens_cached, output: row.tokens_output + row.tokens_reasoning })
-const statusTone = (row: CallRow): 'ok' | 'info' | 'warn' => (row.status === 'completed' ? 'ok' : row.status === 'pending' ? 'info' : 'warn')
-const statusLabel = (row: CallRow): string => (row.cached_reply ? t('calls.status.replayed') : te(`calls.status.${row.status}`) ? t(`calls.status.${row.status}`) : row.status)
+const { agentName, statusLabel, statusTone, tokens } = useCallLabels()
 const shortId = (id: string | null): string | null => (id ? (id.length > 16 ? `${id.slice(0, 14)}...` : id) : null)
 
 const open = ref(false)
-const shown = ref<RunCallDetail | null>(null)
-const opening = ref<string | null>(null)
-async function show(row: CallRow): Promise<void> {
-  opening.value = row.id
-  try {
-    shown.value = await request<RunCallDetail>(runCall(props.runId, row.id))
-    open.value = true
-  } catch (cause) {
-    notifyError(cause)
-  } finally {
-    opening.value = null
-  }
+const target = ref<string | null>(null)
+function show(row: CallRow): void {
+  target.value = row.id
+  open.value = true
 }
-const pretty = (value: unknown): string => (value === null || value === undefined ? t('calls.noReply') : JSON.stringify(value, null, 2))
 </script>
 
 <template>
   <section class="stack" data-testid="run-calls">
     <Section :title="t('calls.title')" :help="compact ? t('calls.helpCompact') : t('calls.help')" />
     <ResourceState :loading="calls.loading.value" :error="calls.error.value" :empty="(doc?.total ?? 0) === 0 && doc?.numbers.blocks_accepted == null" :empty-text="t('calls.empty')" @retry="calls.reload()">
-      <ul class="stat-tiles" data-testid="calls-tiles">
-        <li v-for="tile in tiles" :key="tile.id" class="stat-tile" :data-tile="tile.id">
-          <span class="stat-value">{{ tile.value }}</span>
-          <span class="stat-label">{{ tile.label }}</span>
-        </li>
-      </ul>
+      <StatTiles :tiles="tiles" data-testid="calls-tiles" />
       <p v-if="(doc?.total ?? 0) === 0" class="muted" data-testid="calls-none">{{ t('calls.none') }}</p>
       <template v-else>
         <AppTable :value="doc?.summary ?? []" data-key="agent" data-testid="calls-summary">
@@ -99,21 +82,13 @@ const pretty = (value: unknown): string => (value === null || value === undefine
             <Column field="response_id" :header="t('calls.responseId')"><template #body="{ data }"><span class="mono" :title="(data as CallRow).response_id ?? ''">{{ shortId((data as CallRow).response_id) ?? unknown }}</span></template></Column>
             <Column :header="t('calls.inspect')">
               <template #body="{ data }">
-                <ActionButton action="details" size="small" :label="t('calls.show')" :loading="opening === (data as CallRow).id" data-testid="call-open" @click="show(data as CallRow)" />
+                <ActionButton action="details" size="small" :label="t('calls.show')" data-testid="call-open" @click="show(data as CallRow)" />
               </template>
             </Column>
           </AppTable>
         </template>
       </template>
     </ResourceState>
-    <AppDrawer v-model:visible="open" :header="t('calls.drawerTitle', { agent: agentName(shown?.agent ?? ''), model: shown?.display_name ?? '' })">
-      <div v-if="shown" class="stack" data-testid="call-detail">
-        <p class="hint">{{ t('calls.drawerHelp', { model: shown.model }) }}</p>
-        <h3>{{ t('calls.request') }}</h3>
-        <pre class="call-json mono" tabindex="0" data-testid="call-request">{{ pretty(shown.request) }}</pre>
-        <h3>{{ t('calls.response') }}</h3>
-        <pre class="call-json mono" tabindex="0" data-testid="call-response">{{ pretty(shown.response) }}</pre>
-      </div>
-    </AppDrawer>
+    <CallDetailDrawer v-model:visible="open" :run-id="runId" :call-id="target" />
   </section>
 </template>

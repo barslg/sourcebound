@@ -33,6 +33,7 @@ const INSTANCES: Record<string, Instance> = {
   'learn-course-glossary': { who: 'student', path: () => `/learn/courses/${I().learn}/glossary` },
   'course-report': { who: 'admin', path: () => `/courses/${I().learn}/report` },
   'course-runs': { who: 'admin', path: () => `/courses/${I().course}/runs` },
+  'course-chains': { who: 'admin', path: () => `/courses/${I().course}/chains` },
   run: { who: 'admin', path: () => `/runs/${I().run}` },
   users: { who: 'admin', path: () => '/users' },
   invites: { who: 'admin', path: () => '/invites' },
