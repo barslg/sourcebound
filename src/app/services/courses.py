@@ -86,7 +86,7 @@ async def course_facts(session: AsyncSession, course_ids: list[UUID]) -> dict[st
     live_work: 1 while a run or a plan, generate, translate or build operation is going
     (the same fact `planruns.live_work_on` refuses a second submit on).
     """
-    from app.services.planruns import LIVE_OPERATION_KINDS
+    from app.services.planruns import LIVE_OPERATION_KINDS, live_work_on
 
     if not course_ids:
         return {}
@@ -131,7 +131,11 @@ async def course_facts(session: AsyncSession, course_ids: list[UUID]) -> dict[st
             {"kinds": list(LIVE_OPERATION_KINDS), "ids": ids},
         )
     ).all()
-    live = {str(r[0]) for r in live_runs} | {str(r[0]) for r in live_ops}
+    live = {str(r[0]) for r in live_runs}
+    # an operation row proves nothing alone (a dead worker leaves it running): ask the guard
+    for candidate in {str(r[0]) for r in live_ops} - live:
+        if await live_work_on(session, course_id=UUID(candidate)):
+            live.add(candidate)
     out = {
         item: {
             "live_work": int(item in live),

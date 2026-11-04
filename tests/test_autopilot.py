@@ -1161,3 +1161,21 @@ async def test_a_build_row_the_author_ended_between_stages_stops_the_loop_before
         await _run_build(t03_session, operation, handler)
     assert stopped.value.code == "cancelled"
     assert 1 <= len(inner.state["seen"]) <= 3
+
+
+async def test_the_course_header_says_a_run_is_going_only_when_the_submit_guard_does(
+    t03_session: AsyncSession,
+) -> None:
+    user_id, stale_course = await _plan_course_with_source(t03_session)
+    _, fresh_course = await _plan_course_with_source(t03_session)
+    await _insert_op(
+        t03_session, stale_course, user_id, kind="submit_generate", status="running", minutes=420
+    )
+    await _insert_op(
+        t03_session, fresh_course, user_id, kind="submit_generate", status="running", minutes=0
+    )
+    facts = await courses.course_facts(t03_session, [stale_course, fresh_course])
+    assert not await planruns.live_work_on(t03_session, course_id=stale_course)
+    assert await planruns.live_work_on(t03_session, course_id=fresh_course)
+    assert facts[str(stale_course)]["live_work"] == 0
+    assert facts[str(fresh_course)]["live_work"] == 1
