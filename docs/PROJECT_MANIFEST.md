@@ -20,12 +20,12 @@ sources (every claim has an address in a source), and when the model is wrong th
   only for dev replays on synthetic data).
 - Frontend: Vue 3 + TypeScript + Vite + PrimeVue, by the admin-app shape in `docs/PRINCIPLES.md`.
 - Auth: Google OIDC sign-in (provider-generic design; GitHub/Apple may follow), backend session cookie, CSRF on unsafe methods.
-- Delivery: one Docker image, compose with postgres + one-shot migrate + api + worker, health-gated. The frontend on a Cloudflare Worker with static assets at `sourcebound.io`, the worker proxying `/api` to the API host (README, Deploy).
+- Delivery: one Docker image, compose with postgres + one-shot migrate + api + worker, health-gated. The whole site on one host (`alta`, `sourcebound.io`): compose adds `web` (nginx + static build) on a loopback port behind the host's nginx and certificate; the deploy workflow ships `main` over SSH (README, Deploy).
 
 ## How it runs and deploys
 
 - Local: `docker compose up -d --build`; Postgres on host port 5434 (5432/5433 are taken on this machine).
-- Branches: `main` (what Cloudflare Workers Builds deploys; the `deploy` workflow ships the API host from it after a green `ci`, secrets and host in the repository settings, README Deploy) and `dev`; work on feature branches merged into `dev` with clean rollbacks. Remote: GitHub `barslg/sourcebound`; CI on GitHub Actions, replayed locally by `make ci-local` before every push.
+- Branches: `main` (the `deploy` workflow ships the whole site from it to the host after a green `ci`; secrets and host in the repository settings, README Deploy) and `dev`; work on feature branches merged into `dev` with clean rollbacks. Remote: GitHub `barslg/sourcebound`; CI on GitHub Actions, replayed locally by `make ci-local` before every push.
 - Secrets only in `.env` (gitignored): `MODEL_API_KEY` (server fallback, local/test only), `MODEL_KEY_SECRET` (encrypts the per-user keys), `SESSION_SECRET_KEY`, Google OAuth client id/secret, `DATABASE_URL`. Per-user Meta keys live encrypted in `user_model_keys` (migration 0025). Map: `.claude/knowledge/credentials-map.md`.
 
 ## Decisions and why

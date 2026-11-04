@@ -26,6 +26,7 @@ COPY --from=builder --chown=10001:10001 /app/src /app/src
 COPY --from=builder --chown=10001:10001 /app/migrations /app/migrations
 COPY --from=builder --chown=10001:10001 /app/prompts /app/prompts
 COPY --from=builder --chown=10001:10001 /app/alembic.ini /app/alembic.ini
+RUN mkdir -p /app/var/sources && chown -R 10001:10001 /app/var
 USER 10001
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

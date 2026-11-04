@@ -1,5 +1,6 @@
-# Local and production: docker compose up -d --build. Postgres reachable on the host's loopback at 5434 only;
-# APP_ENV comes from .env (default local). See README, Deploy.
+# Local and production: docker compose up -d --build. Everything binds to the host's loopback only:
+# Postgres 5434, api 8000, the site (web: nginx + static build, /api proxied to api) on WEB_PORT, default 10600.
+# APP_ENV and WEB_PORT come from .env. See README, Deploy.
 services:
   db:
     image: postgres:16
@@ -40,7 +41,9 @@ services:
     env_file:
       - .env
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - sources:/app/var/sources
     healthcheck:
       test: [
         "CMD-SHELL",
@@ -60,7 +63,19 @@ services:
       DATABASE_URL: postgresql+asyncpg://muse:muse@db:5432/muse
     env_file:
       - .env
+    volumes:
+      - sources:/app/var/sources
     command: ["procrastinate", "--app", "app.tasks.worker.app", "worker"]
+
+  web:
+    build: ./frontend
+    container_name: muse-web
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${WEB_PORT:-10600}:80"
 
 volumes:
   pgdata:
+  sources:

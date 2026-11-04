@@ -6,25 +6,22 @@ Format — [Keep a Changelog](https://keepachangelog.com/). Versioning — [SemV
 
 ### Added
 
-- Deploy from `main`: `.github/workflows/deploy.yml` runs after a green `ci`.
-  `wrangler.jsonc` declares the custom domain `sourcebound.io` for the Worker.
-  The `frontend` job builds the site and runs `wrangler deploy` with
-  `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; the `api` job writes the production `.env` (Google OAuth client, session and key
-  secrets, superadmins, `OIDC_REDIRECT_URL` under `sourcebound.io`) from the
-  repository secrets, ships the tracked tree over SSH, runs compose and checks
-  `/api/v1/health` on the host and through the site; it skips itself until
-  `DEPLOY_HOST` is set. The gate `check_deploy_env` keeps the names it writes
-  equal to the settings catalogue and to what production refuses to boot
-  without. (2026-11-04)
-
 - Public-repository hygiene: `SECURITY.md` (private vulnerability reporting),
   `.github/CODEOWNERS`, weekly Dependabot updates for uv, npm and GitHub
   Actions, and a read-only workflow token in CI. (2026-11-04)
 
-- Deploy path: a Cloudflare Worker (`frontend/wrangler.jsonc`, `frontend/worker/index.ts`)
-  serves the static build and proxies `/api/*` to `API_ORIGIN`, so the frontend,
-  the session cookie and the CSRF token share one origin; compose passes `APP_ENV` from `.env`
-  and binds Postgres to the host's loopback. README gains a Deploy section.
+- Deploy from `main`: `.github/workflows/deploy.yml` runs after a green `ci`.
+  One host runs the whole site from `docker-compose.yml`, which
+  gains `web` (nginx with the static build of `frontend/`, `/api/*` proxied to
+  `api`, SSE unbuffered) on a loopback `WEB_PORT`, binds `api` to the loopback
+  and keeps uploaded sources in the named volume `sources`; the deploy
+  workflow writes the production `.env` (Google OAuth client, session and
+  key secrets, superadmins, `OIDC_REDIRECT_URL` under `sourcebound.io`) from
+  the repository secrets, ships the tracked tree over SSH, runs compose and
+  checks `/api/v1/health` on the host and through the site; it skips itself
+  until `DEPLOY_HOST` is set. The gate `check_deploy_env` keeps the names it
+  writes equal to the settings catalogue. The Cloudflare Worker path of the
+  same night is withdrawn: the domain's A record points at the host.
   (2026-11-04)
 
 ### Changed
