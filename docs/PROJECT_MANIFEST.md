@@ -1,65 +1,54 @@
-# Muse project manifest
+# Sourcebound project manifest
+
+Rewritten 2026-11-04 (evening) for the lecture-first product. The earlier manifest is kept locally in the local kit's `knowledge/manifest-2026-11-04-before-lecture-first.md`.
 
 ## What it is
 
-**Grounded Course Studio** (working name; "Grounded Tutor" in the concept doc): an authoring system that turns verified sources into a
-structured, checkable course, and teaches learners to catch AI when it is wrong. Entry for the Meta Global AI Developer Hackathon
-(Cerebral Valley, 26 Oct – 4 Nov 2026), Indie track, theme Build for Your World. Owner: Oleksandr Lytvynov, solo.
+**Sourcebound** generates a whole course from one short brief and teaches people to catch the AI when it is wrong. The author fills a brief once (levels, context, what must be covered, outcomes, languages) and presses Build. Meta models write a through-line case and a topic outline, one full lecture per topic, and typed exercises cut from each lecture; code checks what a learner can see (code compiles, cloze blanks are short, options share one shape, matching has enough pairs, steps are one kind), a corrector model fixes what code flags, and answers are graded by code, never by a model. Learners come by a student link; the author reads a report. Entry for the Meta Global AI Developer Hackathon 2026 (Cerebral Valley, Indie track, theme Build for Your World), solo, owner Oleksandr Lytvynov. Live at https://sourcebound.io.
 
-Thesis in one sentence: the unit of output is a course (plan → modules → topics → typed blocks), the source of truth is the approved
-sources (every claim has an address in a source), and when the model is wrong the system catches it (reader holds the block, tutor says
-"not in the materials", learners train on "find the AI error"). Not a chatbot, not a RAG app: see `docs/HARNESS.md` §1.
+## How it runs
+
+Author path: sign in with Google -> add a Meta key on `/account` -> create a course -> fill the brief -> Build -> publish -> student link -> learner answers -> report.
+
+Build is one operation (`services/build.py`) that derives its next stage from the database:
+
+1. Plan run: `blueprint:course` (one Wonder call + one corrector pass), `lectures:course` (every topic in parallel, each one Wonder call + one corrector pass), `blockplan:course` (code only: paragraphs become the passages of a generated "Lectures" source, the lecture is the topic's teach reading, exercise types are chosen from the paragraphs, a module test has one block per lesson).
+2. Generation run: exercise writers only, each fed its own lecture; code remarks, one corrector pass, block accepted.
+3. Translation: one run per extra language in the brief.
+
+No Reader, saboteur, architect or researcher; no re-asks, holds or rewrite waves. The spend cap is optional (empty = none). Details and file map: the local kit's `rules/pipeline.md` (local) and the README.
 
 ## Stack
 
-- Backend: Python 3.12, FastAPI, SQLAlchemy 2 async + asyncpg, Alembic, PostgreSQL 16 (+ full-text search; no vector embeddings —
-  no non-Meta model may run at runtime), Procrastinate (jobs on the same Postgres), structlog. Packaging: pyproject + hatchling, uv; ruff, mypy strict, pytest.
-- LLM: Meta Model API through the `openai` SDK (Responses API): system prompts as `instructions`, strict `json_schema` output,
-  `prompt_cache_key` + 24h retention, `reasoning.effort` per step, the `web_search` tool for the researcher's gaps, background
-  mode on 504. Models per step in one registry (`muse-spark-1.3` default, `muse-wonder-1.0` for the scenario; `*-contributor`
-  only for dev replays on synthetic data).
-- Frontend: Vue 3 + TypeScript + Vite + PrimeVue, by the admin-app shape in `docs/PRINCIPLES.md`.
-- Auth: Google OIDC sign-in (provider-generic design; GitHub/Apple may follow), backend session cookie, CSRF on unsafe methods.
-- Delivery: one Docker image, compose with postgres + one-shot migrate + api + worker, health-gated. The whole site on one host (`alta`, `sourcebound.io`): compose adds `web` (nginx + static build) on a loopback port behind the host's nginx and certificate; the deploy workflow ships `main` over SSH (README, Deploy).
-
-## How it runs and deploys
-
-- Local: `docker compose up -d --build`; Postgres on host port 5434 (5432/5433 are taken on this machine).
-- Branches: `main` (the `deploy` workflow ships the whole site from it to the host after a green `ci`; secrets and host in the repository settings, README Deploy) and `dev`; work on feature branches merged into `dev` with clean rollbacks. Remote: GitHub `barslg/sourcebound`; CI on GitHub Actions, replayed locally by `make ci-local` before every push.
-- Secrets only in `.env` (gitignored): `MODEL_API_KEY` (server fallback, local/test only), `MODEL_KEY_SECRET` (encrypts the per-user keys), `SESSION_SECRET_KEY`, Google OAuth client id/secret, `DATABASE_URL`. Per-user Meta keys live encrypted in `user_model_keys` (migration 0025). Map: the local credentials map (uncommitted).
+- Backend: Python 3.12, FastAPI, SQLAlchemy 2 async + asyncpg, Alembic, PostgreSQL 16, Procrastinate (jobs on the same Postgres), structlog; uv, ruff, mypy strict, pytest. Layers call only downward: routes -> controllers -> services -> providers -> clients (the only external I/O).
+- LLM: Meta Model API through the `openai` SDK (Responses API): system prompt as `instructions`, strict `json_schema` output, `prompt_cache_key` with 24 h retention, `reasoning.effort` per step. Model ids, effort, output limits and prices live only in `src/app/llm/registry.py`. Blueprint, lecture and corrector are on Muse Wonder at effort medium with no output limit; the tutor and the translator are on Muse Spark.
+- Frontend: Vue 3 + TypeScript + Vite + PrimeVue.
+- Auth: Google OIDC, backend session cookie, CSRF on unsafe methods; RBAC catalogue in code; invite links and public courses for learners.
+- Delivery: one Docker image; compose with postgres, one-shot migrate, api, worker, web (nginx). One host behind `sourcebound.io`, deployed by GitHub Actions from `main` after a green `ci`; skips itself until `DEPLOY_HOST` is set.
+- Secrets only in `.env` (gitignored): names `MODEL_API_KEY` (local fallback), `MODEL_KEY_SECRET`, `SESSION_SECRET_KEY`, Google OAuth id and secret, `DATABASE_URL`. Per-user Meta keys are encrypted rows in `user_model_keys`.
 
 ## Decisions and why
 
-- Hackathon rules drive the shape: every runtime model is a Meta model (so retrieval is code + Postgres FTS + Spark web_search);
-  repo public, created ≥ 26 Oct, only event work; the demo video opens with "what existed before / what was built this week";
-  a LICENSE file (MIT); README lists third-party libraries and their licences and names which Meta model does what.
-- Not one line from the author's earlier learning-management system or from employer projects; their *shape* is reused as principles (`docs/PRINCIPLES.md`).
-- Layer map with calls only downward: routes → controllers → services → providers (Protocol + adapter) → clients (the only external I/O);
-  models/ the only SQL; schemas/ pure DTOs; config.py the only env reader; redact.py for logs and errors.
-- RBAC: permission catalogue declared in code and synced to the DB at startup; a new permission is granted to no existing non-admin role;
-  roles = permissions + CRUD per type + scope by tags. SSO sign-in creates an account with no rights; superadmins come from
-  `SUPERADMIN_EMAILS`; invite links (UUID, optional seat count) on a course or course group make the person a student of those courses;
-  users can be deleted (schema cascades) or banned (no re-login).
-- Writes that take time are operations: 202 + operation id, job on Procrastinate, progress by SSE, audit, notification.
-- Generation is a run of steps persisted from day one; a 4xx/5xx stops the run with a marker and it resumes from the last good step;
-  a pre-generation estimate (blocks, calls, tokens, cost, time) is a forecast only, never a limit.
-- Code owns structure; the model fills plain text inside strict JSON schemas (Meta strict subset). Answers are checked by code.
-- Planning in two layers (owner 2026-11-02): the outline writes the scenario (learner, case, annotated topics with sections,
-  questions for the author); the architect plans one module over it. Writers are chained by handoffs ("previously"), the example
-  reads the teach text, exercises read both and target the topic's misconception; the reader's evidence is verified verbatim by
-  code; no figure block is planned; the continuity agent is retired. Agents: outline, architect, researcher (+ web_search),
-  block_teach, block_example, block_exercise, reader, saboteur, translator, tutor, librarian.
-- Muse Code was the implementer until 2026-11-02 (retired by the owner: it had done its part); since then the code is written, verified and committed directly; the Meta API is called only for course runs the owner asks for.
-- Two local kits, one truth: generic agent rules with the Muse Code memory (kept for any tool), and an assistant kit (lobby, floors by path, skills `stand`/`course-run`/`verify-slice`, knowledge incl. the session digests and the credentials map). Both stay out of git, excluded through the local `info/exclude`; `README.md`, `docs/` (minus the planning papers), `prompts/` and `CHANGELOG.md` are tracked since 2026-11-04. Kit in English.
-- Block types (2026-11-03): ordering and diagram added, multi-select choice, markdown readings, sources page, glossary, review deck; `figure` is never planned. Each author pays with their own Meta key (account page); learners come by a student link.
+- **Hackathon rules (2026-10-26):** every runtime model is a Meta model; repo public and created on or after 2026-10-26; MIT licence; README lists third-party libraries and says which Meta model does what; the demo video opens with what existed before and what was built this week.
+- **Code owns structure, the model fills plain text inside strict JSON schemas (2026-10-31).** Ids, order, block types, grading and answer keys are code's.
+- **Layered backend and permission-gated routes (2026-10-31).** Every route carries a permission code and a scope check; gates enforce it.
+- **Each author pays with their own Meta key (2026-11-03).** Learners cost nothing; the tutor bills the course owner with per-learner and per-site daily limits.
+- **Runs are persisted steps (2026-10-31).** A stop keeps finished steps; a resume reuses stored outputs by input digest and never pays twice.
+- **Muse Code retired (2026-11-02).** Code is written and verified directly; the Meta API is called only for course runs the owner asks for.
+- **Lecture-first replaces the source-grounded chain (2026-11-04, evening).** Measured on the Python course built by the old chain: the case story was invented (0 matches in 473 passages), 5 of 6 invented numbers came from the architect's plan, and the Reader ($5.87) passed 49 bad blocks. Every agent trusted the one before it and a model judged at the end. The new chain has one writer per stage and one corrector pass, and the lecture is the teaching text itself.
+- **Wonder at medium effort, no output limit (2026-11-04).** Measured: Wonder medium reasons about 4x shorter than Spark (1.9k vs 8.3k reasoning tokens on the heaviest call); a Wonder call costs about $0.12 with cache; forecast for a Python course about $36 against about $90 if the old chain ran on Wonder. Typed input is ordered stable-first so one topic's calls read the lecture from the prompt cache.
+- **Stated cost of lecture-first:** the lecture's facts are judged by the corrector model, not by code or by approved sources. "Every claim has an address in a source" holds only for the exercises' keys, through the generated Lectures source. Sources become an optional hint after the deadline.
+- **Brief once, no questions (2026-11-04):** the autopilot never asks the author anything after Build; the cap is optional.
+- **English only in the repo;** the product has en, nb and uk locales.
 
 ## Not built
 
-Day-1 backend harness is landed and hardened (packaging, compose, `src/app` skeleton, migration 0001, LLM layer, live smoke, session-automatic transport guard; tests isolated on `muse_test`, ledger writes autonomous and committed, timeouts go to background, per-unit registry prices). T02 is landed: RBAC catalogue/principal/require/`ctx`, provider-generic OIDC with backend sessions, user ban/delete, invites, operations with Procrastinate plus SSE (migration 0002, routes under `/api/v1`). Landed in T03: `runs/`, `course/`, `agents/` packages, prompt files under `prompts/`, sources with FTS retrieval, and plan runs. T05/T05b landed: block type packages, methodology pipelines, and the real generation pipeline (submit_generate -> compiled DAG -> worker -> done, verified citations, reader holds, code-planted spot-the-error). Landed since: the Vue frontend (author and learner UIs with route registry, grammar, states, reachability, contract and permission gates), CI on GitHub Actions (`make ci-local` replays it), identity and design system, two-level planning, translation, per-user keys, nine block types. Still ahead: the demo course build and read-through (Python basics, 2026-11-03/04), the video, the submission, the API host behind `sourcebound.io`.
+- Deleting the retired chain's code (architect, reader, saboteur, researcher, rewrite waves); it stays for stored courses and is unreachable from the UI.
+- Sources as an optional hint to the blueprint; web search for lectures.
+- Parallel exercise writing in the run driver (lectures are parallel; exercises walk the DAG one step at a time).
+- Vector retrieval (Postgres full-text only), image generation, fine-tuned reranker.
+- A measured end-to-end cost of a full lecture-first course (the figure above is a forecast).
 
-## Unconfirmed
+## History
 
-- Final product name (judges must not read it as "AI for education chatbot").
-- Which host serves the API image behind `sourcebound.io`: the deploy workflow is ready and skips itself until `DEPLOY_HOST` is set. The Google client already carries `https://sourcebound.io` and its callback (owner, 2026-11-04).
-- What the 3-minute video must show beyond: source → plan edited by the author → generation with progress → typed blocks with
-  source addresses → learner check graded by code → "find the AI error" → teacher report.
+The product began as a source-grounded course studio: approved sources, an outline and an architect planning every module, researcher and web search, block writers, a reader model that held unsupported blocks, a saboteur planting errors, rewrite waves. It built a 151-block course for about $29 and a Python course audited on 2026-11-04; the audit found the failures above and the chain was replaced the same evening. Its design papers are in the local kit's `knowledge/`.

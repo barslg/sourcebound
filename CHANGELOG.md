@@ -27,6 +27,8 @@ Format — [Keep a Changelog](https://keepachangelog.com/). Versioning — [SemV
 
 ### Changed
 
+- Lecture-first build replaces the source-grounded chain as the only path the UI offers. The author fills a brief once (levels, context, must cover, outcomes, languages, optional spend cap) and presses Build: `blueprint:course` (one Muse Wonder call and one corrector pass), `lectures:course` (every topic in parallel, each a Wonder call and a corrector pass), `blockplan:course` (code only: the paragraphs become passages of a generated "Lectures" source, the lecture is the topic's reading, exercise types are chosen from the paragraphs), then exercise writers fed from their lecture with code remarks and one corrector pass, then a translation run per extra language. New agents `blueprint`, `lecture`, `corrector` on Wonder at medium effort with no output limit (`UNBOUNDED`); input ordered stable-first for prompt caching; no Reader, saboteur, architect or researcher, no re-asks, holds or rewrite waves; the cap is optional. The retired chain's code stays for stored courses. Measured: Wonder medium reasons about four times less than Spark (1.9k against 8.3k tokens on the heaviest call); a Wonder call is about $0.12 with cache. README, manifest, video script, the pipeline floor, the lobby, the skills and the finish list were rewritten for it. (2026-11-04)
+
 - `README.md`, `docs/` (the manifest, principles and third-party table),
   `prompts/` and this changelog are tracked; the planning papers and the
   agent kits stay local. CI no longer stubs the prompts from the fixtures.
@@ -212,7 +214,7 @@ Format — [Keep a Changelog](https://keepachangelog.com/). Versioning — [SemV
   handles only); spot grading credits kind/passage/fix only behind
   the right sentence (whitespace/case normalised, fully_correct
   seeded); number/date mutations protect every reference shape
-  (Article 5(1), Articles 4, 5, 2024/1689, paragraph/avsnitt/пункт);
+  (Article 5(1), Articles 4, 5, 2024/1689, paragraph/avsnitt/a Ukrainian clause word);
   submit_plan/submit_generate refuse in code (422, plain sentence)
   with 0 approved passages or an empty plan, before any model call;
   a reply rejected by the output checks is never stored or replayed
