@@ -11,16 +11,27 @@ def _setting_names() -> set[str]:
     return set(config.Settings.model_fields)
 
 
+# Names .env carries for docker-compose.yml (host ports), which config.py never reads.
+COMPOSE_ONLY_NAMES = {"WEB_PORT", "API_HOST_PORT"}
+
+
 def test_env_example_matches_settings() -> None:
     names = {
         line.split("=", 1)[0].strip()
         for line in Path(".env.example").read_text().splitlines()
         if line.strip() and not line.startswith("#")
-    }
+    } - COMPOSE_ONLY_NAMES
     assert names == {name.upper() for name in _setting_names()}, (
         f"extra in .env.example: {names - {n.upper() for n in _setting_names()}}; "
         f"missing: { {n.upper() for n in _setting_names()} - names }"
     )
+
+
+def test_compose_only_names_are_used_by_compose_and_unknown_to_settings() -> None:
+    compose = Path("docker-compose.yml").read_text()
+    for name in COMPOSE_ONLY_NAMES:
+        assert f"${{{name}" in compose, f"{name} is not read by docker-compose.yml"
+        assert name.lower() not in _setting_names(), f"{name} is a setting; drop it from the list"
 
 
 def test_env_overrides_defaults(monkeypatch: object) -> None:
