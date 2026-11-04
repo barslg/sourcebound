@@ -87,7 +87,7 @@ async function act(kind: 'resume' | 'cancel'): Promise<void> {
 <template>
   <PageHeader :course="course" />
   <ResourceState :loading="run.loading.value" :error="run.error.value" :empty="doc === null" :empty-text="t('run.empty')" @retry="run.reload()">
-    <div class="stack" data-testid="run">
+    <div class="stack logs-wide" data-testid="run">
       <div class="row">
         <StatusChip :tone="doc?.status === 'done' ? 'ok' : doc?.status === 'stopped' ? 'danger' : 'info'" :label="t(`run.status.${doc?.status ?? 'running'}`)" data-testid="run-status" />
         <span data-testid="run-line">{{ line }}</span>

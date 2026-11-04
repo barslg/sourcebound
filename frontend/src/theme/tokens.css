@@ -266,6 +266,8 @@ fieldset.field legend { font-weight: 500; padding: 0 var(--sb-space-1); }
 .dlg-md { width: min(560px, 94vw); }
 .dlg-lg { width: min(720px, 95vw); }
 .drawer-md { width: min(480px, 96vw); }
+.drawer-logs { width: min(66vw, 1400px); }
+.logs-wide { max-width: 66vw; }
 .search-field { display: flex; align-items: center; gap: var(--sb-space-2); max-width: 360px; }
 .row-menu-item { display: flex; align-items: flex-start; gap: var(--sb-space-2); padding: var(--sb-space-2) var(--sb-space-3); min-height: 40px; text-decoration: none; color: var(--sb-fg); cursor: pointer; }
 .row-menu-danger { color: var(--sb-danger); }

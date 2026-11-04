@@ -34,7 +34,7 @@ const pretty = (value: unknown): string => (value === null || value === undefine
 </script>
 
 <template>
-  <AppDrawer :visible="visible" :header="shown ? t('calls.drawerTitle', { agent: agentName(shown.agent), model: shown.display_name }) : t('calls.inspect')" @update:visible="emit('update:visible', $event)">
+  <AppDrawer :visible="visible" wide :header="shown ? t('calls.drawerTitle', { agent: agentName(shown.agent), model: shown.display_name }) : t('calls.inspect')" @update:visible="emit('update:visible', $event)">
     <p v-if="loading" class="muted" role="status" data-testid="call-loading">{{ t('common.loading') }}</p>
     <div v-else-if="failure" class="stack" role="alert" data-testid="call-error">
       <p class="mono">{{ failure.message }}</p>

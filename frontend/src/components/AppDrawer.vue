@@ -2,7 +2,7 @@
 import { nextTick, ref, watch } from 'vue'
 import Drawer from 'primevue/drawer'
 
-const props = defineProps<{ visible: boolean; header: string }>()
+const props = defineProps<{ visible: boolean; header: string; wide?: boolean }>()
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
 const opener = ref<HTMLElement | null>(null)
 
@@ -36,7 +36,7 @@ watch(() => props.visible, (open) => {
 </script>
 
 <template>
-  <Drawer :visible="visible" position="right" :header="header" class="drawer-md" @update:visible="emit('update:visible', $event)">
+  <Drawer :visible="visible" position="right" :header="header" :class="props.wide ? 'drawer-logs' : 'drawer-md'" @update:visible="emit('update:visible', $event)">
     <slot />
   </Drawer>
 </template>

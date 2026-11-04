@@ -84,7 +84,7 @@ const topLevel = computed(() => (root.value?.children ?? []).filter((run) => !sh
     <template #empty-actions>
       <router-link :to="`/courses/${id}/plan`" data-testid="chains-go-plan">{{ t('generate.goPlan') }}</router-link>
     </template>
-    <div class="stack" data-testid="chains">
+    <div class="stack logs-wide" data-testid="chains">
       <StatTiles :tiles="tiles" data-testid="chains-tiles" />
       <BuildFlow v-if="root" :root="root" />
       <div v-if="live" class="row" role="status" data-testid="chains-live">
