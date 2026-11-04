@@ -85,6 +85,7 @@ export interface CourseDoc {
   scope_tags: string[]
   row_version: number
   published_version_id: string | null
+  is_public: boolean
   current_version_id: string | null
   topic_count: number
   block_count: number
@@ -107,7 +108,7 @@ export interface NotificationRow { id: string; kind: string; payload: Record<str
 export interface QueueItem { id: string; kind: string; url: string; reason: string; payload: { course_id?: string }; created_at: string | null }
 export interface Permission { code: string; category: string; label: string; description: string }
 export interface LearnProgress { blocks_total: number; blocks_attempted: number; completion: number; assessed: number; mastery: number | null; status: string }
-export interface LearnCourse { id: string; title: string; language: string; audience: string; progress: LearnProgress }
+export interface LearnCourse { id: string; title: string; language: string; audience: string; is_public: boolean; progress: LearnProgress }
 export interface LearnTopicRef { id: string; kind: string; title: string; objectives: string[]; progress: LearnProgress; held?: number }
 export interface LearnModule { id: string; title: string; purpose: string; topics: LearnTopicRef[] }
 export interface LearnOutline { id: string; title: string; language: string; source_language: string; available_languages: Array<{ language: string; status: string }>; progress: LearnProgress; modules: LearnModule[]; source_count?: number; term_count?: number }

@@ -24,7 +24,7 @@ export default async function globalSetup(): Promise<void> {
     if (!res.ok && res.status !== 409) throw new Error(`role ${name}: ${res.status} ${await res.text()}`)
   }
   const learn = ids().learn
-  const assign: [string, string, string[]][] = [['student', s.student.id, [learn]], ['student', s.admin.id, [learn]], ['operator', s.other.id, []], ['author', s.author.id, []], ['editor-only', s.editonly.id, []]]
+  const assign: [string, string, string[]][] = [['student', s.student.id, [learn]], ['student', s.admin.id, [learn]], ['operator', s.other.id, []], ['author', s.author.id, []], ['editor-only', s.editonly.id, []], ['student', s.visitor.id, []]]
   for (const [role, id, tags] of assign) {
     const res = await call('admin', 'POST', `/roles/${role}/assign`, { user_id: id, scope_tags: tags })
     if (!res.ok) throw new Error(`assign ${role}: ${res.status} ${await res.text()}`)

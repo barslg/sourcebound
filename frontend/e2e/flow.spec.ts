@@ -354,3 +354,26 @@ test('learner path: enrolled student reads a topic, answers blocks, finds the er
   console.log('LEARNER report: student row with find-the-error kinds, csv', csv.status())
   await ap.screenshot({ path: '../tmp/shots-t06/report-1280.png', fullPage: true })
 })
+
+test('public course: a signed-in user with no invite finds the open course in /learn and reads it', async ({ browser }) => {
+  const lab = ids()
+  const owner = await browser.newContext({ locale: 'en-US' })
+  await signInAs(owner, 'admin')
+  const visitor = await browser.newContext({ locale: 'en-US' })
+  await signInAs(visitor, 'visitor')
+  const page = await visitor.newPage()
+  expect((await api<Array<{ id: string }>>(visitor, 'GET', '/learn/courses')).some((c) => c.id === lab.learn)).toBe(false)
+  await api(owner, 'PATCH', `/courses/${lab.learn}/visibility`, { public: true })
+  try {
+    await page.goto('/learn')
+    const item = page.getByTestId('learn-item').filter({ hasText: 'Learner lab' })
+    await expect(item.getByTestId('learn-public')).toBeVisible()
+    await item.getByTestId('learn-open').click()
+    await expect(page).toHaveURL(new RegExp(`/learn/courses/${lab.learn}$`))
+    await page.goto(`/learn/topics/${lab.learn_topic}`)
+    await expect(page.getByTestId('learn-block').first()).toBeVisible()
+  } finally {
+    await api(owner, 'PATCH', `/courses/${lab.learn}/visibility`, { public: false })
+  }
+  expect((await api<Array<{ id: string }>>(visitor, 'GET', '/learn/courses')).some((c) => c.id === lab.learn)).toBe(false)
+})

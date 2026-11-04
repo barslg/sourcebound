@@ -608,7 +608,13 @@
     "translationsKept": "Eksisterende oversettelser ({languages}) tas med: hver blokk hvis kildetekst ikke er endret beholder oversettelsen.",
     "translationHeld": "Oversettelse {language}: {held} holdt tilbake og {failed} mislykkede blokker. De blir stående til du oversetter på nytt.",
     "makeLink": "Lag en elevlenke",
-    "publishFirst": "Publiser kurset først."
+    "publishFirst": "Publiser kurset først.",
+    "public": "Åpent for alle",
+    "publicHelp": "Et offentlig kurs er åpent for alle innloggede brukere, uten invitasjon. Deltakerne leser, svarer og spør veilederen på din nøkkel.",
+    "publicLabel": "Offentlig: alle innloggede brukere kan ta dette kurset",
+    "publicFirst": "Publiser kurset først; bare et publisert kurs kan være offentlig.",
+    "publicOn": "Kurset er offentlig.",
+    "publicOff": "Kurset er ikke lenger offentlig."
   },
   "notification": {
     "kind": {
@@ -788,8 +794,9 @@
     "nextLesson": "Neste leksjon",
     "lastLesson": "Dette var den siste leksjonen i kurset.",
     "title": "Min læring",
-    "help": "Kursene du er påmeldt, med fremgangen din.",
+    "help": "Kursene du er påmeldt og de offentlige kursene, med din framgang.",
     "empty": "Du er ikke påmeldt noe publisert kurs ennå. Be læreren din om en invitasjonslenke.",
+    "public": "Offentlig",
     "progress": "{done} av {total} blokker prøvd",
     "status": {
       "not_started": "Ikke startet",

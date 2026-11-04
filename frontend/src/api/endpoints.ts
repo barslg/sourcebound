@@ -62,6 +62,7 @@ export const humanQueueResolve = (id: string): string => `${humanQueue}/${enc(id
 export const courseSources = (id: string): string => `${courseItem(id)}/sources`
 export const courseEstimate = (id: string): string => `${courseItem(id)}/estimate`
 export const courseHeld = (id: string): string => `${courseItem(id)}/held`
+export const courseVisibility = (id: string): string => `${courseItem(id)}/visibility`
 export const coursePublish = (id: string): string => `${courseItem(id)}/publish`
 export const sourceReject = (id: string): string => `${ENDPOINTS.sources}/${enc(id)}/reject`
 export const runCancel = (id: string): string => `${runItem(id)}/cancel`

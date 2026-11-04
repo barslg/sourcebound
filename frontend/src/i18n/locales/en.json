@@ -608,7 +608,13 @@
     "translationsKept": "Existing translations ({languages}) are carried over: every block whose source text did not change keeps its translation.",
     "translationHeld": "Translation {language}: {held} held and {failed} failed blocks. They stay as they are until you translate again.",
     "makeLink": "Create a student link",
-    "publishFirst": "Publish the course first."
+    "publishFirst": "Publish the course first.",
+    "public": "Open to everyone",
+    "publicHelp": "A public course is open to every signed-in user, without an invite. Learners read, answer and ask the tutor on your key.",
+    "publicLabel": "Public: every signed-in user can take this course",
+    "publicFirst": "Publish the course first; only a published course can be public.",
+    "publicOn": "The course is public.",
+    "publicOff": "The course is no longer public."
   },
   "notification": {
     "kind": {
@@ -788,8 +794,9 @@
     "nextLesson": "Next lesson",
     "lastLesson": "That was the last lesson of the course.",
     "title": "My learning",
-    "help": "The courses you are enrolled in, with your progress.",
+    "help": "The courses you are enrolled in and the public courses, with your progress.",
     "empty": "You are not enrolled in a published course yet. Ask your teacher for an invite link.",
+    "public": "Public",
     "progress": "{done} of {total} blocks tried",
     "status": {
       "not_started": "Not started",

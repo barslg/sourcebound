@@ -35,6 +35,7 @@ USERS = {
     "deleteme": ("deleteme@example.com", "Dag Deleteme", False),
     "author": ("author@example.com", "Aud Author", False),
     "editonly": ("editonly@example.com", "Edd Editonly", False),
+    "visitor": ("visitor@example.com", "Vera Visitor", False),
 }
 
 

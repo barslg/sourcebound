@@ -19,6 +19,7 @@ const courses = useResource<LearnCourse[]>('learn:courses', (signal) => request<
       <li v-for="c in courses.data.value" :key="c.id" class="bell-item row" data-testid="learn-item">
         <router-link :to="`/learn/courses/${c.id}`" data-testid="learn-open"><strong>{{ c.title }}</strong></router-link>
         <span v-if="c.audience" class="muted">{{ t('course.factAudience', { audience: c.audience }) }}</span>
+        <StatusChip v-if="c.is_public" tone="info" :label="t('learn.public')" data-testid="learn-public" />
         <StatusChip :tone="c.progress.status === 'mastered' || c.progress.status === 'complete' ? 'ok' : 'info'" :label="t(`learn.status.${c.progress.status}`)" />
         <span class="muted">{{ t('learn.progress', { done: c.progress.blocks_attempted, total: c.progress.blocks_total }) }}</span>
       </li>

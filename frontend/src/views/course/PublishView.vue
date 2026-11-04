@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError, request } from '@/api/client'
-import { coursePlan, coursePublish, courseTranslate, ENDPOINTS } from '@/api/endpoints'
+import { coursePlan, coursePublish, courseTranslate, courseVisibility, ENDPOINTS } from '@/api/endpoints'
 import type { CourseDoc, Invite } from '@/api/types'
 import CourseHeader from '@/components/CourseHeader.vue'
 import ActionButton from '@/components/ActionButton.vue'
@@ -72,6 +72,25 @@ async function copyStudentLink(): Promise<void> {
   notify('success', t('invites.copied'))
 }
 
+const publicReason = (course: CourseDoc | null): string | null => firstReason(lacking('course.publish'), !course?.published_version_id && t('publish.publicFirst'))
+const publicNow = ref<boolean | null>(null)
+const switching = ref(false)
+/** Open a published course to every signed-in user, or close it again; the course header is reloaded after. */
+async function setPublic(value: boolean): Promise<void> {
+  switching.value = true
+  try {
+    const reply = await request<{ is_public: boolean }>(courseVisibility(courseId.value), { method: 'PATCH', body: { public: value } })
+    publicNow.value = reply.is_public
+    notify('success', t(reply.is_public ? 'publish.publicOn' : 'publish.publicOff'))
+    dropCached(`course:${courseId.value}`)
+    await header.value?.reload()
+  } catch (cause) {
+    notifyError(cause, () => void setPublic(value))
+  } finally {
+    switching.value = false
+  }
+}
+
 async function publish(): Promise<void> {
   busy.value = true
   error.value = null
@@ -119,6 +138,12 @@ async function publish(): Promise<void> {
         <div class="row">
           <ActionButton action="translate" :label="t('translate.button')" :loading="translating" :reason="firstReason(noKey, lacking('course.generate'), !course?.current_version_id && t('translate.noVersion'), translation.queued.value && t('translate.alreadyQueued'), languages.length === 0 && t('translate.pickFirst'))" data-testid="translate-open" @click="translate" />
           <Queued v-if="translation.queued.value" />
+        </div>
+        <Section :title="t('publish.public')" :help="t('publish.publicHelp')" />
+        <div class="row">
+          <Checkbox :model-value="publicNow ?? course?.is_public ?? false" binary input-id="public-toggle" :disabled="switching || Boolean(publicReason(course))" data-testid="public-toggle" @update:model-value="setPublic(Boolean($event))" />
+          <label for="public-toggle">{{ t('publish.publicLabel') }}</label>
+          <span v-if="publicReason(course)" class="hint" data-testid="reason">{{ publicReason(course) }}</span>
         </div>
         <Section :title="t('publish.share')" :help="t('publish.shareHelp')" />
         <div class="row">
