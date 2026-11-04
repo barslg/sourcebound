@@ -87,6 +87,7 @@ jobs:
           OIDC_ALLOWED_DOMAINS=
           SUPERADMIN_EMAILS=$SUPERADMIN_EMAILS
           WEB_PORT=${{ vars.WEB_PORT || '10600' }}
+          API_HOST_PORT=${{ vars.API_HOST_PORT || '8000' }}
           EOF
           chmod 600 "$RUNNER_TEMP/env"
 
@@ -100,13 +101,15 @@ jobs:
       - name: build and start
         run: ssh -i ~/.ssh/deploy "$TARGET" "cd ~/$APP_DIR && docker compose up -d --build --remove-orphans && docker compose ps"
 
-      - name: health on the host, then through the site
+      - name: health on the host (through web), then through the site
+        env:
+          WEB_PORT: ${{ vars.WEB_PORT || '10600' }}
         run: |
           for i in $(seq 1 30); do
-            if ssh -i ~/.ssh/deploy "$TARGET" 'curl -fsS http://localhost:8000/api/v1/health' >/dev/null 2>&1; then break; fi
+            if ssh -i ~/.ssh/deploy "$TARGET" "curl -fsS http://localhost:$WEB_PORT/api/v1/health" >/dev/null 2>&1; then break; fi
             sleep 5
           done
-          ssh -i ~/.ssh/deploy "$TARGET" 'curl -fsS http://localhost:8000/api/v1/health'
+          ssh -i ~/.ssh/deploy "$TARGET" "curl -fsS http://localhost:$WEB_PORT/api/v1/health"
           curl -fsS "$SITE_URL/api/v1/health"
           curl -fsS -o /dev/null -w '%{http_code} %{url_effective}\n' "$SITE_URL/"
           echo "deployed $(git rev-parse --short HEAD) behind $SITE_URL"

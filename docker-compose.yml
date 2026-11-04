@@ -1,6 +1,6 @@
 # Local and production: docker compose up -d --build. Everything binds to the host's loopback only:
-# Postgres 5434, api 8000, the site (web: nginx + static build, /api proxied to api) on WEB_PORT, default 10600.
-# APP_ENV and WEB_PORT come from .env. See README, Deploy.
+# Postgres 5434, api on API_HOST_PORT (default 8000), the site (web: nginx + static build, /api proxied to api)
+# on WEB_PORT (default 10600). APP_ENV, API_HOST_PORT and WEB_PORT come from .env. See README, Deploy.
 services:
   db:
     image: postgres:16
@@ -41,7 +41,7 @@ services:
     env_file:
       - .env
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${API_HOST_PORT:-8000}:8000"
     volumes:
       - sources:/app/var/sources
     healthcheck:
