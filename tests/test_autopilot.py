@@ -1105,3 +1105,59 @@ async def test_three_finished_generation_runs_that_left_drafts_stop_the_build(
     assert stopped.value.code == "step_failed" and "could not be written" in str(stopped.value)
     kinds = [kind for kind, _ in await _runs(t03_session, course_id)]
     assert kinds.count("generation") == 3
+
+
+async def test_a_build_the_author_stopped_while_queued_makes_no_call_when_its_job_starts(
+    t03_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.services.operations import execute_operation
+
+    user_id, course_id = await _plan_course_with_source(t03_session)
+    await t03_session.execute(
+        sa.text("UPDATE users SET is_superadmin = true WHERE id = :u"), {"u": str(user_id)}
+    )
+    operation = await _queue_build(t03_session, user_id, course_id)
+    await build.stop_build(
+        t03_session, actor=_plan_actor(user_id, BUILD_CODES), course_id=course_id
+    )
+    await t03_session.commit()
+    handler = _build_handler()
+    settings = _plan_settings()
+    client = guarded_client(settings, inner=httpx2.MockTransport(handler))
+    ledger = create_session_factory(_db_url())
+    monkeypatch.setattr(
+        planruns,
+        "real_provider_factory",
+        lambda _settings: lambda s: MetaProvider(s, settings, client, ledger),
+    )
+    await execute_operation(operation, database_url=_db_url())
+    assert handler.state["seen"] == []
+    row = (
+        await t03_session.execute(
+            sa.text("SELECT status, error FROM operations WHERE id = :op"), {"op": str(operation)}
+        )
+    ).one()
+    assert tuple(row) == ("failed", build.STOPPED_BY_AUTHOR)
+
+
+async def test_a_build_row_the_author_ended_between_stages_stops_the_loop_before_its_next_paid_step(
+    t03_session: AsyncSession,
+) -> None:
+    user_id, course_id = await _plan_course_with_source(t03_session)
+    operation = await _queue_build(t03_session, user_id, course_id)
+    inner = _build_handler()
+
+    async def handler(request: httpx2.Request) -> httpx2.Response:
+        if not inner.state["seen"]:
+            async with create_session_factory(_db_url())() as other:
+                await other.execute(
+                    sa.text("UPDATE operations SET status = 'failed' WHERE id = :op"),
+                    {"op": str(operation)},
+                )
+                await other.commit()
+        return inner(request)
+
+    with pytest.raises(build.BuildStopped) as stopped:
+        await _run_build(t03_session, operation, handler)
+    assert stopped.value.code == "cancelled"
+    assert 1 <= len(inner.state["seen"]) <= 3

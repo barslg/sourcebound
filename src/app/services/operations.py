@@ -219,8 +219,20 @@ async def execute_operation(
             if row is None:
                 return
             kind, _, actor_id = row
-            await _set_status(session, operation_id, status="running", progress=0.1)
+            claimed = (
+                await session.execute(
+                    sa.text(
+                        "UPDATE operations SET status = 'running', progress = 0.1,"
+                        " updated_at = now() WHERE id = :op"
+                        " AND status IN ('queued', 'running') RETURNING id"
+                    ),
+                    {"op": str(operation_id)},
+                )
+            ).first()
             await session.commit()
+            if claimed is None:
+                # the author stopped it (or it finished) before this job started: pay nothing
+                return
             try:
                 actor = (
                     await load_principal(session, UUID(str(actor_id)))
