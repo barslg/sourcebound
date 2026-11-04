@@ -835,7 +835,9 @@ async def seed_course(session: AsyncSession, owner: str) -> dict[str, str]:
             response={"ok": True},
             run_id=run,
             step_id=step,
-            response_id="resp_0a1b2c3d4e5f6071" if agent == "architect" else "resp_8293a4b5c6d7e8f9",
+            response_id="resp_0a1b2c3d4e5f6071"
+            if agent == "architect"
+            else "resp_8293a4b5c6d7e8f9",
         )
     extra = await seed_labs(session, owner)
     return {
