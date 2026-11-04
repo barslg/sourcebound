@@ -9,6 +9,7 @@ import CourseHeader from '@/components/CourseHeader.vue'
 import ActionButton from '@/components/ActionButton.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import Queued from '@/components/Queued.vue'
+import RunCalls from '@/components/RunCalls.vue'
 import ResourceState from '@/components/ResourceState.vue'
 import Section from '@/components/Section.vue'
 import StatusChip from '@/components/StatusChip.vue'
@@ -154,6 +155,7 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
               <router-link :to="`/runs/${latest.id}`" data-testid="open-run">{{ t('plan.openRun') }}</router-link>
             </div>
             <p data-testid="run-cost">{{ t('run.cost', { spent: usd(runDoc?.cost_so_far ?? latest.cost_so_far) ?? t('run.spentUnknown'), forecast: usd(runDoc?.estimate?.cost_usd ?? estimate.data.value?.cost_usd) ?? t('run.noForecast') }) }}</p>
+            <RunCalls :key="latest.id" :run-id="latest.id" :live="active" compact />
             <ul v-if="(runDoc?.steps ?? []).length > 0" class="plain-list">
               <li v-for="(s, i) in runDoc?.steps ?? []" :key="s.step_key" class="bell-item row" data-testid="run-step">
                 <span>{{ t('run.stepNamed', { n: i + 1, role: roleName(s.step_key), subject: stepName(s.step_key, plan.data.value).subject }) }}</span>

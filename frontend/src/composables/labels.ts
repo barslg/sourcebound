@@ -9,6 +9,13 @@ export function usd(value: string | number | null | undefined): string | null {
   return Number.isFinite(n) ? `$${n.toFixed(2)}` : null
 }
 
+/** A per-call price: calls cost fractions of a cent, so two decimals would show $0.00. */
+export function usdFine(value: string | number | null | undefined): string | null {
+  if (value === null || value === undefined) return null
+  const n = Number(value)
+  return Number.isFinite(n) ? `$${n.toFixed(4)}` : null
+}
+
 export function reasonKey(code: string): string {
   return `reason.${code.replace(/\./g, '_')}`
 }

@@ -70,7 +70,7 @@ export const ACTIONS = [
   a('ask', 'primary', ['topic']),
   a('continue', 'primary', ['course outline']),
   a('export', 'secondary', ['report']),
-  a('details', 'navigation', ['topic', 'plan', 'sources']),
+  a('details', 'navigation', ['topic', 'plan', 'sources', 'run']),
 ] as const satisfies readonly ActionMeta[]
 
 export type ActionId = (typeof ACTIONS)[number]['id']

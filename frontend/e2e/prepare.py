@@ -803,6 +803,37 @@ async def seed_course(session: AsyncSession, owner: str) -> dict[str, str]:
         {"r": str(run)},
     )
     await stop_run(session, run_id=run, marker="retry policy exhausted at block:t1-a")
+    from app.llm.calls import log_call
+
+    step = (
+        await session.execute(
+            sa.text("SELECT id FROM run_steps WHERE run_id = :r AND step_key = 'block:t1-a'"),
+            {"r": str(run)},
+        )
+    ).scalar_one()
+    for agent, tokens_in, tokens_out, ms in (
+        ("architect", 100, 50, 4100),
+        ("block_teach", 80, 40, 2300),
+    ):
+        await log_call(
+            session,
+            agent=agent,
+            model="muse-spark-1.3",
+            prompt_version="v1",
+            input_tokens=tokens_in,
+            cached_tokens=0,
+            output_tokens=tokens_out,
+            duration_ms=ms,
+            request={
+                "model": "muse-spark-1.3",
+                "input": f"{agent} task",
+                "instructions": f"{agent} rules",
+            },
+            response={"ok": True},
+            run_id=run,
+            step_id=step,
+            response_id=f"resp_{agent}",
+        )
     extra = await seed_labs(session, owner)
     return {
         "course": str(cid),

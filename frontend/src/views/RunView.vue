@@ -9,6 +9,7 @@ import ActionButton from '@/components/ActionButton.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import StatusChip from '@/components/StatusChip.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import RunCalls from '@/components/RunCalls.vue'
 import ResourceState from '@/components/ResourceState.vue'
 import Section from '@/components/Section.vue'
 import { usd } from '@/composables/labels'
@@ -95,6 +96,7 @@ async function act(kind: 'resume' | 'cancel'): Promise<void> {
       </div>
       <Section :title="t('run.costTitle')" :help="t('plan.forecastNote')" />
       <p data-testid="run-cost">{{ t('run.cost', { spent: usd(doc?.cost_so_far) ?? t('run.spentUnknown'), forecast: usd(doc?.estimate?.cost_usd ?? estimate?.cost_usd) ?? t('run.noForecast') }) }}</p>
+      <RunCalls :run-id="runId" :live="doc?.status !== 'done' && doc?.status !== 'stopped'" />
       <Section :title="t('run.topics')" :help="t('run.topicsHelp')" />
       <p v-if="(doc?.topics ?? []).length === 0" class="muted">{{ t('run.noTopics') }}</p>
       <ul class="plain-list" data-testid="run-topics">

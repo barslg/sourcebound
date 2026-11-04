@@ -48,6 +48,25 @@ export interface Operation {
 export interface AcceptResult { scopes: string[] }
 export interface RunListItem { id: string; status: string; kind: string | null; created_at: string; stop_marker: string | null; cost_so_far: string }
 
+export interface CallTotals { tokens_input: number; tokens_cached: number; tokens_output: number; tokens_reasoning: number; cost_usd: string }
+export interface CallSummaryRow extends CallTotals { agent: string; model: string; display_name: string; calls: number }
+export interface CallRow extends CallTotals {
+  id: string
+  created_at: string
+  agent: string
+  step_key: string | null
+  model: string
+  display_name: string
+  endpoint: string
+  response_id: string | null
+  status: string
+  cached_reply: boolean
+  duration_ms: number
+}
+export interface RunNumbers { blocks_accepted: number | null; blocks_held: number | null; quotes_verbatim: number | null; quotes_total: number | null }
+export interface RunCallsDoc { summary: CallSummaryRow[]; calls: CallRow[]; total: number; next_offset: number | null; numbers: RunNumbers }
+export interface RunCallDetail { id: string; agent: string; model: string; display_name: string; status: string; request: Record<string, unknown>; response: unknown }
+
 export interface Constraint {
   key: string
   kind: string

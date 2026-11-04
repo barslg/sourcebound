@@ -456,3 +456,9 @@ span.cite-mark { cursor: default; color: var(--sb-muted); }
 .group-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--sb-space-3); }
 .group-list .group-title { margin: 0 0 var(--sb-space-1); font-weight: 500; }
 .group-list ul { margin: 0; padding-left: var(--sb-space-4); }
+
+.stat-tiles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--sb-space-3); }
+.stat-tile { display: flex; flex-direction: column; gap: var(--sb-space-1); padding: var(--sb-space-3) var(--sb-space-4); background: var(--sb-surface); border: 1px solid var(--sb-border); border-radius: var(--sb-radius-card); }
+.stat-value { font-family: var(--sb-font-display); font-size: var(--sb-fs-lg); font-weight: 600; overflow-wrap: anywhere; }
+.stat-label { color: var(--sb-muted); font-size: var(--sb-fs-xs); }
+.call-json { margin: 0; max-height: 40vh; overflow: auto; padding: var(--sb-space-3); background: var(--sb-surface); border: 1px solid var(--sb-border); border-radius: var(--sb-radius); white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--sb-fs-xs); }
