@@ -1916,13 +1916,18 @@ def _typed_content(
             if isinstance(p, dict)
         }
     elif block_type == "cloze":
+        from app.course.exercise_repair import normalised_gaps
+
         raw_blanks: Any = output.get("blanks")
         blanks = [str(b) for b in raw_blanks] if isinstance(raw_blanks, list) else []
-        content = {"text": text, "blanks": ["___"] * len(blanks)}
+        content = {"text": normalised_gaps(text), "blanks": ["___"] * len(blanks)}
         key["blanks"] = blanks
     elif block_type == "ordering":
+        from app.course.exercise_repair import ordered_steps
+
         raw_steps: Any = output.get("steps")
         steps = [str(s) for s in raw_steps] if isinstance(raw_steps, list) else []
+        steps = ordered_steps(steps, answer)
         content = {"prompt": text, "items": steps, "citations": citations}
         key["order_by_index"] = list(range(len(steps)))
     elif block_type == "scenario_practice":
@@ -2347,7 +2352,10 @@ async def generate_block_step(
             )
             holds += type_errors
             if lecture_first and content:
+                from app.course.exercise_repair import cloze_blank_holds
+
                 holds += _block_schema_errors(block_type, content)
+                holds += cloze_blank_holds(output)
             if content and block_type not in ("figure", "diagram") and not lecture_first:
                 pool = number_pool_pids(
                     dict(entry.get("plan", {})), node_id, handle_to_passage, citation_pids
