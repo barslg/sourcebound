@@ -56,6 +56,20 @@ METHODOLOGIES: tuple[dict[str, Any], ...] = (
         },
     },
     {
+        "code": "lecture_first",
+        "name": "Lecture first",
+        "description": (
+            "From a brief alone: topics and a through-line, one rich lecture per topic,"
+            " exercises cut from the lecture; one corrector pass, no sources."
+        ),
+        "compatible_with": ["remember", "understand", "apply"],
+        "pipeline": "lecture_first",
+        "prescription": {
+            "lesson": ["teach", "check", "practice"],
+            "module_test": ["test", "test"],
+        },
+    },
+    {
         "code": "backward_design",
         "name": "Backward Design",
         "description": "Outcomes first, then evidence, then learning plan per topic.",

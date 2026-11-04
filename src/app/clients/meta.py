@@ -112,7 +112,7 @@ def build_request_body(
     background: bool = False,
     prompt_cache_key: str | None = None,
     effort: str = "medium",
-    max_output_tokens: int = 4096,
+    max_output_tokens: int | None = 4096,
     instructions: str | None = None,
     safety_identifier: str | None = None,
 ) -> dict[str, Any]:
@@ -138,8 +138,9 @@ def build_request_body(
             }
         },
         "reasoning": {"effort": effort},
-        "max_output_tokens": max_output_tokens,
     }
+    if max_output_tokens:
+        body["max_output_tokens"] = max_output_tokens
     if background:
         body["background"] = True
     if instructions:
@@ -192,7 +193,7 @@ class MetaClient:
         background: bool = False,
         prompt_cache_key: str | None = None,
         effort: str = "medium",
-        max_output_tokens: int = 4096,
+        max_output_tokens: int | None = 4096,
         instructions: str | None = None,
         safety_identifier: str | None = None,
     ) -> LLMResponse:
@@ -259,7 +260,7 @@ class MetaClient:
         schema: dict[str, Any],
         prompt_cache_key: str | None = None,
         effort: str = "medium",
-        max_output_tokens: int = 4096,
+        max_output_tokens: int | None = 4096,
         instructions: str | None = None,
         safety_identifier: str | None = None,
     ) -> str:

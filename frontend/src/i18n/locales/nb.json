@@ -440,7 +440,7 @@
     "alreadyQueued": "Allerede i kø; vent til den er ferdig.",
     "beforeHelp": "Spørsmål kurset trenger svar på før det kan skrives. Hvert kort lagres for seg.",
     "blocksHelp": "Delene dette temaet skrives som, hver knyttet til sine kildeavsnitt.",
-    "buildHelp": "Velg hvordan kurset underviser og hva som skal letes etter i kildene; oppsettet skrives for deg.",
+    "buildHelp": "Beskriv kurset i briefen; disposisjonen, forelesningene og oppgavene skrives for deg.",
     "deleteButton": "Slett fra planen",
     "estimate": "Anslag",
     "handleTitle": "Kildeavsnitt {handle}; åpne kildene",
@@ -464,7 +464,7 @@
     "goSources": "Gå til Kilder",
     "regenerateTitle": "Generere kurset på nytt?",
     "regenerateBody": "Kurset er allerede generert. Hver blokk i planen skrives og sjekkes på nytt, noe som koster omtrent {cost}. For å endre bare én blokk, skriv den om på siden Hva som må rettes.",
-    "buildCard": "Bygg planen fra kildene dine",
+    "buildCard": "Bygg kurset fra briefen",
     "outline": "Kursoversikt",
     "outlineHelp": "Titler lagres når du forlater feltet. Åpne et emne for å se blokkene.",
     "handoffNext": "Neste: {note}",
@@ -493,7 +493,18 @@
     "leftOut": "Utelatt fra planen",
     "leftOutHelp": "Det de godkjente kildene inneholder som kurset ikke lærer bort, og hvorfor planleggeren lot det ligge.",
     "leftOutCount": "{count} avsnitt utelatt",
-    "leftOutGroup": "{count} avsnitt"
+    "leftOutGroup": "{count} avsnitt",
+    "briefLevels": "Start- og sluttnivå",
+    "briefLevelsHint": "Hvor deltakeren står nå og hvor kurset etterlater dem. Eksempel: ingen Python; skriver små skript med lister og funksjoner.",
+    "briefContext": "Kontekst og bruk",
+    "briefContextHint": "Hvor og til hva deltakeren skal bruke dette. Eksempel: en sykepleier med en avdelingsrutine; en butikkeier som følger utgifter.",
+    "briefMustCover": "Må dekke, men ikke begrenset til",
+    "briefMustCoverHint": "Emner kurset må ha med. Disposisjonen legger til det målene trenger.",
+    "briefOutcomes": "Hva deltakeren kan til slutt",
+    "briefOutcomesHint": "To til fem ting deltakeren gjør etter kurset, som handlinger.",
+    "briefLanguages": "Kursspråk",
+    "briefLanguagesHint": "Kurset skrives på sitt eget språk og oversettes til hvert språk du krysser av her.",
+    "briefRequired": "Fyll inn nivå, kontekst og mål først."
   },
   "run": {
     "title": "Genereringskjøring",
@@ -652,6 +663,10 @@
     "kolb_experiential": {
       "name": "Kolbs erfaringslæring",
       "line": "Opplev, reflekter, form begreper, prøv ut."
+    },
+    "lecture_first": {
+      "name": "Forelesning først",
+      "line": "Fra briefen alene: én rik forelesning per emne, oppgaver skåret ut av den, én korrekturrunde."
     }
   },
   "reason": {
@@ -1110,7 +1125,10 @@
       "saboteur": "Feilplanter",
       "translator": "Oversetter",
       "tutor": "Veileder",
-      "transcriber": "Transkribering"
+      "transcriber": "Transkribering",
+      "blueprint": "Kursplan",
+      "lecture": "Forelesningsskriver",
+      "corrector": "Korrektur"
     },
     "unavailable": "Dette kallet kunne ikke åpnes. Lukk panelet og prøv igjen."
   },
@@ -1131,7 +1149,8 @@
       "answers": "Antar åpne spørsmål",
       "generate": "Skriver og leser blokkene",
       "rewrite": "Skriver om holdte blokker",
-      "ready": "Ferdig"
+      "ready": "Ferdig",
+      "translate": "Oversetter"
     },
     "stageLine": "Trinn: {stage}",
     "spent": "Brukt {spent} av taket på {cap}",
@@ -1158,7 +1177,9 @@
     "assumedHelp": "Planen følger kildene og profilen slik de er. Svar på plansiden og bygg på nytt for å endre den.",
     "unknown": "Byggestatus kunne ikke lastes",
     "confirmed": "Bygging i kø.",
-    "stopRequested": "Stopp forespurt."
+    "stopRequested": "Stopp forespurt.",
+    "capOptionalHint": "La stå tomt for ingen grense. Med et tak stopper byggingen når så mye er brukt.",
+    "spentNoCap": "Brukt {spent}, uten tak"
   },
   "chains": {
     "title": "Agentkjeder",

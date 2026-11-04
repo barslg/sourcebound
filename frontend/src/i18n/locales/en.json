@@ -440,7 +440,7 @@
     "alreadyQueued": "Already queued; wait for it to finish.",
     "beforeHelp": "Questions the course needs answered before it can be written. Each card saves on its own.",
     "blocksHelp": "The pieces this topic will be written as, each tied to its source passages.",
-    "buildHelp": "Choose how the course teaches and what to look for in the sources; the outline is written for you.",
+    "buildHelp": "Describe the course in the brief; the outline, the lectures and the exercises are written for you.",
     "deleteButton": "Delete from plan",
     "estimate": "Estimate",
     "handleTitle": "Source passage {handle}; open the sources",
@@ -464,7 +464,7 @@
     "goSources": "Go to Sources",
     "regenerateTitle": "Generate the course again?",
     "regenerateBody": "The course was generated already. Every block of the plan is written and checked again, which costs about {cost}. To change one block only, rewrite it on the What to fix page.",
-    "buildCard": "Build the plan from your sources",
+    "buildCard": "Build the course from your brief",
     "outline": "Course outline",
     "outlineHelp": "Titles save when you leave the field. Open a topic to see its blocks.",
     "handoffNext": "Next: {note}",
@@ -493,7 +493,18 @@
     "leftOut": "Left out of the plan",
     "leftOutHelp": "What the approved sources contain that this course does not teach, and why the planner left it out.",
     "leftOutCount": "{count} passages left out",
-    "leftOutGroup": "{count} passages"
+    "leftOutGroup": "{count} passages",
+    "briefLevels": "Start and end level",
+    "briefLevelsHint": "Where the learner stands now and where the course leaves them. Example: no Python at all; writes small scripts with lists and functions.",
+    "briefContext": "Context and use",
+    "briefContextHint": "Where and for what the learner will use this. Example: a nurse keeping a ward routine; a shop owner tracking expenses.",
+    "briefMustCover": "Must cover, not limited to",
+    "briefMustCoverHint": "Topics the course has to include. The outline adds what the outcomes need.",
+    "briefOutcomes": "What the learner can do at the end",
+    "briefOutcomesHint": "Two to five things the learner does after the course, as actions.",
+    "briefLanguages": "Course languages",
+    "briefLanguagesHint": "The course is written in its own language and translated into each one you tick here.",
+    "briefRequired": "Fill in the level, the context and the outcomes first."
   },
   "run": {
     "title": "Generation run",
@@ -652,6 +663,10 @@
     "kolb_experiential": {
       "name": "Kolb experiential learning",
       "line": "Experience, reflect, form concepts, try it out."
+    },
+    "lecture_first": {
+      "name": "Lecture first",
+      "line": "From your brief alone: one rich lecture per topic, exercises cut from it, one corrector pass."
     }
   },
   "reason": {
@@ -1110,7 +1125,10 @@
       "saboteur": "Error planter",
       "translator": "Translator",
       "tutor": "Tutor",
-      "transcriber": "Transcriber"
+      "transcriber": "Transcriber",
+      "blueprint": "Blueprint",
+      "lecture": "Lecture writer",
+      "corrector": "Corrector"
     },
     "unavailable": "This call could not be opened. Close this panel and try again."
   },
@@ -1131,7 +1149,8 @@
       "answers": "Assuming open questions",
       "generate": "Writing and reading the blocks",
       "rewrite": "Rewriting held blocks",
-      "ready": "Done"
+      "ready": "Done",
+      "translate": "Translating"
     },
     "stageLine": "Stage: {stage}",
     "spent": "Spent {spent} of the {cap} cap",
@@ -1158,7 +1177,9 @@
     "assumedHelp": "The plan follows the sources and the profile as they stand. Answer on the plan page and rebuild to change it.",
     "unknown": "Build status could not be loaded",
     "confirmed": "Build queued.",
-    "stopRequested": "Stop requested."
+    "stopRequested": "Stop requested.",
+    "capOptionalHint": "Leave empty for no limit. With a cap the build stops when it has spent this much.",
+    "spentNoCap": "Spent {spent}, no cap"
   },
   "chains": {
     "title": "Agent chains",

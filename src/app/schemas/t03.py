@@ -48,7 +48,7 @@ class BuildSubmitRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     queries: list[str] = Field(default_factory=list)
-    cap_usd: Decimal = Field(gt=0, le=1000)
+    cap_usd: Decimal | None = Field(default=None, gt=0, le=1000)
     idempotency_key: str | None = None
     continue_build: bool = Field(default=False, alias="continue")
 

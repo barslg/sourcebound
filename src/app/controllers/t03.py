@@ -522,7 +522,7 @@ async def build_course(
     *,
     course_id: str,
     queries: list[str],
-    cap_usd: Decimal,
+    cap_usd: Decimal | None,
     idempotency_key: str | None,
     continue_build: bool,
 ) -> dict[str, str]:

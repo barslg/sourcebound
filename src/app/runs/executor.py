@@ -2123,6 +2123,7 @@ async def generate_block_step(
         ],
     }
     prompt = generate_block.build_generation_prompt(**prompt_input)
+    lecture_first = bool(entry.get("lecture_first"))
     digest = step_digest(
         agent=agent,
         prompt=prompt,
@@ -2179,7 +2180,9 @@ async def generate_block_step(
                     agent=agent,
                     prompt=prompt,
                     schema=generate_block.schema_for(block_type),
-                    cache_key=cache_key(agent, block_type, course_id),
+                    cache_key=cache_key(
+                        agent, "lecture" if lecture_first else block_type, course_id
+                    ),
                     run_id=run_id,
                     step_id=claim["step_id"],
                     variant=int(claim["attempt"])
@@ -2187,6 +2190,7 @@ async def generate_block_step(
                     + int(entry.get("variant_offset", 0))
                     + first_ask,
                     check=lambda reply: generate_block.check_block_output(reply, block_type),
+                    **_lecture_first_call_options(lecture_first),
                 )
                 break
             except (ValidationError, UnparseableReplyError) as bad:
@@ -2251,6 +2255,8 @@ async def generate_block_step(
                 quote = str(cit.get("quote", ""))
                 passage_text = stored.get(pid, "")
                 span = locate_verbatim(passage_text, quote)
+                if span is None and lecture_first:
+                    continue
                 if span is None:
                     holds.append(
                         _misplaced_quote_line(
@@ -2275,7 +2281,9 @@ async def generate_block_step(
             # cited passage (its list items) and never join two passages
             # into one paragraph without a handle marker between them.
             role = str(dict(entry.get("skeleton", {})).get("role", ""))
-            is_reading = agent in ("block_teach", "block_example") or role in ("teach", "example")
+            is_reading = (
+                agent in ("block_teach", "block_example") or role in ("teach", "example")
+            ) and not lecture_first
             if is_reading and block_type == "diagram":
                 from app.course.grounding import diagram_holds
 
@@ -2305,7 +2313,13 @@ async def generate_block_step(
                 cited_kinds = {passage_kind(stored.get(pid, "")) for pid in citation_pids}
                 if cited_kinds and cited_kinds <= {"prose"}:
                     holds.append("figure: cited passage has no numbers or structure to draw")
-            if is_question and block_type != "spot_the_error":
+            if is_question and block_type != "spot_the_error" and lecture_first:
+                from app.course.exercise_shape import exercise_holds
+
+                holds += exercise_holds(
+                    output, block_type, [stored.get(pid, "") for pid in citation_pids]
+                )
+            if is_question and block_type != "spot_the_error" and not lecture_first:
                 from app.course.exercise_shape import exercise_holds
                 from app.course.grounding import taught_holds
 
@@ -2332,7 +2346,9 @@ async def generate_block_step(
                 output, block_type=block_type, citations=resolved_citations
             )
             holds += type_errors
-            if content and block_type not in ("figure", "diagram"):
+            if lecture_first and content:
+                holds += _block_schema_errors(block_type, content)
+            if content and block_type not in ("figure", "diagram") and not lecture_first:
                 pool = number_pool_pids(
                     dict(entry.get("plan", {})), node_id, handle_to_passage, citation_pids
                 )
@@ -2351,6 +2367,43 @@ async def generate_block_step(
             )
 
         verdict = await judge(output)
+        if lecture_first:
+            output, verdict, note = await _lecture_first_correction(
+                provider,
+                judge=judge,
+                output=output,
+                verdict=verdict,
+                prompt_input=prompt_input,
+                block_type=block_type,
+                run_id=run_id,
+                step_id=claim["step_id"],
+            )
+            persisted = await _persist_block(
+                session,
+                course_id=course_id,
+                node_id=node_id,
+                content=verdict.content or {"text": verdict.text, "handoff": verdict.handoff},
+                answer_key=verdict.key if verdict.content else None,
+                step_id=claim["step_id"],
+                status="accepted" if verdict.content else "held",
+                hold_reason=None if verdict.content else join_hold_lines(verdict.holds),
+                force_new=True,
+            )
+            if persisted is not None and persisted[2]:
+                await _write_citation_rows(
+                    session,
+                    version_id=persisted[1],
+                    node_id=node_id,
+                    citations=verdict.resolved_citations,
+                    passage_ids=verdict.citation_pids,
+                )
+            await finish_step(
+                session,
+                step_id=claim["step_id"],
+                output={**output, "corrector": note, "remaining": list(verdict.holds)},
+            )
+            await session.commit()
+            return
         reasks = 0
         while verdict.holds and reasks < CODE_REASKS:
             reasks += 1
@@ -2408,27 +2461,119 @@ async def generate_block_step(
         )
         # citation rows on THE version just written, in THIS course
         if persisted is not None and persisted[2]:
-            version_id = persisted[1]
-            for cit, pid in zip(resolved_citations, citation_pids, strict=True):
-                await session.execute(
-                    sa.text(
-                        "INSERT INTO citations (block_version_id, passage_id, claim_path, quote,"
-                        " quote_start, quote_end, verified_by)"
-                        " VALUES (:v, :p, :c, :q, :s, :e, 'code')"
-                    ),
-                    {
-                        "v": version_id,
-                        "p": pid,
-                        "c": f"blocks.{node_id}",
-                        "q": cit["quote"],
-                        "s": cit["quote_start"],
-                        "e": cit["quote_end"],
-                    },
-                )
+            await _write_citation_rows(
+                session,
+                version_id=persisted[1],
+                node_id=node_id,
+                citations=resolved_citations,
+                passage_ids=citation_pids,
+            )
         if persisted is not None and persisted[2]:
             await _mark_reader_stale(session, run_id=run_id, course_id=course_id, node_id=node_id)
         await finish_step(session, step_id=claim["step_id"], output=output)
     await session.commit()
+
+
+def _block_schema_errors(block_type: str, content: dict[str, Any]) -> list[str]:
+    """The stored shape's own errors (the rule that later marks a course generated)."""
+    from importlib import import_module
+
+    try:
+        errors = import_module(f"app.blocks.{block_type}.schema").validate(dict(content))
+    except ModuleNotFoundError:
+        return []
+    return [str(e) for e in errors]
+
+
+def _lecture_first_call_options(lecture_first: bool) -> dict[str, Any]:
+    """Lecture-first writers run on Wonder at medium effort with no output limit."""
+    from app.llm.registry import UNBOUNDED
+
+    if not lecture_first:
+        return {}
+    return {"model": "muse-wonder-1.0", "effort": "medium", "max_output_tokens": UNBOUNDED}
+
+
+async def _write_citation_rows(
+    session: AsyncSession,
+    *,
+    version_id: str,
+    node_id: str,
+    citations: list[dict[str, Any]],
+    passage_ids: list[str],
+) -> None:
+    """Verified citation rows for one block version, in this course."""
+    for cit, pid in zip(citations, passage_ids, strict=True):
+        await session.execute(
+            sa.text(
+                "INSERT INTO citations (block_version_id, passage_id, claim_path, quote,"
+                " quote_start, quote_end, verified_by)"
+                " VALUES (:v, :p, :c, :q, :s, :e, 'code')"
+            ),
+            {
+                "v": version_id,
+                "p": pid,
+                "c": f"blocks.{node_id}",
+                "q": cit["quote"],
+                "s": cit["quote_start"],
+                "e": cit["quote_end"],
+            },
+        )
+
+
+async def _lecture_first_correction(
+    provider: Any,
+    *,
+    judge: Callable[[dict[str, Any]], Any],
+    output: dict[str, Any],
+    verdict: Any,
+    prompt_input: dict[str, Any],
+    block_type: str,
+    run_id: UUID,
+    step_id: UUID,
+) -> tuple[dict[str, Any], Any, str]:
+    """One corrector pass over an exercise draft: the code's remarks in, the draft to keep out."""
+    from app.agents import corrector as corrector_agent
+    from app.agents import generate_block
+
+    plan = dict(prompt_input.get("plan", {}))
+    modules = plan.get("modules") or [{}]
+    topics = modules[0].get("topics") or [{}]
+    own = {k: v for k, v in dict(topics[-1]).items() if k != "blocks"}
+    context = {
+        "learner": str(plan.get("learner", "")),
+        "case": str(plan.get("case", "")),
+        "topic": own,
+        "lecture": generate_block.public_sources(list(prompt_input.get("sources", []))),
+        "skeleton": dict(prompt_input.get("skeleton", {})),
+    }
+    try:
+        reply = await provider.generate_json(
+            agent="corrector",
+            prompt=corrector_agent.build_prompt(
+                stage="block",
+                context=context,
+                draft=output,
+                remarks=list(verdict.holds),
+                course_language=str(prompt_input.get("course_language", "en")),
+            ),
+            schema=corrector_agent.schema(generate_block.schema_for(block_type)),
+            cache_key=f"corrector:{run_id}",
+            run_id=run_id,
+            step_id=step_id,
+            variant=0,
+            check=corrector_agent.check_output,
+        )
+    except (ValidationError, UnparseableReplyError) as bad:
+        return output, verdict, f"corrector gave no usable reply: {str(bad)[:200]}"
+    kept = corrector_agent.apply(reply, output)
+    note = str(reply.get("notes", ""))
+    if kept == output:
+        return output, verdict, note
+    corrected_verdict = await judge(kept)
+    if not corrected_verdict.content:
+        return output, verdict, note
+    return kept, corrected_verdict, note
 
 
 def _undecided_nodes(output: dict[str, Any]) -> set[str]:

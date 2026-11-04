@@ -443,6 +443,45 @@ ARCHITECT_SCHEMA: dict[str, Any] = _strict_object(
     }
 )
 
+
+class BlueprintTopic(BaseModel):
+    """One topic of a blueprint: its lecture's key points and the case step it carries."""
+
+    plan_node_id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    annotation: str = Field(min_length=1)
+    artefact_step: str = ""
+    introduces_terms: list[str] = Field(default_factory=list)
+    requires: list[str] = Field(default_factory=list)
+
+
+class BlueprintModule(BaseModel):
+    """One module of a blueprint."""
+
+    plan_node_id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    purpose: str = Field(min_length=1)
+    entry_knowledge: str = ""
+    exit_knowledge: str = ""
+    topics: list[BlueprintTopic] = Field(min_length=1)
+
+
+class BlueprintOutput(BaseModel):
+    """The blueprint reply: learner, case, modules with annotated topics."""
+
+    learner: str = Field(min_length=1)
+    case: str = Field(min_length=1)
+    modules: list[BlueprintModule] = Field(min_length=1)
+
+
+class LectureOutput(BaseModel):
+    """The lecture reply: paragraphs in order and the case state afterwards."""
+
+    plan_node_id: str = Field(min_length=1)
+    paragraphs: list[str] = Field(min_length=1)
+    artefact_state: str = ""
+
+
 OUTLINE_SCHEMA: dict[str, Any] = _strict_object(
     {
         "learner": _string(
@@ -505,6 +544,73 @@ OUTLINE_SCHEMA: dict[str, Any] = _strict_object(
         },
     }
 )
+
+BLUEPRINT_SCHEMA: dict[str, Any] = _strict_object(
+    {
+        "learner": _string("The person the brief describes, as one concrete learner."),
+        "case": _string(
+            "The through-line of the whole course: a project built topic by topic, or"
+            " characters who carry it; one concrete paragraph."
+        ),
+        "modules": {
+            "type": "array",
+            "items": _strict_object(
+                {
+                    "plan_node_id": _string("m1, m2, ..."),
+                    "title": _string(),
+                    "purpose": _string(),
+                    "entry_knowledge": _string(),
+                    "exit_knowledge": _string(),
+                    "topics": {
+                        "type": "array",
+                        "items": _strict_object(
+                            {
+                                "plan_node_id": _string("m1-t1, m1-t2, ..."),
+                                "title": _string(),
+                                "annotation": _string(
+                                    "Two or three sentences: the key points this lecture covers."
+                                ),
+                                "artefact_step": _string(
+                                    "What the case gains in this topic and its state afterwards."
+                                ),
+                                "introduces_terms": _strings("Terms first explained here."),
+                                "requires": _strings("plan_node_ids of earlier topics."),
+                            }
+                        ),
+                    },
+                }
+            ),
+        },
+    }
+)
+
+LECTURE_SCHEMA: dict[str, Any] = _strict_object(
+    {
+        "plan_node_id": _string("The topic's plan_node_id from the task input."),
+        "paragraphs": _strings(
+            "The lecture in order: one markdown paragraph, one fenced code block with its"
+            " output, or one short list per item; never a lone heading."
+        ),
+        "artefact_state": _string(
+            "The case after this lecture: code or description, complete enough for the next one."
+        ),
+    }
+)
+
+
+def corrector_schema(stage_schema: dict[str, Any]) -> dict[str, Any]:
+    """The corrector's reply around one stage's own schema: accept, or the whole corrected draft."""
+    return _strict_object(
+        {
+            "accepted": {"type": "boolean"},
+            "notes": _string("One sentence: what was changed, or why the draft stands."),
+            "corrected": {
+                "anyOf": [stage_schema, {"type": "null"}],
+                "description": "The whole corrected draft in the stage's shape, or null.",
+            },
+        }
+    )
+
 
 LIBRARIAN_SCHEMA: dict[str, Any] = _strict_object(
     {

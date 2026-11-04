@@ -42,6 +42,9 @@ AGENT_SCHEMAS: dict[str, dict[str, object]] = {
     "saboteur": tree.SABOTEUR_SCHEMA,
     "tutor": tree.TUTOR_SCHEMA,
     "translator": tree.TRANSLATOR_SCHEMA,
+    "blueprint": tree.BLUEPRINT_SCHEMA,
+    "lecture": tree.LECTURE_SCHEMA,
+    "corrector": tree.corrector_schema(tree.GENERATOR_SCHEMA),
 }
 
 
@@ -81,6 +84,9 @@ CODE_REQUIRED: dict[str, set[str]] = {
     "saboteur": {"sentence", "kind", "mutated"},
     "translator": {"segments"},
     "tutor": {"quotes"},
+    "blueprint": {"learner", "case", "modules"},
+    "lecture": {"plan_node_id", "paragraphs", "artefact_state"},
+    "corrector": {"accepted", "corrected"},
 }
 
 

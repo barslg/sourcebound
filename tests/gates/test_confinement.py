@@ -1,7 +1,7 @@
 """T03 static gates: model-call confinement and banned APIs.
 
 `generate_json(` may appear only in the provider definition and the
-runs executor (the single call site); agents/ and pipelines/ must not
+runs layer's step modules (executor, lecture steps); agents/ and pipelines/ must not
 mint uuids, read clocks, or roll randomness — ids and digests belong
 to the runs layer, determinism to tests.
 """
@@ -27,7 +27,11 @@ def _occurrences(filename: str, pattern: str) -> list[str]:
 
 def test_generate_json_call_site_is_only_the_executor() -> None:
     hits = _occurrences("*.py", r"generate_json\(")
-    allowed_files = {"src/app/providers/llm.py", "src/app/runs/executor.py"}
+    allowed_files = {
+        "src/app/providers/llm.py",
+        "src/app/runs/executor.py",
+        "src/app/runs/lecture_steps.py",
+    }
     offenders = [hit for hit in hits if hit.rsplit(":", 1)[0] not in allowed_files]
     assert offenders == []
 

@@ -35,9 +35,10 @@ watch(state, (now, before) => {
 }, { immediate: true })
 onScopeDispose(stopPolling)
 
-const capText = ref('15')
+const capText = ref('')
 const capValue = computed(() => Number(capText.value))
-const capBad = computed(() => !Number.isFinite(capValue.value) || capValue.value <= 0)
+/** An empty cap means no limit; a typed one must be above zero. */
+const capBad = computed(() => capText.value.trim() !== '' && (!Number.isFinite(capValue.value) || capValue.value <= 0))
 const working = ref(false)
 
 async function reload(): Promise<void> {
@@ -49,7 +50,7 @@ defineExpose({ reload })
 async function post(continueBuild: boolean): Promise<void> {
   working.value = true
   try {
-    await request(courseBuild(props.courseId), { method: 'POST', body: { queries: [], cap_usd: capText.value.trim(), continue: continueBuild, idempotency_key: crypto.randomUUID() } })
+    await request(courseBuild(props.courseId), { method: 'POST', body: { queries: [], cap_usd: capText.value.trim() || undefined, continue: continueBuild, idempotency_key: crypto.randomUUID() } })
     notify('success', t('build.confirmed'))
     await reload()
     emit('changed')
@@ -80,7 +81,7 @@ const continueReason = computed(() => firstReason(noKey.value, lacking('course.p
 const stopReason = computed(() => firstReason(lacking('course.generate'), !build.value?.can_stop && t('build.stopWait')))
 const canOfferStart = computed(() => state.value !== 'building' && state.value !== 'stopped' && props.blockCount > 0 && props.draftCount > 0)
 const stage = computed(() => t(`build.stage.${build.value?.stage ?? 'starting'}`))
-const spentLine = computed(() => t('build.spent', { spent: usd(build.value?.spent_usd) ?? '$0.00', cap: usd(build.value?.cap_usd) ?? '' }))
+const spentLine = computed(() => (build.value?.cap_usd ? t('build.spent', { spent: usd(build.value?.spent_usd) ?? '$0.00', cap: usd(build.value?.cap_usd) ?? '' }) : t('build.spentNoCap', { spent: usd(build.value?.spent_usd) ?? '$0.00' })))
 const forecastLine = computed(() => (build.value?.forecast ? t('build.forecast', { cost: usd(build.value.forecast.cost_usd) ?? '' }) : t('build.forecastLater')))
 const lastEvent = computed(() => build.value?.events[build.value.events.length - 1] ?? null)
 const capStop = computed(() => build.value?.stop_code === 'cap')

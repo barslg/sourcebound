@@ -12,6 +12,9 @@ _STEP_LABELS = {
     "researcher": "researcher",
     "architect": "planner",
     "outline": "outline",
+    "blueprint": "blueprint",
+    "lectures": "lecture writer",
+    "blockplan": "block plan",
     "reader": "reader",
     "block": "block writer",
 }

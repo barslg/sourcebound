@@ -83,6 +83,49 @@ def reply_for(prompt, schema, instructions=""):
             if isinstance(base[k], list) and k not in ("ranked", "gaps"):
                 base[k] = []
         return base
+    if head.startswith("# Blueprint"):
+        topics = [
+            {
+                "plan_node_id": f"m1-t{i}",
+                "title": title,
+                "annotation": f"{title}: the key points the ward routine names.",
+                "artefact_step": "The routine card gains one line.",
+                "introduces_terms": [title.split()[0].lower()],
+                "requires": [] if i == 1 else ["m1-t1"],
+            }
+            for i, title in ((1, "When to wash"), (2, "How long to rub"))
+        ]
+        return {
+            "learner": "A ward nurse on the first shift.",
+            "case": "A routine card the nurse fills in topic by topic.",
+            "modules": [
+                {
+                    "plan_node_id": "m1",
+                    "title": "Hand hygiene basics",
+                    "purpose": "Learn the basics.",
+                    "entry_knowledge": "None.",
+                    "exit_knowledge": "The basics.",
+                    "topics": topics,
+                }
+            ],
+        }
+    if head.startswith("# Lecture"):
+        own = last_json(prompt).get("own", {})
+        node = str(own.get("plan_node_id", "m1-t1"))
+        title = str(own.get("title", "Topic"))
+        return {
+            "plan_node_id": node,
+            "paragraphs": [
+                f"{title} is the first thing a nurse learns on the ward.",
+                "Hands are cleaned before touching a patient and after touching surroundings.",
+                "```python\nseconds = 20\nprint(seconds)\n```",
+                "Alcohol rub is used when hands are not visibly soiled.",
+                "The routine card gains one line after this topic.",
+            ],
+            "artefact_state": "The routine card holds one line.",
+        }
+    if head.startswith("# Corrector"):
+        return {"accepted": True, "notes": "The draft stands.", "corrected": None}
     if head.startswith("# Outline"):
         ids = re.findall(r'"id": ?"(S[0-9]+)"', prompt) or ["S1"]
         half = max(1, len(ids) // 2)
@@ -312,7 +355,11 @@ def reply_for(prompt, schema, instructions=""):
         "block_type": block_type,
         # a reading never names its sourcing (narration check), teaches in its own words and
         # shows no digit (number check): the call count that varies replies is spelled in letters
-        "text": f"Staff apply the routine at work (take {spelled(CALLS[0])}).",
+        "text": (
+            f"Staff apply the ___ at work (take {spelled(CALLS[0])})."
+            if block_type == "cloze"
+            else f"Staff apply the routine at work (take {spelled(CALLS[0])})."
+        ),
         "citations": citations,
         # the key is quoted from the passage in `answer`; every option is the writer's own
         # words in one shape, so nothing about an option's look gives the key away
@@ -325,7 +372,7 @@ def reply_for(prompt, schema, instructions=""):
         # three pairs (the matching floor); every right side is quoted from a passage
         "pairs": [{"left": f"Fact {i + 1}", "right": rights[i % len(rights)]} for i in range(3)],
         # a blank is one term taken verbatim from a passage
-        "blanks": [quote.split()[0] if quote.split() else "x"],
+        "blanks": ["routine"],
         "items": [{"text": quote, "passage_id": h, "tier": "correct"}],
         "sentences": ["Alpha is apply.", "Beta is apply."],
         "handoff": "The learner now knows the routine and the case moved one step.",

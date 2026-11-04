@@ -43,6 +43,6 @@ describe('next action names the control that resolves it', () => {
     const s = Object.fromEntries(stages({ ...base, generated: true, held: 2 }, 3).map((x) => [x.id, x.state]))
     expect(s).toEqual({ sources: 'done', plan: 'done', generate: 'done', fix: 'needs', publish: 'blocked' })
     const early = Object.fromEntries(stages({ ...base, profile: false, plan: false }, 0).map((x) => [x.id, x.state]))
-    expect(early).toEqual({ sources: 'needs', plan: 'needs', generate: 'blocked', fix: 'later', publish: 'later' })
+    expect(early).toEqual({ sources: 'later', plan: 'needs', generate: 'blocked', fix: 'later', publish: 'later' })
   })
 })

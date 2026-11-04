@@ -38,18 +38,24 @@ async def live_work_on(session: AsyncSession, *, course_id: UUID) -> bool:
     An operation counts only while something can still be driving it: it was
     touched within OPERATION_FRESH_SECONDS, or the run it points at is live, or
     (a build) its driver holds the course's build lock. A row left queued or
-    running by a dead worker proves nothing and must not lock the course.
+    running by a dead worker proves nothing and must not lock the course; a run
+    counts only while its driver holds the run lock.
     """
     from app.services.build import OPERATION_KIND_BUILD, build_lock_free
 
-    live_run = (
+    live_runs = (
         await session.execute(
-            sa.text("SELECT id FROM runs WHERE course_id = :c AND status IN ('queued', 'running')"),
+            sa.text(
+                "SELECT id, status FROM runs WHERE course_id = :c"
+                " AND status IN ('queued', 'running')"
+            ),
             {"c": str(course_id)},
         )
-    ).first()
-    if live_run is not None:
-        return True
+    ).all()
+    for run_id, run_status in live_runs:
+        # a run left `running` by a dead worker holds no driver lock and locks nothing
+        if run_status == "queued" or not await _no_driver_holds(session, run_id=UUID(str(run_id))):
+            return True
     rows = (
         await session.execute(
             sa.text(
@@ -251,9 +257,10 @@ async def submit_plan(
     """Submit plan generation: researcher passes plus the architect."""
 
     require(actor, "course.plan")
-    if not queries or not all(query.strip() for query in queries):
+    lecture_first = await is_lecture_first_course(session, course_id=course_id)
+    if not lecture_first and (not queries or not all(query.strip() for query in queries)):
         raise ValidationError("queries must be a non-empty list of non-empty strings")
-    if await _approved_passage_count(session, course_id=course_id) == 0:
+    if not lecture_first and await _approved_passage_count(session, course_id=course_id) == 0:
         raise UnprocessableError("Add and approve at least one source before building a plan.")
     # an invalid stored plan is no reason to refuse a new plan: the run replaces the
     # tree, and re-planning is the author's way out of a plan a newer rule rejects
@@ -293,7 +300,10 @@ async def generation_blockers(
     ).scalar()
     if int(block_count or 0) == 0:
         return UnprocessableError("Build a plan before generating blocks.")
-    if await _approved_passage_count(session, course_id=course_id) == 0:
+    if (
+        not await is_lecture_first_course(session, course_id=course_id)
+        and await _approved_passage_count(session, course_id=course_id) == 0
+    ):
         return UnprocessableError("Add and approve at least one source before generating blocks.")
     tree_errors = await _invalid_tree_errors(session, course_id=course_id)
     if tree_errors:
@@ -489,11 +499,12 @@ async def _no_driver_holds(session: AsyncSession, *, run_id: UUID) -> bool:
 
 def plan_handlers() -> dict[str, Any]:
     """Handler map for plan/resume drives (the worker entry points)."""
-    from app.runs import executor
+    from app.runs import executor, lecture_steps
 
     return {
         "researcher": executor.plan_researcher_step,
         "architect": executor.plan_architect_step,
+        **lecture_steps.handlers(),
         **executor.generation_handlers(),
         **executor.translation_handlers(),
     }
@@ -693,14 +704,39 @@ async def resume_run(
     return run_id
 
 
+async def is_lecture_first_course(session: AsyncSession, *, course_id: UUID) -> bool:
+    """True when the course profile chose the lecture-first pipeline (no sources needed)."""
+    from app.pipelines.lecture_first import is_lecture_first
+    from app.services import courses as course_service
+
+    course = await course_service.get_course(session, course_id=course_id)
+    profile = course.get("profile") or {}
+    return is_lecture_first(list(profile.get("methodology_codes", [])))
+
+
 async def start_plan_run(session: AsyncSession, *, course_id: UUID, queries: list[str]) -> UUID:
     """Create (and commit) the plan run for a course: researchers per query, then the architect."""
+    from app.pipelines import lecture_first
     from app.runs.executor import new_run
     from app.services import courses as course_service
 
     course = await course_service.get_course(session, course_id=course_id)
     if course["profile"] is None:
         raise ValidationError("set the course profile before submitting a plan")
+    if lecture_first.is_lecture_first(list(course["profile"].get("methodology_codes", []))):
+        run_id = await new_run(
+            session,
+            course_id=course_id,
+            kind="plan",
+            dag=lecture_first.compile_plan_dag(
+                course_id=str(course_id),
+                language=str(course["language"]),
+                profile=course["profile"],
+                constraints=course["constraints"],
+            ),
+        )
+        await session.commit()
+        return run_id
     dag: list[dict[str, Any]] = [
         {
             "step_key": f"researcher:{researcher_node_id(query)}",
@@ -836,6 +872,8 @@ async def run_resume_operation(
         if course_id is not None:
             await course_service.snapshot_version(fresh, course_id=course_id)
             await fresh.commit()
+    if course_id is not None and run_row is not None and run_row[0] in ("generation", "rewrite"):
+        await finish_blocks_run(session_factory, course_id=course_id)
     return {"run_id": str(run_id)}
 
 
@@ -1047,6 +1085,25 @@ async def _topic_sources(
     return out
 
 
+def _lecture_sources(
+    sources: list[dict[str, Any]], topic_index: dict[str, dict[str, Any]]
+) -> dict[str, list[dict[str, Any]]]:
+    """Per topic, exactly its own lecture's paragraphs: no retrieval, no neighbours."""
+    by_pid = {str(p["passage_id"]): p for p in sources}
+    for passage in sources:
+        for merged in passage.get("merged_ids", []):
+            by_pid.setdefault(str(merged), passage)
+    out: dict[str, list[dict[str, Any]]] = {}
+    for topic_node, meta in topic_index.items():
+        chosen: dict[str, dict[str, Any]] = {}
+        for pid in meta["section_passage_ids"]:
+            found = by_pid.get(str(pid))
+            if found is not None:
+                chosen.setdefault(str(found["passage_id"]), found)
+        out[topic_node] = list(chosen.values()) or list(sources)
+    return out
+
+
 async def _course_sources(
     session: AsyncSession, *, course_id: UUID, raw_tree: dict[str, Any]
 ) -> list[dict[str, Any]]:
@@ -1255,21 +1312,32 @@ async def start_generation_run(session: AsyncSession, *, course_id: UUID) -> UUI
     topic_index = _topic_index(raw_tree)
     profile = course.get("profile") or {}
     sources = await _course_sources(session, course_id=course_id, raw_tree=raw_tree)
-    by_topic = await _topic_sources(
-        session, course_id=course_id, raw_tree=raw_tree, sources=sources, topic_index=topic_index
-    )
-    raw = compile_generation_dag(
-        profile={
-            "methodology_codes": list(profile.get("methodology_codes", [])),
-            "bloom_level": str(profile.get("bloom_level", "apply")),
-        },
-        tree=tree,
-        course_id=str(course_id),
-        methodology=(
-            list(profile.get("methodology_codes", ["merrill_first_principles"]))
-            or ["merrill_first_principles"]
-        )[0],
-    )
+    from app.pipelines import lecture_first
+
+    lecture_course = lecture_first.is_lecture_first(list(profile.get("methodology_codes", [])))
+    if lecture_course:
+        by_topic = _lecture_sources(sources, topic_index)
+        raw = lecture_first.compile_generation_dag(tree=tree, course_id=str(course_id))
+    else:
+        by_topic = await _topic_sources(
+            session,
+            course_id=course_id,
+            raw_tree=raw_tree,
+            sources=sources,
+            topic_index=topic_index,
+        )
+        raw = compile_generation_dag(
+            profile={
+                "methodology_codes": list(profile.get("methodology_codes", [])),
+                "bloom_level": str(profile.get("bloom_level", "apply")),
+            },
+            tree=tree,
+            course_id=str(course_id),
+            methodology=(
+                list(profile.get("methodology_codes", ["merrill_first_principles"]))
+                or ["merrill_first_principles"]
+            )[0],
+        )
     blocks_by_id = {
         b["plan_node_id"]: b
         for m in tree.get("modules", [])

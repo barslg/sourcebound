@@ -13,6 +13,7 @@ import AppDialog from '@/components/AppDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import FormField from '@/components/FormField.vue'
 import PlanBuildForm from '@/components/PlanBuildForm.vue'
+import type { Brief } from '@/components/PlanBuildForm.vue'
 import Disclosure from '@/components/Disclosure.vue'
 import Section from '@/components/Section.vue'
 import ResourceState from '@/components/ResourceState.vue'
@@ -36,7 +37,6 @@ const header = ref<InstanceType<typeof CourseHeader> | null>(null)
 const plan = useResource<PlanTree>(`plan:${courseId.value}`, (signal) => request<PlanTree>(coursePlan(courseId.value), { signal }))
 const courseRes = useResource<CourseDoc>(`course:${courseId.value}`, (signal) => request<CourseDoc>(courseItem(courseId.value), { signal }))
 const sourceRows = useResource<SourceRow[]>(`sources:${courseId.value}`, (signal) => request<SourceRow[]>(courseSources(courseId.value), { signal }))
-const noSources = computed(() => sourceRows.data.value !== null && !sourceRows.data.value.some((s) => s.approval === 'approved' && s.progress > 0))
 const isEmpty = computed(() => plan.data.value !== null && plan.data.value.modules.length === 0)
 
 /* Autosave: every edit is one PATCH with the course row_version we last saw. */
@@ -172,11 +172,22 @@ async function answer(key: string): Promise<void> {
   answering.value = null
 }
 
-const methodologies = ref<string[]>([])
-const queriesText = ref('')
+const methodologies = ref<string[]>(['lecture_first'])
+const brief = ref<Brief>({ levels: '', context: '', mustCover: '', outcomes: '', languages: [] })
 const building = ref(false)
 const buildError = ref<string | null>(null)
-const cap = ref('15')
+const cap = ref('')
+/** The brief as profile constraint rows: four texts and the course languages. */
+function briefConstraints(): Array<{ kind: string; key: string; value: Record<string, unknown> }> {
+  const b = brief.value
+  return [
+    { kind: 'brief', key: 'levels', value: { text: b.levels.trim() } },
+    { kind: 'brief', key: 'context', value: { text: b.context.trim() } },
+    { kind: 'brief', key: 'must_cover', value: { text: b.mustCover.trim() } },
+    { kind: 'brief', key: 'outcomes', value: { text: b.outcomes.trim() } },
+    { kind: 'brief', key: 'languages', value: { items: b.languages } },
+  ]
+}
 const buildingWhole = ref(false)
 const wholeQueued = ref(false)
 const buildRes = useResource<BuildReply>(`build:${courseId.value}`, (signal) => request<BuildReply>(courseBuild(courseId.value), { signal }))
@@ -196,8 +207,8 @@ async function buildPlan(): Promise<void> {
   building.value = true
   buildError.value = null
   try {
-    await request(courseProfile(courseId.value), { method: 'POST', body: { methodology_codes: methodologies.value, bloom_level: 'understand', audience: courseRes.data.value?.profile?.audience ?? '' } })
-    const made = await request<{ operation_id: string }>(coursePlanSubmit(courseId.value), { method: 'POST', body: { queries: queriesText.value.split('\n').map((q) => q.trim()).filter(Boolean), idempotency_key: crypto.randomUUID() } })
+    await request(courseProfile(courseId.value), { method: 'POST', body: { methodology_codes: methodologies.value, bloom_level: 'understand', audience: courseRes.data.value?.profile?.audience ?? '', constraints: briefConstraints() } })
+    const made = await request<{ operation_id: string }>(coursePlanSubmit(courseId.value), { method: 'POST', body: { queries: ['brief'], idempotency_key: crypto.randomUUID() } })
     planQueue.track(made.operation_id)
     await header.value?.reload()
   } catch (cause) {
@@ -212,8 +223,8 @@ async function buildCourse(): Promise<void> {
   buildingWhole.value = true
   buildError.value = null
   try {
-    await request(courseProfile(courseId.value), { method: 'POST', body: { methodology_codes: methodologies.value, bloom_level: 'understand', audience: courseRes.data.value?.profile?.audience ?? '' } })
-    await request<{ operation_id: string }>(courseBuild(courseId.value), { method: 'POST', body: { queries: queriesText.value.split('\n').map((q) => q.trim()).filter(Boolean), cap_usd: cap.value.trim(), continue: false, idempotency_key: crypto.randomUUID() } })
+    await request(courseProfile(courseId.value), { method: 'POST', body: { methodology_codes: methodologies.value, bloom_level: 'understand', audience: courseRes.data.value?.profile?.audience ?? '', constraints: briefConstraints() } })
+    await request<{ operation_id: string }>(courseBuild(courseId.value), { method: 'POST', body: { queries: [], cap_usd: cap.value.trim() || undefined, continue: false, idempotency_key: crypto.randomUUID() } })
     wholeQueued.value = true
     dropCached(`build:${courseId.value}`)
     await header.value?.reload()
@@ -284,7 +295,7 @@ watch(() => route.hash, (hash) => {
       <ResourceState :loading="plan.loading.value" :error="plan.error.value" :empty="isEmpty" :empty-text="t('plan.buildCard')" @retry="plan.reload()">
         <template #empty-actions>
           <p v-if="latestPlanRun?.status === 'stopped'" class="mono danger-text" role="alert" data-testid="plan-stopped">{{ latestPlanRun.stop_marker ?? t('plan.buildStopped') }}</p>
-          <PlanBuildForm v-model:methodologies="methodologies" v-model:queries-text="queriesText" v-model:cap="cap" :course-id="courseId" form-id="build-plan" field-prefix="b" choice-prefix="m" card-testid="build-card" submit-testid="plan-build" :submit-label="latestPlanRun?.status === 'stopped' ? t('plan.buildAgain') : t('plan.buildButton')" :building="building" :build-error="buildError" :no-sources="noSources" :op-queued="planQueue.queued.value || buildLive" :no-key="noKey" :building-whole="buildingWhole" @submit="buildPlan" @build="buildCourse" />
+          <PlanBuildForm v-model:methodologies="methodologies" v-model:brief="brief" v-model:cap="cap" :course-id="courseId" form-id="build-plan" field-prefix="b" choice-prefix="m" card-testid="build-card" submit-testid="plan-build" :submit-label="latestPlanRun?.status === 'stopped' ? t('plan.buildAgain') : t('plan.buildButton')" :building="building" :build-error="buildError" :op-queued="planQueue.queued.value || buildLive" :no-key="noKey" :building-whole="buildingWhole" @submit="buildPlan" @build="buildCourse" />
         </template>
 
         <section v-if="latestPlanRun?.status === 'stopped'" class="stack" data-testid="plan-stopped">
@@ -293,7 +304,7 @@ watch(() => route.hash, (hash) => {
           <div>
             <ActionButton action="build-plan" :label="t('plan.buildAgain')" :reason="firstReason(noKey, lacking('course.plan'))" data-testid="plan-rebuild" @click="rebuildOpen = true" />
           </div>
-          <PlanBuildForm v-if="rebuildOpen" v-model:methodologies="methodologies" v-model:queries-text="queriesText" v-model:cap="cap" :course-id="courseId" form-id="rebuild-plan" field-prefix="rb" choice-prefix="rb-m" card-testid="rebuild-card" submit-testid="plan-rebuild-submit" :submit-label="t('plan.buildAgain')" :building="building" :build-error="buildError" :no-sources="noSources" :op-queued="planQueue.queued.value || buildLive" :no-key="noKey" :building-whole="buildingWhole" @submit="buildPlan" @build="buildCourse" />
+          <PlanBuildForm v-if="rebuildOpen" v-model:methodologies="methodologies" v-model:brief="brief" v-model:cap="cap" :course-id="courseId" form-id="rebuild-plan" field-prefix="rb" choice-prefix="rb-m" card-testid="rebuild-card" submit-testid="plan-rebuild-submit" :submit-label="t('plan.buildAgain')" :building="building" :build-error="buildError" :op-queued="planQueue.queued.value || buildLive" :no-key="noKey" :building-whole="buildingWhole" @submit="buildPlan" @build="buildCourse" />
         </section>
 
         <section class="stack" :aria-label="t('plan.outline')">

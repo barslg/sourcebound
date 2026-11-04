@@ -6,8 +6,10 @@ import InputText from 'primevue/inputtext'
 import ActionButton from '@/components/ActionButton.vue'
 import FormField from '@/components/FormField.vue'
 import Queued from '@/components/Queued.vue'
-import { METHODOLOGY_CODES } from '@/composables/methodologies'
+import { COURSE_LANGUAGES, METHODOLOGY_CODES } from '@/composables/methodologies'
 import { firstReason, lacking } from '@/composables/reasons'
+
+export interface Brief { levels: string; context: string; mustCover: string; outcomes: string; languages: string[] }
 
 const props = defineProps<{
   courseId: string
@@ -19,18 +21,20 @@ const props = defineProps<{
   submitLabel: string
   building: boolean
   buildError: string | null
-  noSources: boolean
   opQueued: boolean
   noKey: string | null
   buildingWhole: boolean
 }>()
 const methodologies = defineModel<string[]>('methodologies', { required: true })
-const queriesText = defineModel<string>('queriesText', { required: true })
+const brief = defineModel<Brief>('brief', { required: true })
 const cap = defineModel<string>('cap', { required: true })
 const emit = defineEmits<{ submit: []; build: [] }>()
 
 const { t } = useI18n()
-const capBad = computed(() => !(Number(cap.value) > 0))
+/** An empty cap means no limit; a typed one must be above zero. */
+const capBad = computed(() => cap.value.trim() !== '' && !(Number(cap.value) > 0))
+const briefMissing = computed(() => !brief.value.levels.trim() || !brief.value.context.trim() || !brief.value.outcomes.trim())
+const commonReasons = computed(() => [lacking('course.plan'), methodologies.value.length === 0 && t('plan.pickMethodology'), briefMissing.value && t('plan.briefRequired'), props.opQueued && t('plan.alreadyQueued')])
 </script>
 
 <template>
@@ -41,13 +45,21 @@ const capBad = computed(() => !(Number(cap.value) > 0))
         <label :for="`${props.choicePrefix}-${code}`"><strong>{{ t(`methodology.${code}.name`) }}</strong> <span class="hint">{{ t(`methodology.${code}.line`) }}</span></label>
       </div>
     </FormField>
-    <FormField :id="`${props.fieldPrefix}-q`" :label="t('plan.queries')" :help="t('plan.queriesHint')" required :error="queriesText.trim().length === 0 ? t('plan.typeQueries') : null"><textarea :id="`${props.fieldPrefix}-q`" v-model="queriesText" rows="3"></textarea></FormField>
-    <FormField :id="`${props.fieldPrefix}-cap`" :label="t('build.capLabel')" :help="`${t('build.capHint')} ${t('build.forecastLater')}`" required :error="capBad ? t('build.capInvalid') : null"><InputText :id="`${props.fieldPrefix}-cap`" v-model="cap" inputmode="decimal" :data-testid="`${props.fieldPrefix}-cap`" /></FormField>
-    <router-link v-if="props.noSources" :to="`/courses/${props.courseId}/sources`" data-testid="go-sources">{{ t('plan.goSources') }}</router-link>
+    <FormField :id="`${props.fieldPrefix}-levels`" :label="t('plan.briefLevels')" :help="t('plan.briefLevelsHint')" required :error="brief.levels.trim() ? null : t('plan.briefRequired')"><textarea :id="`${props.fieldPrefix}-levels`" v-model="brief.levels" rows="2"></textarea></FormField>
+    <FormField :id="`${props.fieldPrefix}-context`" :label="t('plan.briefContext')" :help="t('plan.briefContextHint')" required :error="brief.context.trim() ? null : t('plan.briefRequired')"><textarea :id="`${props.fieldPrefix}-context`" v-model="brief.context" rows="3"></textarea></FormField>
+    <FormField :id="`${props.fieldPrefix}-must`" :label="t('plan.briefMustCover')" :help="t('plan.briefMustCoverHint')"><textarea :id="`${props.fieldPrefix}-must`" v-model="brief.mustCover" rows="3"></textarea></FormField>
+    <FormField :id="`${props.fieldPrefix}-outcomes`" :label="t('plan.briefOutcomes')" :help="t('plan.briefOutcomesHint')" required :error="brief.outcomes.trim() ? null : t('plan.briefRequired')"><textarea :id="`${props.fieldPrefix}-outcomes`" v-model="brief.outcomes" rows="3"></textarea></FormField>
+    <FormField :id="`${props.fieldPrefix}-langs`" group :label="t('plan.briefLanguages')" :help="t('plan.briefLanguagesHint')">
+      <div v-for="code in COURSE_LANGUAGES" :key="code" class="perm-check">
+        <Checkbox v-model="brief.languages" :input-id="`${props.choicePrefix}-lang-${code}`" :value="code" />
+        <label :for="`${props.choicePrefix}-lang-${code}`">{{ t(`language.${code}`) }}</label>
+      </div>
+    </FormField>
+    <FormField :id="`${props.fieldPrefix}-cap`" :label="t('build.capLabel')" :help="t('build.capOptionalHint')" :error="capBad ? t('build.capInvalid') : null"><InputText :id="`${props.fieldPrefix}-cap`" v-model="cap" inputmode="decimal" :data-testid="`${props.fieldPrefix}-cap`" /></FormField>
     <p v-if="props.buildError" class="mono danger-text" role="alert" data-testid="build-error">{{ props.buildError }}</p>
     <div class="row">
-      <ActionButton type="submit" action="build-plan" :label="props.submitLabel" :loading="props.building" :reason="firstReason(lacking('course.plan'), props.noSources && t('plan.addSourceFirst'), methodologies.length === 0 && t('plan.pickMethodology'), queriesText.trim().length === 0 && t('plan.typeQueries'), props.opQueued && t('plan.alreadyQueued'))" :data-testid="props.submitTestid" />
-      <ActionButton action="build-course" :loading="props.buildingWhole" :reason="firstReason(props.noKey, lacking('course.plan'), lacking('course.generate'), props.noSources && t('plan.addSourceFirst'), methodologies.length === 0 && t('plan.pickMethodology'), queriesText.trim().length === 0 && t('plan.typeQueries'), capBad && t('build.capInvalid'), props.opQueued && t('plan.alreadyQueued'))" :data-testid="`${props.submitTestid}-whole`" @click="emit('build')" />
+      <ActionButton type="submit" action="build-plan" :label="props.submitLabel" :loading="props.building" :reason="firstReason(...commonReasons)" :data-testid="props.submitTestid" />
+      <ActionButton action="build-course" :loading="props.buildingWhole" :reason="firstReason(props.noKey, lacking('course.generate'), ...commonReasons, capBad && t('build.capInvalid'))" :data-testid="`${props.submitTestid}-whole`" @click="emit('build')" />
     </div>
     <Queued v-if="props.opQueued" />
   </form>

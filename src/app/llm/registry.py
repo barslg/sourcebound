@@ -130,13 +130,16 @@ class StepSpec:
 
     Both fields are required (no defaults): a step without them fails
     validate_step_registry() at startup instead of silently running
-    with an arbitrary limit.
+    with an arbitrary limit. UNBOUNDED (0) sends no limit at all.
     """
 
     model: str
     effort: str
     max_output_tokens: int
 
+
+# A step with no output limit: the request carries no max_output_tokens at all.
+UNBOUNDED = 0
 
 STEPS: dict[str, StepSpec] = {
     "librarian": StepSpec(model="muse-spark-1.3", effort="medium", max_output_tokens=2000),
@@ -151,6 +154,9 @@ STEPS: dict[str, StepSpec] = {
     "saboteur": StepSpec(model="muse-spark-1.3", effort="medium", max_output_tokens=4000),
     "translator": StepSpec(model="muse-spark-1.3", effort="low", max_output_tokens=8000),
     "tutor": StepSpec(model="muse-spark-1.3", effort="low", max_output_tokens=2000),
+    "blueprint": StepSpec(model="muse-wonder-1.0", effort="medium", max_output_tokens=UNBOUNDED),
+    "lecture": StepSpec(model="muse-wonder-1.0", effort="medium", max_output_tokens=UNBOUNDED),
+    "corrector": StepSpec(model="muse-wonder-1.0", effort="medium", max_output_tokens=UNBOUNDED),
 }
 
 
@@ -159,8 +165,8 @@ def validate_step_registry() -> None:
     for step, spec in STEPS.items():
         if spec.effort not in EFFORTS:
             raise ConfigurationError(f"step {step}: effort must be one of {EFFORTS}")
-        if spec.max_output_tokens <= 0:
-            raise ConfigurationError(f"step {step}: max_output_tokens must be positive")
+        if spec.max_output_tokens < 0:
+            raise ConfigurationError(f"step {step}: max_output_tokens must not be negative")
         get_model(spec.model)
 
 
@@ -181,8 +187,8 @@ def resolve_step(
     )
     if resolved_effort not in EFFORTS:
         raise ConfigurationError(f"step {agent}: effort must be one of {EFFORTS}")
-    if resolved_tokens <= 0:
-        raise ConfigurationError(f"step {agent}: max_output_tokens must be positive")
+    if resolved_tokens < 0:
+        raise ConfigurationError(f"step {agent}: max_output_tokens must not be negative")
     get_model(resolved_model)
     return resolved_model, resolved_effort, resolved_tokens
 

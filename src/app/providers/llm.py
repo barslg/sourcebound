@@ -279,7 +279,7 @@ class MetaProvider:
                 # The whole budget spent is a truncation — an empty text (reasoning ate the
                 # output) or a JSON cut mid-way (the outline of 400 sections at 6k tokens);
                 # ask once more with twice the budget and less reasoning, then give up.
-                truncated = bad.output_tokens >= budget
+                truncated = budget > 0 and bad.output_tokens >= budget
                 if ask == 1 and truncated:
                     budget = budget * 2
                     started = time.monotonic()

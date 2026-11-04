@@ -39,6 +39,9 @@ CHECK_MODULES = {
     "translator": "translator",
     "tutor": "tutor",
     "generate_block": "generators",
+    "blueprint": "blueprint",
+    "lecture": "lecture",
+    "corrector": "corrector",
 }
 
 # "path:function:key" -> reason, for a key code legitimately reads off a reply it wrote itself.

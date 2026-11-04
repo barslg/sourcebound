@@ -14,8 +14,8 @@ Rules (docs/PRINCIPLES.md, build/tasks/T08a.md):
 - os.environ/os.getenv appear only in config.py, plus tasks/schema.py
   (forwards the environment to the procrastinate CLI subprocess; every
   value it needs comes from get_settings()).
-- generate_json( is called only from app/runs/executor.py. That file does
-  not exist yet, so any call anywhere else fails until it lands.
+- generate_json( is called only from the runs layer's step modules
+  (app/runs/executor.py and app/runs/lecture_steps.py).
 - uuid4/datetime.now/random are forbidden under agents/ and pipelines/
   (those packages do not exist yet; the rule is enforced when they do).
 
@@ -71,8 +71,8 @@ HTTP_ALLOWED = {
 # Files allowed to touch os.environ/os.getenv (repo-relative).
 ENV_ALLOWED = {"src/app/config.py", "src/app/tasks/schema.py"}
 
-# The only file allowed to call generate_json( (repo-relative).
-GENERATE_JSON_OWNER = "src/app/runs/executor.py"
+# The only files allowed to call generate_json( (repo-relative): the runs layer's step modules.
+GENERATE_JSON_OWNERS = ("src/app/runs/executor.py", "src/app/runs/lecture_steps.py")
 
 # Dirs where uuid4/datetime.now/random are forbidden (repo-relative).
 NONDETERMINISM_FORBIDDEN = ("src/app/agents", "src/app/pipelines")
@@ -215,8 +215,8 @@ def _check_call(node: ast.Call, rel: str) -> list[str]:
         name = func.id
     elif isinstance(func, ast.Attribute):
         name = func.attr
-    if name == "generate_json" and rel != GENERATE_JSON_OWNER:
-        return [f"{rel}:{node.lineno}: generate_json( only from {GENERATE_JSON_OWNER}"]
+    if name == "generate_json" and rel not in GENERATE_JSON_OWNERS:
+        return [f"{rel}:{node.lineno}: generate_json( only from {', '.join(GENERATE_JSON_OWNERS)}"]
     return []
 
 

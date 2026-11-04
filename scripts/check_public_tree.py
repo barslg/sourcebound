@@ -34,6 +34,12 @@ LITERAL_MARKERS = ("/Users/", "scandic", "LMS2", "PowerDNS", "GOCSPX-")
 # halves so this file does not trip its own rule.
 VENDOR_RE = re.compile("anthro" + "pic|clau" + "de", re.IGNORECASE)
 
+# The product and its artefacts are English only: no Russian text in a tracked file.
+# The letters below exist in Russian and not in Ukrainian, so the uk locale passes.
+RUSSIAN_LETTER_RE = re.compile("[\u0451\u044a\u044b\u044d\u0401\u042a\u042b\u042d]")
+# Language detection names the letters it detects.
+RUSSIAN_ALLOWLIST = {"src/app/services/library.py", "src/app/helpers/language.py"}
+
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})")
 ALLOWED_EMAIL_DOMAINS = ("example.com", "example.org", "example.net")
 
@@ -128,6 +134,8 @@ def check_content(name: str, text: str) -> list[str]:
             violations.append(f"{name}:{lineno}: Meta key shape (LLM- token)")
         if META_ASSIGNMENT_RE.search(line):
             violations.append(f"{name}:{lineno}: MODEL_API_KEY carries a value")
+        if name not in RUSSIAN_ALLOWLIST and RUSSIAN_LETTER_RE.search(line):
+            violations.append(f"{name}:{lineno}: Russian text (the project is English only)")
     return violations
 
 

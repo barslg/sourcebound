@@ -29,6 +29,8 @@ from app.services.audit import write_audit
 OPERATION_KIND_BUILD = "build_course"
 BUILD_LOCK_PREFIX = "build:"
 BUILD_SUBMIT_LOCK_PREFIX = "build-submit:"
+# A build without a cap: the author chose no limit, so the ceiling never stops it.
+NO_CAP = Decimal("1000000")
 CANCEL_MARKER = "cancel requested"
 STOPPED_BY_AUTHOR = "The build was stopped by you."
 BUILD_REWRITE_ROUNDS = 1
@@ -107,7 +109,7 @@ async def submit_build(
     actor: Principal,
     course_id: UUID,
     queries: list[str],
-    cap_usd: Decimal,
+    cap_usd: Decimal | None,
     idempotency_key: str | None = None,
     continue_build: bool = False,
     defer: Callable[[UUID], Awaitable[None]] | None = None,
@@ -117,6 +119,7 @@ async def submit_build(
     `continue_build` re-queues the last stopped build with a new cap; the cap is
     counted from that build's original start, so a raised cap never forgets spend.
     """
+    from app.pipelines.lecture_first import is_lecture_first
     from app.services import courses as course_service
     from app.services.planruns import (
         _approved_passage_count,
@@ -126,7 +129,7 @@ async def submit_build(
 
     require(actor, "course.plan")
     require(actor, "course.generate")
-    if cap_usd <= 0:
+    if cap_usd is not None and cap_usd <= 0:
         raise ValidationError("the spending cap must be more than zero")
     if idempotency_key:
         existing = (
@@ -174,9 +177,10 @@ async def submit_build(
         course = await course_service.get_course(session, course_id=course_id)
         if course["profile"] is None:
             raise ValidationError("set the course profile before building the course")
-        if not cleaned:
+        lecture_first = is_lecture_first(list(course["profile"].get("methodology_codes", [])))
+        if not cleaned and not lecture_first:
             raise ValidationError("queries must be a non-empty list of non-empty strings")
-        if await _approved_passage_count(session, course_id=course_id) == 0:
+        if not lecture_first and await _approved_passage_count(session, course_id=course_id) == 0:
             raise UnprocessableError("Add and approve at least one source before building.")
     else:
         blocker = await generation_blockers(session, course_id=course_id)
@@ -195,7 +199,7 @@ async def submit_build(
                     {
                         "course_id": str(course_id),
                         "queries": cleaned,
-                        "cap_usd": str(cap_usd),
+                        "cap_usd": str(cap_usd) if cap_usd is not None else None,
                         "started_at": started_at,
                         **extra,
                     }
@@ -212,7 +216,7 @@ async def submit_build(
         action=f"{OPERATION_KIND_BUILD}.submit",
         entity="operation",
         entity_id=str(operation_id),
-        meta={"course_id": str(course_id), "cap_usd": str(cap_usd)},
+        meta={"course_id": str(course_id), "cap_usd": str(cap_usd) if cap_usd else None},
     )
     await session.commit()
     if defer is not None:
@@ -243,6 +247,7 @@ class _Build:
         self.factory = session_factory
         self.resumes: dict[str, int] = {}
         self.last_failed: str | None = None
+        self.translated = False
 
     async def note(self, *, event: str | None = None, **fields: Any) -> None:
         """Merge progress into operations.result; the update also stamps updated_at."""
@@ -293,14 +298,26 @@ class _Build:
         return self.cap - spent
 
     async def facts(self) -> dict[str, Any]:
-        from app.services.courses import blocking_questions
+        from app.agents.blueprint import brief_of
+        from app.pipelines.lecture_first import is_lecture_first
+        from app.services.courses import blocking_questions, get_course
 
         async with self.factory() as session:
+            course = await get_course(session, course_id=self.course_id)
+            profile = course.get("profile") or {}
+            wanted = brief_of(list(course.get("constraints", []))).get("languages", [])
+            done = {str(t["language"]) for t in course.get("translations", [])}
             return {
                 "modules": await _modules(session, self.course_id),
                 "drafts": await _blocks_in(session, self.course_id, "draft"),
                 "held": await _blocks_in(session, self.course_id, "held"),
                 "questions": await blocking_questions(session, course_id=self.course_id),
+                "lecture_first": is_lecture_first(list(profile.get("methodology_codes", []))),
+                "languages_missing": [
+                    str(lang)
+                    for lang in (wanted if isinstance(wanted, list) else [])
+                    if str(lang) != str(course.get("language", "en")) and str(lang) not in done
+                ],
             }
 
     async def newest_run(self, kind: str, *, since: str | None = None) -> tuple[UUID, str] | None:
@@ -340,8 +357,15 @@ class _Build:
             return int(row.scalar_one())
 
     async def set_ceiling(self, run_id: UUID, remaining: Decimal) -> None:
-        """The run may spend what it has spent plus what the cap still allows."""
+        """What the run may spend: spent so far plus the cap's remainder; no cap, no ceiling."""
         async with self.factory() as session:
+            if self.cap == NO_CAP:
+                await session.execute(
+                    sa.text("UPDATE runs SET spend_ceiling_usd = NULL WHERE id = :r"),
+                    {"r": str(run_id)},
+                )
+                await session.commit()
+                return
             await session.execute(
                 sa.text(
                     "UPDATE runs SET spend_ceiling_usd = COALESCE((SELECT SUM(cost_usd)"
@@ -540,6 +564,32 @@ class _Build:
         await self.run_for("rewrite", "rewrite", start, since=self.started_at)
         await finish_blocks_run(self.factory, course_id=self.course_id)
 
+    async def translate_stage(self, languages: list[str]) -> None:
+        """Translate the built course into every brief language it still lacks."""
+        from app.services.courses import get_course
+        from app.services.planruns import _course_blocks, _latest_version_id, drive_and_close
+        from app.translation.glossary import seed_glossary
+        from app.translation.pipeline import translate_course
+
+        await self.note(stage="translate", event=f"Translating into {', '.join(languages)}.")
+        self.translated = True
+        async with self.factory() as session:
+            course = await get_course(session, course_id=self.course_id)
+            version_id = await _latest_version_id(session, course_id=self.course_id)
+            blocks = await _course_blocks(session, course_id=self.course_id)
+            await translate_course(
+                session,
+                None,
+                course_id=self.course_id,
+                version_id=version_id,
+                source_language=str(course.get("language", "en")),
+                target_languages=languages,
+                blocks=blocks,
+                glossary=seed_glossary(blocks, {}),
+                driver=lambda run_id: drive_and_close(self.factory, self.pf, run_id),
+            )
+            await session.commit()
+
     async def run(self) -> dict[str, Any]:
         await self.note(stage="starting", cap_usd=str(self.cap), started_at=self.started_at)
         while True:
@@ -556,6 +606,12 @@ class _Build:
                 await self.check_cap()
                 await self.generate_stage()
                 continue
+            if facts["lecture_first"]:
+                if facts["languages_missing"] and not self.translated:
+                    await self.check_cap()
+                    await self.translate_stage(facts["languages_missing"])
+                    continue
+                break
             rewrites = await self.newest_run("rewrite", since=self.started_at)
             if rewrites is not None and rewrites[1] != "done":
                 await self.rewrite_stage()
@@ -627,7 +683,7 @@ async def run_build_operation(
                 operation_id=operation_id,
                 course_id=course_id,
                 queries=[str(q) for q in params.get("queries", [])],
-                cap=Decimal(str(params["cap_usd"])),
+                cap=Decimal(str(params["cap_usd"])) if params.get("cap_usd") else NO_CAP,
                 started_at=str(params["started_at"]),
                 provider_factory=provider_factory,
                 session_factory=session_factory,
@@ -678,7 +734,7 @@ async def build_status(session: AsyncSession, *, course_id: UUID) -> dict[str, A
             "operation_id": str(row[0]),
             "state": STATE_OF_STATUS.get(str(row[1]), "building"),
             "stage": str(result.get("stage", "starting")),
-            "cap_usd": str(params["cap_usd"]),
+            "cap_usd": str(params["cap_usd"]) if params.get("cap_usd") else None,
             "spent_usd": str(spent),
             "started_at": str(params["started_at"]),
             "current_run_id": str(current) if current else None,

@@ -8,7 +8,7 @@ const key = (patch: Partial<CourseCounters>) => nextAction(factsOfRow({ ...row, 
 
 describe('nextAction', () => {
   it('names one next action: sources, profile, plan, questions, generate, fix, publish', () => {
-    expect(key({})).toBe('needs.addSources')
+    expect(key({})).toBe('needs.profile')
     expect(key({ source_count: 1, pending_sources: 1 })).toBe('needs.sources')
     expect(key({ source_count: 1 })).toBe('needs.profile')
     expect(key({ source_count: 1, has_profile: true })).toBe('needs.plan')

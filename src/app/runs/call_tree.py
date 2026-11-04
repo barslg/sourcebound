@@ -248,7 +248,7 @@ class _RunTree:
             query = self.group(f"research:{step_key}", self.group("research"), step_key=step_key)
             query["facts"]["query"] = query["facts"].get("query") or call["facts"]["query"]
             query["children"].append(call)
-        elif agent == "architect":
+        elif agent in ("architect", "blueprint", "lectures", "blockplan"):
             self.group("planning", step_key=step_key)["children"].append(call)
         else:
             self.group(f"other:{step_key or ''}", step_key=step_key)["children"].append(call)

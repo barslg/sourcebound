@@ -53,7 +53,7 @@ export interface BuildDoc {
   operation_id: string
   state: BuildState
   stage: string
-  cap_usd: string
+  cap_usd: string | null
   spent_usd: string
   started_at: string
   current_run_id: string | null

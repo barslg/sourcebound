@@ -39,19 +39,6 @@ test('the scope picker offers existing courses and labels from the backend', asy
   for (const t of tags) for (const c of t.courses) expect(options.join('\n')).toContain(c.title)
 })
 
-test('plan: Build plan is disabled with the visible reason and a link when no source is approved', async ({ page, context }) => {
-  await signInAs(context, 'admin')
-  const course = await page.request.post('/api/v1/courses', { headers: { 'X-CSRF-Token': sessions().admin.csrf }, data: { title: 'No sources yet', language: 'en', scope_tags: ['c-nosrc01'] } })
-  const id = ((await course.json()) as { course_id: string }).course_id
-  await page.goto(`/courses/${id}/plan`)
-  await page.waitForLoadState('networkidle')
-  const reason = page.getByTestId('reason').filter({ hasText: 'Add and approve a source first' })
-  await expect(reason.first()).toBeVisible()
-  await expect(page.getByTestId('plan-build')).toBeDisabled()
-  await expect(page.getByTestId('go-sources')).toBeVisible()
-  await expect(page.getByTestId('tab-sources')).toContainText('Needs you')
-})
-
 test('run: a run stopped for missing sources shows a plain sentence and a way back to sources', async ({ page, context }) => {
   await signInAs(context, 'admin')
   const id = '00000000-0000-4000-8000-0000000000bb'

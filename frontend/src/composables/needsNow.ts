@@ -60,7 +60,6 @@ export function nextAction(c: StageFacts): Action {
   if (c.published) return { key: 'needs.nothing', to: null }
   if (c.live) return { key: 'needs.running', to: `${base}/runs#runs-list` }
   if (c.planStopped && !c.plan) return { key: 'needs.planStopped', to: `${base}/plan#build-plan`, params: { reason: c.planStopped } }
-  if (c.sourceCount === 0) return { key: 'needs.addSources', to: `${base}/sources#source-add` }
   if (c.pendingSources > 0 && !c.generated) return { key: 'needs.sources', to: `${base}/sources#${c.firstPendingId ? `source-${c.firstPendingId}` : 'sources-list'}` }
   if (!c.profile || !c.plan) return { key: c.profile ? 'needs.plan' : 'needs.profile', to: `${base}/plan#build-plan` }
   if (c.openQuestions > 0) return { key: 'needs.questions', to: `${base}/plan#${c.firstQuestionKey ? `question-${c.firstQuestionKey}` : 'questions'}` }
@@ -76,7 +75,7 @@ export interface Stage { id: 'sources' | 'plan' | 'generate' | 'fix' | 'publish'
 export function stages(c: StageFacts, sourceCount: number): Stage[] {
   const planReady = c.profile && c.plan
   return [
-    { id: 'sources', state: sourceCount === 0 ? 'needs' : c.pendingSources > 0 ? 'needs' : 'done', why: null },
+    { id: 'sources', state: sourceCount === 0 ? 'later' : c.pendingSources > 0 ? 'needs' : 'done', why: null },
     { id: 'plan', state: !planReady ? 'needs' : c.openQuestions > 0 ? 'needs' : 'done', why: null },
     { id: 'generate', state: c.generated ? 'done' : !planReady ? 'blocked' : c.openQuestions > 0 ? 'blocked' : 'needs', why: !planReady ? 'plan' : c.openQuestions > 0 ? 'questions' : null },
     { id: 'fix', state: !c.generated ? 'later' : c.held > 0 || c.draft > 0 ? 'needs' : 'done', why: null },
