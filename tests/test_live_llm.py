@@ -52,13 +52,9 @@ async def test_live_structured_grounded_and_cached() -> None:
     from conftest import require_postgres, test_database_url
 
     settings = get_settings()
-    secret = (
-        settings.anthropic_api_key
-        if settings.model_provider == "anthropic"
-        else settings.model_api_key
-    )
+    secret = settings.model_api_key
     if secret is None or not secret.get_secret_value():
-        pytest.skip("no key for the selected provider; live smoke needs the real Model API")
+        pytest.skip("no MODEL_API_KEY; live smoke needs the real Model API")
     url = test_database_url()
     require_postgres(url)
     assert settings.llm_default_model == "muse-spark-1.3"

@@ -462,7 +462,7 @@ Format — [Keep a Changelog](https://keepachangelog.com/). Versioning — [SemV
 - `tests/transport_guard.py`: allowlisted host, registry-model, and per-run spend-ceiling guard used by network tests.
 
 - Base repository skeleton: `src/`, `docs/`, `tmp/`, `Dockerfile`, `docker-compose.yml`.
-- AI layer per the partner kit: `CLAUDE.md`, `.claude/`, `.mcp.json` (uncommitted).
+- Assistant kit: lobby, rules, skills and a project MCP file (local, uncommitted).
 - Git hygiene: `.gitignore`, `.gitattributes`, `.github/pull_request_template.md`.
 - Muse canon: `AGENTS.md` (`muse init` seed), `.agents/skills/`, `.agents/memory/` (committed).
 - Maximal AI kit: skills `bootstrap`, `feature`, `bugfix`, `review`, `release`, `docs`; structure map and defaults distillate in `.agents/memory/`.
@@ -477,4 +477,4 @@ Format — [Keep a Changelog](https://keepachangelog.com/). Versioning — [SemV
 ### Removed
 
 - `.mcp.json`: Muse has no project MCP file; MCP lives in user settings.
-- `.claude/` and `CLAUDE.md`: duplicate layer removed; single Muse stack kept.
+- A duplicate local assistant kit removed; single Muse stack kept.

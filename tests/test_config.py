@@ -2,8 +2,6 @@
 
 from pathlib import Path
 
-import pytest
-
 from app import config
 
 
@@ -65,19 +63,3 @@ def test_api_key_is_a_secret() -> None:
     assert keyed.model_api_key is not None
     assert "synthetic-key-value" not in repr(keyed.model_api_key)
     assert keyed.model_api_key.get_secret_value() == "synthetic-key-value"
-
-
-def test_only_meta_runs_outside_local_and_test() -> None:
-    """Submission rule: the runtime models are Meta's; another provider is for local tests only."""
-    from app.config import Settings, validate_runtime_settings
-    from app.errors import ConfigurationError
-
-    common = {
-        "app_env": "prod",
-        "database_url": "postgresql+asyncpg://u:p@db/x",
-        "session_secret_key": "s" * 32,
-        "model_key_secret": "k" * 32,
-    }
-    validate_runtime_settings(Settings(model_provider="meta", **common))
-    with pytest.raises(ConfigurationError):
-        validate_runtime_settings(Settings(model_provider="anthropic", **common))

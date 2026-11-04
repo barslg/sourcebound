@@ -42,6 +42,31 @@ def test_gocspx_key_fails(tmp_path: Path) -> None:
     assert "key.txt" in proc.stdout
 
 
+VENDOR_WORDS = ("anthro" + "pic", "clau" + "de")
+
+
+def test_model_vendor_name_fails_in_any_case(tmp_path: Path) -> None:
+    """Hackathon rule: a tracked file naming another model vendor fails, whatever the case."""
+    for index, word in enumerate(VENDOR_WORDS):
+        (tmp_path / f"doc{index}.md").write_text(
+            f"served by {word.upper()} models\n", encoding="utf-8"
+        )
+    proc = run_check(tmp_path)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "doc0.md:1" in proc.stdout
+    assert "doc1.md:1" in proc.stdout
+
+
+def test_model_vendor_name_fails_in_allowlisted_gate_fixture(tmp_path: Path) -> None:
+    """The secret-shape allow-list never exempts the vendor-name rule."""
+    fixture = tmp_path / "tests" / "gates" / "test_gate.py"
+    fixture.parent.mkdir(parents=True, exist_ok=True)
+    fixture.write_text(f"# {VENDOR_WORDS[0]}\n", encoding="utf-8")
+    proc = run_check(tmp_path)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "test_gate.py:1" in proc.stdout
+
+
 def test_rule_files_are_allowlisted(tmp_path: Path) -> None:
     """Rule files naming secret shapes pass via the explicit allow-list."""
     gitleaks = tmp_path / ".gitleaks.toml"

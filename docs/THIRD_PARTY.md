@@ -14,7 +14,6 @@ The project's own code is MIT (see `LICENSE`). Backend runtime dependencies, ver
 | Alembic | 1.20.1 | MIT | migrations |
 | Procrastinate | 3.10.0 | MIT | Postgres job queue |
 | openai (SDK) | 3.42.0 | Apache-2.0 | Responses API client, pointed at the Meta Model API |
-| anthropic (SDK) | 1.17.0 | MIT | Messages API client, tests and local development only (`MODEL_PROVIDER=anthropic`) |
 | httpx / httpx2 | 0.28.1 / 2.16.0 | BSD-3-Clause | HTTP (source fetching, transport guard in tests) |
 | structlog | 26.1.0 | MIT OR Apache-2.0 | logging |
 | python-multipart | 0.0.32 | Apache-2.0 | uploads |

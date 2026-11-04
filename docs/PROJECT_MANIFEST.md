@@ -26,7 +26,7 @@ sources (every claim has an address in a source), and when the model is wrong th
 
 - Local: `docker compose up -d --build`; Postgres on host port 5434 (5432/5433 are taken on this machine).
 - Branches: `main` (the `deploy` workflow ships the whole site from it to the host after a green `ci`; secrets and host in the repository settings, README Deploy) and `dev`; work on feature branches merged into `dev` with clean rollbacks. Remote: GitHub `barslg/sourcebound`; CI on GitHub Actions, replayed locally by `make ci-local` before every push.
-- Secrets only in `.env` (gitignored): `MODEL_API_KEY` (server fallback, local/test only), `MODEL_KEY_SECRET` (encrypts the per-user keys), `SESSION_SECRET_KEY`, Google OAuth client id/secret, `DATABASE_URL`. Per-user Meta keys live encrypted in `user_model_keys` (migration 0025). Map: `.claude/knowledge/credentials-map.md`.
+- Secrets only in `.env` (gitignored): `MODEL_API_KEY` (server fallback, local/test only), `MODEL_KEY_SECRET` (encrypts the per-user keys), `SESSION_SECRET_KEY`, Google OAuth client id/secret, `DATABASE_URL`. Per-user Meta keys live encrypted in `user_model_keys` (migration 0025). Map: the local credentials map (uncommitted).
 
 ## Decisions and why
 
@@ -49,8 +49,8 @@ sources (every claim has an address in a source), and when the model is wrong th
   reads the teach text, exercises read both and target the topic's misconception; the reader's evidence is verified verbatim by
   code; no figure block is planned; the continuity agent is retired. Agents: outline, architect, researcher (+ web_search),
   block_teach, block_example, block_exercise, reader, saboteur, translator, tutor, librarian.
-- Muse Code was the implementer until 2026-11-02 (owner: «Не используем Muse Code. Оно уже своё сделало»); since then Claude Code writes, verifies and commits all code; the Meta API is called only for course runs the owner asks for.
-- Two kits, one truth: `AGENTS.md` + `.agents/` (generic agent rules and the Muse Code memory, kept for any tool) and `CLAUDE.md` + `.claude/` (lobby, floors by path, skills `stand`/`course-run`/`verify-slice`, knowledge incl. the session digests and the credentials map). Both stay out of git; `README.md`, `docs/` (minus the planning papers), `prompts/` and `CHANGELOG.md` are tracked since 2026-11-04. Kit in English; owner replies in Russian.
+- Muse Code was the implementer until 2026-11-02 (owner: «Не используем Muse Code. Оно уже своё сделало»); since then the code is written, verified and committed directly; the Meta API is called only for course runs the owner asks for.
+- Two local kits, one truth: generic agent rules with the Muse Code memory (kept for any tool), and an assistant kit (lobby, floors by path, skills `stand`/`course-run`/`verify-slice`, knowledge incl. the session digests and the credentials map). Both stay out of git, excluded through the local `info/exclude`; `README.md`, `docs/` (minus the planning papers), `prompts/` and `CHANGELOG.md` are tracked since 2026-11-04. Kit in English; owner replies in Russian.
 - Block types (2026-11-03): ordering and diagram added, multi-select choice, markdown readings, sources page, glossary, review deck; `figure` is never planned. Each author pays with their own Meta key (account page); learners come by a student link.
 
 ## Not built

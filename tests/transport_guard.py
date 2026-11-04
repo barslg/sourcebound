@@ -69,41 +69,27 @@ def _cached_from_usage(usage: object) -> int:
 
 
 def _allowed_hosts(settings: Settings) -> set[str]:
-    """The Model API host, plus the Anthropic host only when that provider is selected."""
-    hosts = {urlparse(settings.model_api_base_url).hostname or ""}
-    if settings.model_provider == "anthropic":
-        hosts.add(urlparse(settings.anthropic_api_base_url).hostname or "")
-    return hosts
+    """The Model API host, the only one a test may reach."""
+    return {urlparse(settings.model_api_base_url).hostname or ""}
 
 
 def live_key_name() -> str:
-    """The environment variable that holds the key of the provider the live run selected."""
-    return (
-        "ANTHROPIC_API_KEY" if os.environ.get("MODEL_PROVIDER") == "anthropic" else "MODEL_API_KEY"
-    )
+    """The environment variable that holds the key a live run uses."""
+    return "MODEL_API_KEY"
 
 
 def live_key_settings(key: str) -> dict[str, str]:
-    """Settings kwargs that carry `key` for the selected provider."""
-    if live_key_name() == "ANTHROPIC_API_KEY":
-        return {"anthropic_api_key": key}
+    """Settings kwargs that carry `key`."""
     return {"model_api_key": key}
 
 
 def _usage_cost_usd(model: str, content: bytes) -> Decimal:
-    """Cost of one Responses or Messages payload, or zero when usage is absent/unpriced.
-
-    A Messages usage keeps cache reads and writes apart from input_tokens;
-    they are added back so the registry bills them like the provider does.
-    """
+    """Cost of one Responses payload, or zero when usage is absent/unpriced."""
     try:
         payload = json.loads(content.decode("utf-8"))
         usage = payload.get("usage") or {}
         cached = _cached_from_usage(usage)
         total_input = int(usage.get("input_tokens", 0))
-        if "cache_read_input_tokens" in usage or "cache_creation_input_tokens" in usage:
-            cached = int(usage.get("cache_read_input_tokens") or 0)
-            total_input += cached + int(usage.get("cache_creation_input_tokens") or 0)
         return compute_cost_usd(model, total_input, cached, int(usage.get("output_tokens", 0)))
     except (ValueError, UnicodeDecodeError, TypeError, KeyError, AttributeError):
         return Decimal("0")

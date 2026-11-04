@@ -5,7 +5,6 @@ here; logic modules take values as arguments instead of reading env vars.
 """
 
 from functools import lru_cache
-from typing import Literal
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -25,10 +24,6 @@ class Settings(BaseSettings):
     model_api_key: SecretStr | None = None
     model_key_secret: SecretStr | None = None
     model_api_base_url: str = "https://api.meta.ai/v1"
-    model_provider: Literal["meta", "anthropic"] = "meta"
-    anthropic_api_key: SecretStr | None = None
-    anthropic_api_base_url: str = "https://api.anthropic.com"
-    anthropic_workspace_id: str = ""
     llm_default_model: str = "muse-spark-1.3"
     llm_dev_mode: bool = False
     llm_spend_ceiling_usd: float = 5.0
@@ -90,8 +85,6 @@ def validate_runtime_settings(settings: Settings) -> None:
 
     if settings.app_env in ("local", "test"):
         return
-    if settings.model_provider != "meta":
-        raise ConfigurationError("MODEL_PROVIDER must be meta in this APP_ENV")
     if settings.database_url == DEFAULT_DATABASE_URL:
         raise ConfigurationError("DATABASE_URL must not be the default in this APP_ENV")
     if settings.session_secret_key is None or not settings.session_secret_key.get_secret_value():

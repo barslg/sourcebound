@@ -29,8 +29,6 @@ def endpoint_for(model: str) -> str:
     """The HTTP request one call of this model makes, e.g. `POST https://api.meta.ai/v1/responses`."""
     settings = get_settings()
     spec = MODELS.get(model)
-    if spec is not None and spec.provider == "anthropic":
-        return f"POST {settings.anthropic_api_base_url}/v1/messages"
     if spec is not None and spec.unit == "audio_hour":
         return f"POST {settings.model_api_base_url}/audio/transcriptions"
     return f"POST {settings.model_api_base_url}/responses"

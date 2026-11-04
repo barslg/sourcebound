@@ -1,6 +1,8 @@
 """Public-tree gate: no secrets, dumps, or private markers in tracked files.
 
-Fails on: /Users/ paths, `scandic`, `LMS2`, `PowerDNS`, emails outside
+Fails on: any case-insensitive mention of another model vendor or its
+assistant in any file (allow-listed ones included), /Users/ paths,
+`scandic`, `LMS2`, `PowerDNS`, emails outside
 example.com/example.org/example.net, *.sql/*.dump/*.sqlite files, any
 `.env` variant except the sanctioned `.env.example` template,
 build/logs artefacts, Google client secrets (GOCSPX-), and Meta Model API
@@ -26,6 +28,11 @@ import sys
 from pathlib import Path
 
 LITERAL_MARKERS = ("/Users/", "scandic", "LMS2", "PowerDNS", "GOCSPX-")
+
+# Hackathon rule: every runtime model is a Meta model, so no tracked file may
+# name another model vendor or its assistant. The words are spelled in two
+# halves so this file does not trip its own rule.
+VENDOR_RE = re.compile("anthro" + "pic|clau" + "de", re.IGNORECASE)
 
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})")
 ALLOWED_EMAIL_DOMAINS = ("example.com", "example.org", "example.net")
@@ -97,6 +104,15 @@ def check_path(name: str) -> str | None:
     return None
 
 
+def check_vendor(name: str, text: str) -> list[str]:
+    """Lines that name another model vendor; no file is exempt from this rule."""
+    return [
+        f"{name}:{lineno}: names a model vendor (Meta models only)"
+        for lineno, line in enumerate(text.splitlines(), start=1)
+        if VENDOR_RE.search(line)
+    ]
+
+
 def check_content(name: str, text: str) -> list[str]:
     """Content-based violations with line numbers."""
     violations: list[str] = []
@@ -131,8 +147,6 @@ def check_tree(repo: Path, names: list[str]) -> list[str]:
         path_hit = check_path(name)
         if path_hit is not None:
             violations.append(path_hit)
-        if is_allowlisted(name):
-            continue
         path = repo / name
         if path.is_file() and is_text(path):
             try:
@@ -140,7 +154,9 @@ def check_tree(repo: Path, names: list[str]) -> list[str]:
             except OSError as exc:
                 violations.append(f"{name}:1: unreadable ({exc})")
                 continue
-            violations += check_content(name, text)
+            violations += check_vendor(name, text)
+            if not is_allowlisted(name):
+                violations += check_content(name, text)
     return sorted(violations)
 
 

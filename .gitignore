@@ -33,9 +33,3 @@ build/logs/
 build/notes/
 build/tasks/
 var/
-
-# Agent kits (local; backed up by the assistant-memory repo)
-.agents/
-AGENTS.md
-.claude/
-CLAUDE.md

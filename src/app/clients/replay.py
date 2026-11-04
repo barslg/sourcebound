@@ -19,8 +19,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from app.clients.body import build_body
-from app.clients.meta import LLMResponse, WebSearchReply
+from app.clients.meta import LLMResponse, WebSearchReply, build_request_body
 from app.errors import ConfigurationError, ReplayMissError
 from app.llm.replies import request_hash
 
@@ -81,7 +80,7 @@ class ReplayClient:
         safety_identifier: str | None = None,
     ) -> LLMResponse:
         """The recorded reply for this exact request, or ReplayMissError."""
-        body = build_body(
+        body = build_request_body(
             model=model,
             prompt=prompt,
             schema=schema,
