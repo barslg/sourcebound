@@ -974,6 +974,7 @@
     "notPublished": "The course is not published yet, so no learner can work on it.",
     "empty": "No learner is enrolled yet. Create an invite to add the first one.",
     "inviteLink": "Go to invites",
+    "publicLearner": "Public learner",
     "lastActivity": "Last activity",
     "topicsCaption": "Topics of {name}",
     "topic": "Topic",
