@@ -241,6 +241,29 @@ async def preview_topic(
     )
 
 
+async def preview_check(
+    ctx: RequestContext, *, block_id: str, payload: dict[str, Any], language: str | None
+) -> dict[str, Any]:
+    """The author checks one answer in the preview: graded by code, never recorded."""
+    from app.services.grading import preview_answer
+    from app.services.learner import course_of_block
+
+    actor = require_auth(ctx)
+    require(actor, "learner.view")
+    block_uuid = parse_uuid_or_404(block_id)
+    course_id = await course_of_block(ctx.db, block_uuid)
+    await _own_draft(ctx, actor, course_id)
+    return await preview_answer(
+        ctx.db,
+        actor,
+        course_id,
+        block_uuid,
+        payload,
+        language=language,
+        max_bytes=ctx.settings.answer_max_bytes,
+    )
+
+
 async def preview_sources(ctx: RequestContext, *, course_id: str) -> dict[str, Any]:
     """The draft's numbered sources as the learner will see them (preview sources page)."""
     from app.services.learner_reference import preview_sources as sources

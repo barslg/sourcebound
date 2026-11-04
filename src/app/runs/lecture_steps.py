@@ -318,7 +318,8 @@ async def blockplan_step(
                     "text": str(text),
                     "address": {
                         "kind": "md",
-                        "heading_path": str(topic.get("title", "")),
+                        "heading_path": str(topic.get("title", "")).replace(">", "\u203a"),
+                        "para": index + 1,
                         "topic": node,
                     },
                     "address_key": f"{node}/p{index + 1:03d}",

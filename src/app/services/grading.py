@@ -172,8 +172,9 @@ async def grade_and_store(
     *,
     language: str,
     max_bytes: int,
+    store: bool = True,
 ) -> dict[str, Any]:
-    """Grade one submission with the type's check, store the attempt, shape the reply."""
+    """Grade one submission with the type's check, store it unless previewing, shape the reply."""
     from app.course.errorspot import classify_spot_attempt
     from app.translation.variants import learner_block
 
@@ -206,24 +207,25 @@ async def grade_and_store(
         result = classify_spot_attempt(
             planted_view(resolved["content"], resolved["answer_key"]), submission
         )
-    attempt_no = await _next_attempt(session, principal.user_id, block["id"])
-    await session.execute(
-        sa.text(
-            "INSERT INTO learner_answers (user_id, block_id, block_version_id, language,"
-            " payload, score, attempt_no, result) VALUES (:u, :b, :v, :l,"
-            " CAST(:p AS jsonb), :s, :n, CAST(:r AS jsonb))"
-        ),
-        {
-            "u": str(principal.user_id),
-            "b": block["id"],
-            "v": block["version_id"],
-            "l": resolved["language"],
-            "p": json.dumps(payload, ensure_ascii=False),
-            "s": score,
-            "n": attempt_no,
-            "r": json.dumps(result),
-        },
-    )
+    attempt_no = await _next_attempt(session, principal.user_id, block["id"]) if store else 0
+    if store:
+        await session.execute(
+            sa.text(
+                "INSERT INTO learner_answers (user_id, block_id, block_version_id, language,"
+                " payload, score, attempt_no, result) VALUES (:u, :b, :v, :l,"
+                " CAST(:p AS jsonb), :s, :n, CAST(:r AS jsonb))"
+            ),
+            {
+                "u": str(principal.user_id),
+                "b": block["id"],
+                "v": block["version_id"],
+                "l": resolved["language"],
+                "p": json.dumps(payload, ensure_ascii=False),
+                "s": score,
+                "n": attempt_no,
+                "r": json.dumps(result),
+            },
+        )
     hint = None
     if score < 1.0 and block["block_type"] != "spot_the_error" and chip_list:
         hint = chip_list[0]
@@ -237,9 +239,38 @@ async def grade_and_store(
         "attempt_no": attempt_no,
         "source_links": chip_list,
     }
-    if block["block_type"] == "spot_the_error":
+    if block["block_type"] == "spot_the_error" and store:
         reply["counters"] = await spot_counters(session, principal.user_id, UUID(course["id"]))
     return reply
+
+
+async def preview_answer(
+    session: AsyncSession,
+    principal: Principal,
+    course_id: UUID,
+    block_id: UUID,
+    payload: dict[str, Any],
+    *,
+    language: str | None,
+    max_bytes: int,
+) -> dict[str, Any]:
+    """POST /preview/blocks/{id}/check: the draft graded by the learner's code, nothing stored."""
+    course = await learner.preview_course(session, course_id)
+    topics = await learner.topic_entries(session, course)
+    topic = next((t for t in topics if any(b["id"] == str(block_id) for b in t["blocks"])), None)
+    if topic is None:
+        raise learner._not_found()
+    block = next(b for b in topic["blocks"] if b["id"] == str(block_id))
+    return await grade_and_store(
+        session,
+        principal,
+        course,
+        block,
+        payload,
+        language=language or course["language"],
+        max_bytes=max_bytes,
+        store=False,
+    )
 
 
 async def spot_counters(session: AsyncSession, user_id: UUID, course_id: UUID) -> dict[str, Any]:

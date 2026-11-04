@@ -4,8 +4,8 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { request } from '@/api/client'
-import { coursePreview, coursePreviewPassage, previewTopic } from '@/api/endpoints'
-import type { Chip, LearnOutline, LearnTopic, Term } from '@/api/types'
+import { coursePreview, coursePreviewPassage, previewCheck, previewTopic } from '@/api/endpoints'
+import type { AnswerResult, Chip, LearnOutline, LearnTopic, Term } from '@/api/types'
 import CompanionPanel from '@/components/learner/CompanionPanel.vue'
 import FlashcardDeck from '@/components/learner/FlashcardDeck.vue'
 import LearnBlockCard from '@/components/learner/LearnBlockCard.vue'
@@ -15,7 +15,8 @@ import PageHeader from '@/components/PageHeader.vue'
 import ResourceState from '@/components/ResourceState.vue'
 import Section from '@/components/Section.vue'
 import { holdText } from '@/composables/holdReason'
-import { emptyDraft, type Draft } from '@/composables/learnAnswer'
+import { emptyDraft, payloadOf, type Draft } from '@/composables/learnAnswer'
+import { notifyError } from '@/composables/notify'
 import { COURSE_LANGUAGES } from '@/composables/languages'
 import { useReloading } from '@/composables/useReloading'
 import { useUrlParam } from '@/composables/useUrlState'
@@ -28,6 +29,8 @@ const topic = useReloading<LearnTopic>(() => request<LearnTopic>(previewTopic(to
 const courseId = computed(() => topic.data.value?.course_id ?? '')
 const outline = ref<LearnOutline | null>(null)
 const drafts = reactive<Record<string, Draft>>({})
+const results = reactive<Record<string, AnswerResult | null>>({})
+const busy = reactive<Record<string, boolean>>({})
 const openId = ref<string | null>(null)
 const openTerm = ref<Term | null>(null)
 const served = computed(() => topic.data.value?.language ?? language.value)
@@ -51,6 +54,19 @@ watch(topicId, () => { openId.value = null; openTerm.value = null })
 async function loadOutline(): Promise<void> {
   try { outline.value = await request<LearnOutline>(coursePreview(courseId.value), { query: { lang: language.value } }) } catch { outline.value = null }
 }
+/** The author's answer graded by the same code as a learner's, never recorded. */
+async function check(blockId: string, type: string): Promise<void> {
+  const body = payloadOf(type, drafts[blockId] as Draft)
+  if (!body) return
+  busy[blockId] = true
+  try {
+    results[blockId] = await request<AnswerResult>(previewCheck(blockId), { method: 'POST', body, query: { lang: language.value } })
+  } catch (cause) {
+    notifyError(cause, () => { void check(blockId, type) })
+  } finally {
+    busy[blockId] = false
+  }
+}
 function open(chip: Chip): void { openTerm.value = null; openId.value = openId.value === chip.passage_id ? null : chip.passage_id }
 function openTermOf(term: Term): void { openId.value = null; openTerm.value = openTerm.value?.term === term.term ? null : term }
 </script>
@@ -70,7 +86,7 @@ function openTermOf(term: Term): void { openId.value = null; openTerm.value = op
         <p v-if="held.length > 0" class="preview-notice" role="note" data-testid="preview-held-note">{{ t('previewTopic.heldNote', held.length) }}</p>
         <template v-for="(b, i) in topic.data.value.blocks" :key="b.id">
           <p v-if="b.status === 'held'" class="preview-notice" role="note" :data-block-id="b.id" data-testid="preview-held-block">{{ t('previewTopic.heldBlock', { reason: holdText(b.hold_reason ?? null, (id) => t(`holdItem.${id}`)) }) }}</p>
-          <LearnBlockCard v-model:draft="drafts[b.id] as Draft" :block="b" :index="i" :result="null" :test-mode="true" :open-id="openId" :open-term="openTerm?.term ?? null" :terms="topic.data.value.terms ?? []" @open="open" @term="openTermOf" />
+          <LearnBlockCard v-model:draft="drafts[b.id] as Draft" :block="b" :index="i" :result="results[b.id] ?? null" :busy="busy[b.id]" :test-mode="false" :open-id="openId" :open-term="openTerm?.term ?? null" :terms="topic.data.value.terms ?? []" @check="check(b.id, b.block_type)" @open="open" @term="openTermOf" />
         </template>
         <FlashcardDeck v-if="topic.data.value.kind !== 'module_test'" :terms="topic.data.value.terms ?? []" :uid="topic.data.value.id" />
         <nav class="row" :aria-label="t('previewTopic.nav')" data-testid="preview-nav">

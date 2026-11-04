@@ -318,6 +318,17 @@ async def preview_topic(
     return await controller.preview_topic(ctx, topic_id=topic_id, language=lang)
 
 
+@preview_router.post("/blocks/{block_id}/check")
+async def preview_check(
+    block_id: Annotated[str, Depends(block_id_param)],
+    payload: dict[str, Any],
+    lang: str | None = None,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, Any]:
+    """The author's answer in the preview, graded by code and never recorded."""
+    return await controller.preview_check(ctx, block_id=block_id, payload=payload, language=lang)
+
+
 @courses_router.get("/{course_id}/preview/sources")
 async def preview_sources(
     course_id: Annotated[str, Depends(course_id_param)],

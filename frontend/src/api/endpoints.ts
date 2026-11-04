@@ -75,6 +75,7 @@ export const blockAccept = (id: string): string => `${blockItem(id)}/accept`
 export const courseTranslate = (id: string): string => `${courseItem(id)}/translate`
 export const coursePreview = (id: string): string => `${courseItem(id)}/preview`
 export const previewTopic = (topicId: string): string => `${API}/preview/topics/${enc(topicId)}`
+export const previewCheck = (blockId: string): string => `${API}/preview/blocks/${enc(blockId)}/check`
 export const coursePreviewPassage = (id: string, passageId: string): string => `${coursePreview(id)}/passages/${enc(passageId)}`
 export const coursePreviewSources = (id: string): string => `${coursePreview(id)}/sources`
 export const coursePreviewGlossary = (id: string): string => `${coursePreview(id)}/glossary`

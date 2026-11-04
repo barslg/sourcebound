@@ -6,7 +6,7 @@ const patterns = [
   /^\/api\/v1\/users\/[^/]+(\/ban)?$/, /^\/api\/v1\/roles\/[^/]+(\/assign|\/revoke)?$/,
   /^\/api\/v1\/courses\/[^/]+(\/(profile|plan|plan\/validate|plan\/submit|generate\/submit|sources|estimate|held|held\/rewrite|held\/recheck|publish|runs|calls\/tree|build|build\/stop|visibility))?$/,
   /^\/api\/v1\/sources\/[^/]+\/(approve|reject)$/, /^\/api\/v1\/runs\/[^/]+(\/(resume|cancel|calls|calls\/[^/]+))?$/, /^\/api\/v1\/blocks\/[^/]+(\/(rewrite|accept))?$/,
-  /^\/api\/v1\/operations\/[^/]+$/, /^\/api\/v1\/human-queue(\/[^/]+\/resolve)?$/, /^\/api\/v1\/invites\/[^/]+\/(revoke|accept)$/, /^\/api\/v1\/notifications\/[^/]+\/read$/,
+  /^\/api\/v1\/preview\/blocks\/[^/]+\/check$/, /^\/api\/v1\/operations\/[^/]+$/, /^\/api\/v1\/human-queue(\/[^/]+\/resolve)?$/, /^\/api\/v1\/invites\/[^/]+\/(revoke|accept)$/, /^\/api\/v1\/notifications\/[^/]+\/read$/,
 ]
 
 test('every request path comes from the endpoint table and unsafe ones carry CSRF', async ({ page, context }) => {

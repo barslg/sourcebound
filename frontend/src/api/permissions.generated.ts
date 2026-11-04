@@ -2,6 +2,7 @@
 export const PERMISSION_CODES: readonly string[] = ["course.create", "course.delete", "course.edit", "course.generate", "course.plan", "course.publish", "invite.create", "invite.revoke", "learn.answer", "learn.ask", "learn.read", "learner.report", "learner.view", "operation.run", "operation.view", "role.assign", "role.edit", "run.cancel", "run.retry", "run.start", "section.courses", "section.learners", "section.runs", "section.settings", "section.sources", "section.users", "source.approve", "source.create", "source.delete", "source.edit", "source.upload", "user.ban", "user.delete", "user.list"]
 export const ROUTE_CODES: Readonly<Record<string, readonly string[]>> = {
   "DELETE /api/v1/auth/me/model-key": [],
+  "DELETE /api/v1/notifications": [],
   "DELETE /api/v1/roles/{name}": ["role.edit"],
   "DELETE /api/v1/users/{user_id}": ["user.delete"],
   "DELETE /api/v1/users/{user_id}/roles/{name}": ["role.assign"],
@@ -74,6 +75,7 @@ export const ROUTE_CODES: Readonly<Record<string, readonly string[]>> = {
   "POST /api/v1/learn/topics/{topic_id}/submit": ["learn.answer"],
   "POST /api/v1/notifications/{notification_id}/read": [],
   "POST /api/v1/operations/echo": ["operation.run"],
+  "POST /api/v1/preview/blocks/{block_id}/check": ["learner.view"],
   "POST /api/v1/roles": ["role.edit"],
   "POST /api/v1/roles/{name}/assign": ["role.assign"],
   "POST /api/v1/roles/{name}/revoke": ["role.assign"],
