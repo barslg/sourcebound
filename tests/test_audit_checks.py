@@ -472,3 +472,35 @@ def test_a_bare_prompt_transcript_is_compiled_and_the_error_window_is_two_hundre
     outside = fenced + " " * 190 + "SyntaxError"
     assert python_code_holds(inside) == []
     assert len(python_code_holds(outside)) == 1
+
+
+def test_a_valid_prompt_transcript_keeps_its_continuation_lines_and_is_not_held() -> None:
+    """`...` lines belong to the statement above them: without them `for` has no body."""
+    text = "Loop:\n\n>>> for i in range(3):\n...     print(i)\n...\n0\n1\n2\n"
+    assert python_code_holds(text) == []
+    fenced = "```pycon\n>>> if True:\n...     pass\n...\n```"
+    assert python_code_holds(fenced) == []
+
+
+def test_a_prose_line_that_starts_with_an_ellipsis_is_not_a_session() -> None:
+    """Only `>>>` opens a session; a sentence continued as `... and so on` is prose."""
+    assert python_code_holds("The list goes on\n... and so on until the end\nDone.") == []
+
+
+def test_a_transcript_after_a_fence_is_compiled_at_its_own_offset() -> None:
+    """Fences are skipped by character offset; the bare session after one is still checked."""
+    text = "Type:\n```python\nx = 1\n```\n\n>>> y = (1\n"
+    holds = python_code_holds(text)
+    assert len(holds) == 1 and "'y = (1'" in holds[0]
+
+
+def test_a_fenced_block_in_another_language_that_shows_a_prompt_is_not_python() -> None:
+    """A text or ruby fence is covered by its offsets and skipped by its language, not read bare."""
+    assert python_code_holds("```text\n>>> x = (1\n```") == []
+    assert python_code_holds("```ruby\n>>> puts(\n```") == []
+
+
+def test_a_transcript_continuation_line_keeps_its_own_first_character() -> None:
+    """`... else:` is the statement `else:`: the four-character prompt is all that is dropped."""
+    text = "```pycon\n>>> if x:\n...     pass\n... else:\n...     pass\n...\n```"
+    assert python_code_holds(text.replace("if x:", "if True:")) == []
