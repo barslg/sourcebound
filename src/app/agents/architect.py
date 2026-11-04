@@ -17,6 +17,7 @@ from typing import Any
 from pydantic import ValidationError as PydanticValidationError
 
 from app.agents.base import AGENT_SCHEMAS, assemble
+from app.course.text_checks import numbers_missing_from
 from app.course.tree import ArchitectOutput, CourseTree, validate_tree
 
 
@@ -133,6 +134,8 @@ def check_output(
         return [f"schema: {error['loc']}: {error['msg']}" for error in exc.errors()]
     errors = validate_tree(CourseTree(modules=output.modules), prescription)
     errors += _example_spec_errors(output)
+    if passages:
+        errors += _invented_number_errors(output, passages)
     if module_scope is not None:
         wanted = str(module_scope.get("plan_node_id", ""))
         if len(output.modules) != 1 or output.modules[0].plan_node_id != wanted:
@@ -171,6 +174,47 @@ def _example_spec_errors(output: Any) -> list[str]:
         for block in topic.blocks
         if block.role == "example" and not block.example_spec.complete()
     ]
+
+
+def _invented_number_errors(output: Any, passages: list[dict[str, Any]]) -> list[str]:
+    """A brief or example_spec carries only numbers some passage of its block or topic has.
+
+    The writers' number check judges a block against the block's own and
+    its topic's passages (a module test: the module's teach and example
+    passages); a number the plan itself dictates beyond those cannot be
+    satisfied by a rewrite, so the plan is re-asked instead.
+    """
+    text_of = {str(p.get("handle", "")): str(p.get("text", "")) for p in passages}
+    errors: list[str] = []
+    for module in output.modules:
+        taught = {
+            topic.plan_node_id: [
+                text_of.get(ref.handle, "")
+                for block in topic.blocks
+                if block.role in ("teach", "example")
+                for ref in block.source_refs
+            ]
+            for topic in module.topics
+        }
+        module_taught = [text for texts in taught.values() for text in texts]
+        for topic in module.topics:
+            pool = module_taught if topic.kind == "module_test" else taught[topic.plan_node_id]
+            for block in topic.blocks:
+                texts = [*pool, *(text_of.get(ref.handle, "") for ref in block.source_refs)]
+                spec = block.example_spec
+                for field, shown in (
+                    ("brief", block.brief),
+                    ("example_spec", " ".join((spec.input, spec.action, spec.result))),
+                ):
+                    missing = numbers_missing_from(shown, texts)
+                    if missing:
+                        errors.append(
+                            f"block {block.plan_node_id}: {field} shows"
+                            f" {', '.join(repr(n) for n in missing[:6])}, which no passage the"
+                            " block or its topic cites has - plan the block without the value,"
+                            " or on the values the passages show"
+                        )
+    return errors
 
 
 def _scope_topic_errors(module: Any, module_scope: dict[str, Any]) -> list[str]:

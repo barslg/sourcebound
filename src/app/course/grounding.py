@@ -381,6 +381,15 @@ def taught_handles_for(plan: dict[str, Any], node_id: str) -> tuple[list[str], s
     return None
 
 
+def number_pool_pids(
+    plan: dict[str, Any], node_id: str, passage_of: dict[str, str], cited_pids: list[str]
+) -> list[str]:
+    """Passage ids a block's numbers are read against: its topic's taught passages and its own."""
+    found = taught_handles_for(plan, node_id)
+    taught = [passage_of[h] for h in found[0] if h in passage_of] if found else []
+    return list(dict.fromkeys([*taught, *cited_pids]))
+
+
 _CORRECT_TIERS = frozenset({"correct", "right", "true"})
 _CLAUSE_SPLIT_RE = re.compile(r"\s*(?:;|—|–| - |\.\s+|\n)\s*")
 

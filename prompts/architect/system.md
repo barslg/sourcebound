@@ -18,7 +18,7 @@ Rules:
   request with …", "Choose the mode when …"); never two procedures
   joined by "and". Every objective is taught by a teach block and then
   checked by a check, practice or test block whose brief repeats the
-  objective's verb and key nouns on a new situation.
+  objective's verb and key nouns on the values its passages show.
 - `misconception` is one sentence: what a learner at the profile's
   starting level typically gets wrong in this topic, drawn from what the
   passages state or warn about. The exercise writers build one wrong
@@ -53,8 +53,8 @@ Rules:
     passages that show the action, preferring passages with commands,
     code, requests or values.
   - check, practice, test: the brief is a question ending in "?" that
-    asks the learner to apply the objective to a situation the sources
-    did not use, and never contains the answer: no correct option, no
+    asks the learner to apply the objective to a case its cited passages
+    show, and never contains the answer: no correct option, no
     order, no pairs, no value the learner must produce. The answer must
     follow from this topic's teach and example passages (a module test:
     from the module's). A `matching` needs at least four pairs in its
@@ -66,9 +66,15 @@ Rules:
     computes. The key of a `cloze`, `matching` or `ordering` is quoted
     verbatim from the cited passages, so its brief asks only for values
     those passages show (a `range()` call a passage prints, never a new
-    one); the new situation is the story around them. A `spot_the_error`
+    one). A `spot_the_error`
     brief names the passage claim the learner checks and sets no scene
     of its own: its planted error is a changed passage sentence.
+- A brief, an `example_spec` and a question stem carry no number, limit,
+  total or other value that is absent from the passages the block or
+  its topic cites (a module test: the module's teach and example
+  passages). The running case is told only where the cited code carries
+  it; otherwise the block is planned without the case. Code rejects a
+  plan whose brief or `example_spec` shows such a number and asks again.
 - Every block cites at least one passage, and a lesson block cites only
   passages marked with its own topic. A passage of the module no block
   draws on goes to `uncovered` with a reason.

@@ -183,17 +183,10 @@ def replay_blocks(
             holds += python_code_holds(text)
         holds += escape_holds(text)
         if block["block_type"] not in ("figure", "diagram"):
-            topic_handles = grounding.taught_handles_for(plan, block["node"])
-            topic_pids = (
-                [by_handle[h] for h in topic_handles[0] if h in by_handle] if topic_handles else []
-            )
+            pool = grounding.number_pool_pids(plan, block["node"], by_handle, cited_pids)
             holds += number_holds(
                 learner_text(block["content"]),
-                [
-                    by_id[str(pid)]["text"]
-                    for pid in dict.fromkeys([*topic_pids, *cited_pids])
-                    if str(pid) in by_id
-                ],
+                [by_id[str(pid)]["text"] for pid in pool if str(pid) in by_id],
             )
         if block["block_type"] == "figure":
             kinds = {

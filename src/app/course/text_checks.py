@@ -206,6 +206,16 @@ def learner_text(content: Any) -> str:
     return _MARKER_RE.sub(" ", " ".join(parts))
 
 
+def numbers_missing_from(learner: str, passage_texts: list[str]) -> list[str]:
+    """The number tokens of a text that no given passage contains, smallest first."""
+    if not any(passage_texts):
+        return []
+    have = {n for passage in passage_texts for n in _NUMBER_RE.findall(passage)}
+    return sorted(
+        {n for n in _NUMBER_RE.findall(learner) if n not in have}, key=lambda n: (float(n), n)
+    )
+
+
 def number_holds(learner: str, passage_texts: list[str]) -> list[str]:
     """Hold a block that shows the learner a number none of the topic's cited passages contains.
 
@@ -215,12 +225,7 @@ def number_holds(learner: str, passage_texts: list[str]) -> list[str]:
     occurs as a token in at least one passage the topic cites; with no
     passage text there is nothing to compare with and no verdict.
     """
-    if not any(passage_texts):
-        return []
-    have = {n for passage in passage_texts for n in _NUMBER_RE.findall(passage)}
-    missing = sorted(
-        {n for n in _NUMBER_RE.findall(learner) if n not in have}, key=lambda n: (float(n), n)
-    )
+    missing = numbers_missing_from(learner, passage_texts)
     if not missing:
         return []
     shown = ", ".join(repr(n) for n in missing[:_NUMBERS_NAMED])

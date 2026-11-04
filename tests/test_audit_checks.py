@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.agents.architect import check_output
 from app.course.errorspot import is_content_text
 from app.course.exercise_shape import (
     cloze_holds,
@@ -16,12 +17,13 @@ from app.course.exercise_shape import (
     matching_holds,
     ordering_holds,
 )
-from app.course.grounding import answer_key_claims
+from app.course.grounding import answer_key_claims, number_pool_pids
 from app.course.handles import numbered_passages
 from app.course.replay import replay_blocks
 from app.course.text_checks import (
     decode_escapes,
     escape_holds,
+    learner_text,
     narration_holds,
     number_holds,
     python_code_holds,
@@ -712,3 +714,138 @@ def test_a_module_test_is_judged_against_its_own_module_not_the_whole_course() -
     }
     assert len(lines["m2-test-b1"]) == 1 and "'65536'" in lines["m2-test-b1"][0]
     assert lines["m2-test-b2"] == [] and lines["m1-t1-b1"] == []
+
+
+def _lesson_plan(check_brief: str, spec: dict[str, str]) -> dict[str, Any]:
+    def block(node: str, role: str, brief: str, handle: str, **extra: Any) -> dict[str, Any]:
+        return {
+            "plan_node_id": node,
+            "role": role,
+            "block_type": "choice" if role == "check" else "reading",
+            "brief": brief,
+            "source_refs": [{"handle": handle}],
+            **extra,
+        }
+
+    return {
+        "modules": [
+            {
+                "plan_node_id": "m1",
+                "title": "Loops",
+                "purpose": "p",
+                "entry_knowledge": "e",
+                "exit_knowledge": "x",
+                "topics": [
+                    {
+                        "plan_node_id": "m1-t1",
+                        "kind": "lesson",
+                        "title": "Retry loops",
+                        "objectives": ["o"],
+                        "through_line_note": "n",
+                        "blocks": [
+                            block("m1-t1-b1", "teach", "How a loop stops", "P2"),
+                            block("m1-t1-b2", "example", "A branch on x", "P1", example_spec=spec),
+                            block("m1-t1-b3", "check", check_brief, "P1"),
+                        ],
+                    }
+                ],
+            }
+        ],
+        "estimate_inputs": {"blocks": 3, "calls": 1, "tokens": 1},
+        "through_line": {"case": "c", "handoffs": []},
+        "uncovered": [],
+    }
+
+
+def _plan_errors(check_brief: str, spec_action: str = "x is tested") -> list[str]:
+    passages = [
+        {"handle": "P1", "text": SIGN_PASSAGE, "is_content": True},
+        {"handle": "P2", "text": LIMIT_PASSAGE, "is_content": True},
+    ]
+    spec = {"input": "x holds a value", "action": spec_action, "result": "a line prints"}
+    plan = _lesson_plan(check_brief, spec)
+    return check_output(plan, {"lesson": ["teach", "example", "check"]}, passages=passages)
+
+
+def test_a_plan_whose_brief_or_example_spec_shows_a_number_no_passage_has_is_rejected() -> None:
+    """The brief's 85 and the spec's 75 are in no passage of the topic: one line per block."""
+    assert _plan_errors("With a total of 85, what does x == 1 print?") == [
+        "block m1-t1-b3: brief shows '85', which no passage the block or its topic cites has"
+        " - plan the block without the value, or on the values the passages show"
+    ]
+    assert _plan_errors("What does x == 1 print?", "x is set to 75 and tested") == [
+        "block m1-t1-b2: example_spec shows '75', which no passage the block or its topic cites"
+        " has - plan the block without the value, or on the values the passages show"
+    ]
+
+
+def test_a_brief_may_use_numbers_of_its_own_or_its_topics_other_passages() -> None:
+    """1 is P1's (the block's own) and 3 is P2's, cited by the teach block of the same topic."""
+    assert _plan_errors("After 3 tries, what does x == 1 print?") == []
+
+
+def test_a_hold_names_at_most_six_numbers_the_smallest_first() -> None:
+    """Seven invented values (11 to 17): the line names 11 to 16 and leaves 17 out."""
+    held = number_holds("Values 17 16 15 14 13 12 11 appear.", ["The loop stops after 3 tries."])
+    assert len(held) == 1
+    assert "'11', '12', '13', '14', '15', '16'" in held[0] and "'17'" not in held[0]
+
+
+def test_a_text_is_not_judged_against_no_passage_text() -> None:
+    """With no passage, and with passages that hold no text, there is nothing to compare."""
+    assert number_holds("A total of 85.", []) == []
+    assert number_holds("A total of 85.", ["", ""]) == []
+
+
+def test_the_learner_text_leaves_out_citations_handoffs_leftovers_and_markers() -> None:
+    """Only the strings a learner reads count: the body, the options, nothing of the sourcing."""
+    content = {
+        "body": "Read the loop. ⟦P12⟧",
+        "options": [{"text": "retry"}],
+        "citations": [{"quote": "q 111"}],
+        "citation": {"quote": "q 222"},
+        "handoff": "next case 333",
+        "leftovers": ["left 444"],
+        "source_handles": ["P555"],
+    }
+    assert learner_text(content).split() == ["Read", "the", "loop.", "retry"]
+
+
+def test_replay_does_not_read_numbers_of_a_figure_or_a_diagram() -> None:
+    """A figure's or diagram's own labels are drawn by the code check, not read as prose."""
+    numbered = [{"passage_id": "pid1", "handle": "P1", "text": SIGN_PASSAGE}]
+    blocks = []
+    for node, kind in (("t1-b1", "figure"), ("t1-b2", "diagram"), ("t1-b3", "reading")):
+        block = _topic_block(node, "teach", "A total of 85 sits in x.", "P1")
+        block["block_type"] = kind
+        blocks.append(block)
+    lines = {
+        r["node"]: [h for h in r["holds"] if h.startswith("number: ")]
+        for r in replay_blocks(blocks, numbered)
+    }
+    assert lines["t1-b1"] == [] and lines["t1-b2"] == []
+    assert len(lines["t1-b3"]) == 1
+
+
+def test_the_number_pool_is_the_topics_taught_passages_plus_the_blocks_own() -> None:
+    """A check citing P1 reads the sibling teach block's P2 too, once."""
+    plan = {
+        "modules": [
+            {
+                "topics": [
+                    {
+                        "kind": "lesson",
+                        "blocks": [
+                            {"plan_node_id": "b1", "role": "teach", "source_handles": ["P2", "P9"]},
+                            {"plan_node_id": "b2", "role": "check", "source_handles": ["P1"]},
+                        ],
+                    }
+                ]
+            }
+        ]
+    }
+    assert number_pool_pids(plan, "b2", {"P1": "pid1", "P2": "pid2"}, ["pid1"]) == [
+        "pid2",
+        "pid1",
+    ]
+    assert number_pool_pids({}, "b2", {"P1": "pid1"}, ["pid1"]) == ["pid1"]
