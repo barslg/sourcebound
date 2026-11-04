@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 import type { Chip } from '@/api/types'
 import FormField from '@/components/FormField.vue'
 import { ERROR_KINDS, type Draft } from '@/composables/learnAnswer'
+import { looksLikeCode } from '@/composables/reading'
 import CitationChip from './CitationChip.vue'
 
 const props = defineProps<{ content: Record<string, unknown>; uid?: string; modelValue?: Draft; locked?: boolean; options?: Chip[]; openId?: string | null }>()
@@ -19,13 +20,13 @@ function patch(part: Partial<Draft>): void {
 </script>
 
 <template>
-  <ol v-if="modelValue === undefined" data-block="spot_the_error"><li v-for="(s, i) in sentences" :key="i">{{ s }}</li></ol>
+  <ol v-if="modelValue === undefined" data-block="spot_the_error"><li v-for="(s, i) in sentences" :key="i" class="keep-lines" :class="{ mono: looksLikeCode(s) }">{{ s }}</li></ol>
   <div v-else class="stack" data-block="spot_the_error">
     <fieldset class="stack answer-set">
       <legend>{{ t('learn.spotWhich') }}</legend>
       <label v-for="(s, i) in sentences" :key="i" class="answer-option">
         <input type="radio" :name="`spot-${uid}`" :value="String(i)" :checked="modelValue.sentence === String(i)" :disabled="locked" data-testid="spot-sentence" @change="patch({ sentence: String(i) })" />
-        <span><strong class="mono">{{ i + 1 }}.</strong> {{ s }}</span>
+        <span class="keep-lines" :class="{ mono: looksLikeCode(s) }"><strong class="mono">{{ i + 1 }}.</strong> {{ s }}</span>
       </label>
       <label class="answer-option">
         <input type="radio" :name="`spot-${uid}`" value="none" :checked="modelValue.sentence === 'none'" :disabled="locked" data-testid="spot-none" @change="patch({ sentence: 'none' })" />

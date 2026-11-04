@@ -77,7 +77,15 @@ export function stopBlockRef(marker: string | null | undefined, plan: StopPlan):
   return null
 }
 
-export interface StepName { role: string; subject: string }
+export interface StepName { role: string; subject: string; full: string }
+
+/** Cut at the last space before the limit and mark the cut; a text within the limit is returned as it is. */
+export function clip(text: string, limit: number): string {
+  if (text.length <= limit) return text
+  const room = text.slice(0, limit - 1)
+  const space = room.lastIndexOf(' ')
+  return `${(space > 0 ? room.slice(0, space) : room).trimEnd()}…`
+}
 
 export function stepName(
   stepKey: string,
@@ -88,7 +96,10 @@ export function stepName(
   const node = at < 0 ? '' : stepKey.slice(at + 1)
   const topics = (plan?.modules ?? []).flatMap((m) => m.topics)
   const block = topics.flatMap((t) => t.blocks.map((b) => ({ topic: t.title, ...b }))).find((b) => b.plan_node_id === node)
-  if (block) return { role, subject: `${block.topic}: ${block.brief}`.slice(0, 120) }
+  if (block) {
+    const full = `${block.topic}: ${block.brief}`
+    return { role, subject: clip(full, 120), full }
+  }
   const topic = topics.find((t) => t.plan_node_id === node)
-  return { role, subject: topic ? topic.title : '' }
+  return { role, subject: topic ? topic.title : '', full: topic ? topic.title : '' }
 }

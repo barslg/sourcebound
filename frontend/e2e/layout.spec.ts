@@ -78,6 +78,17 @@ test('learner topic: the topic\'s term is marked once and opens its definition b
   await expect(page.getByTestId('companion-term')).toContainText('An alcohol rub takes twenty seconds')
   // the diagram is drawn by the browser from the typed graph; a node label is in the svg
   await expect(page.locator('[data-block="diagram"] [data-testid="diagram-svg"] svg')).toContainText('alcohol rub')
+  // the caption is the writer's markdown too: bold and code rendered, the passage marker a footnote number, nothing raw
+  const caption = page.locator('[data-block="diagram"] figcaption')
+  await expect(caption.locator('strong')).toHaveText('Hand hygiene')
+  await expect(caption.locator('code')).toHaveText('alcohol rub')
+  await expect(caption.locator('button.cite-mark')).toHaveText('1')
+  expect(await caption.textContent()).not.toMatch(/\*\*|⟦|`/)
+  // an option the writer gave as code keeps its line breaks
+  const option = page.locator('[data-block="spot_the_error"] label.answer-option span.keep-lines').nth(1)
+  expect(await option.evaluate((el) => getComputedStyle(el).whiteSpace)).toBe('pre-wrap')
+  await expect(option).toContainText('print(rub, seconds)')
+  expect((await option.boundingBox())?.height ?? 0, 'four lines of code are taller than one line of text').toBeGreaterThan(70)
   // the review deck is built from the same terms: the back of the card is the defining sentence
   await page.getByTestId('flashcard-flip').first().click()
   await expect(page.getByTestId('flashcard-definition').first()).toBeVisible()

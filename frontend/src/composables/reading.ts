@@ -90,3 +90,8 @@ export function renderReading(body: string, options: ReadingOptions): string {
 export function plainText(body: string): string {
   return body.replace(MARKER, '').replace(/\*\*|`/g, '')
 }
+
+/** An option the writer gave as code or console output: more than one line, or a prompt line; shown with its line breaks in a monospace face. */
+export function looksLikeCode(text: string): boolean {
+  return text.includes('\n') || /^(>>>|\.\.\.)/.test(text.trimStart())
+}

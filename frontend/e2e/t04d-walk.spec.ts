@@ -2,6 +2,8 @@ import { expect, ids, sessions, signInAs, test } from './fixtures'
 import type { Page } from '@playwright/test'
 
 const RAW_IDENTIFIER = /\b[a-z]+_[a-z_]+\b/
+/** A plan handle (P32) or the checker's own `(evidence:` frame is internal language: a person is shown the passage's address and a quote. */
+const PLAN_HANDLE = /\bP[1-9][0-9]*\b|\(evidence:/
 const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i
 const BACKEND = `http://127.0.0.1:${process.env.E2E_BACKEND_PORT ?? '8010'}`
 
@@ -125,7 +127,7 @@ async function sweep(page: Page): Promise<Sweep> {
   })
   const unmapped = buttons.filter((b) => !b.disabled && !CONTROLS.some(([re]) => re.test(b.name))).map((b) => b.name)
   const noReason = buttons.filter((b) => b.disabled && b.reason.length === 0).map((b) => b.name)
-  const raw = [...(rest.text.match(new RegExp(RAW_IDENTIFIER.source, 'g')) ?? []), ...(rest.text.match(new RegExp(UUID.source, 'gi')) ?? [])]
+  const raw = [...(rest.text.match(new RegExp(RAW_IDENTIFIER.source, 'g')) ?? []), ...(rest.text.match(new RegExp(UUID.source, 'gi')) ?? []), ...(rest.text.match(new RegExp(PLAN_HANDLE.source, 'g')) ?? [])]
   return { helpMissing: rest.helpMissing, headingsWithoutHelp: rest.headings, fieldsWithoutHint: rest.fields, unmapped, disabledWithoutReason: noReason, raw, licenceHost: rest.host }
 }
 

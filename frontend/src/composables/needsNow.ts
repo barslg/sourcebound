@@ -18,6 +18,7 @@ export interface StageFacts extends CourseFacts {
   firstHeldId: string | null
   draft: number
   generated: boolean
+  live?: boolean
   planStopped?: string | null
 }
 
@@ -29,6 +30,7 @@ export interface CourseCounters {
   open_questions?: number
   held_count: number
   draft_count: number
+  live_work?: number
   pending_sources: number
   source_count: number
 }
@@ -47,7 +49,8 @@ export function factsOfRow(c: CourseCounters): StageFacts {
     firstPendingId: null,
     held: c.held_count,
     firstHeldId: null,
-    draft: c.draft_count,
+    draft: c.live_work ? 0 : c.draft_count,
+    live: (c.live_work ?? 0) > 0,
     generated: c.status === 'generated' || c.status === 'published',
   }
 }
@@ -55,6 +58,7 @@ export function factsOfRow(c: CourseCounters): StageFacts {
 export function nextAction(c: StageFacts): Action {
   const base = `/courses/${c.courseId}`
   if (c.published) return { key: 'needs.nothing', to: null }
+  if (c.live) return { key: 'needs.running', to: `${base}/runs` }
   if (c.planStopped && !c.plan) return { key: 'needs.planStopped', to: `${base}/plan#build-plan`, params: { reason: c.planStopped } }
   if (c.sourceCount === 0) return { key: 'needs.addSources', to: `${base}/sources#source-add` }
   if (c.pendingSources > 0 && !c.generated) return { key: 'needs.sources', to: `${base}/sources#${c.firstPendingId ? `source-${c.firstPendingId}` : 'sources-list'}` }

@@ -158,7 +158,7 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
             <RunCalls :key="latest.id" :run-id="latest.id" :live="active" compact />
             <ul v-if="(runDoc?.steps ?? []).length > 0" class="plain-list">
               <li v-for="(s, i) in runDoc?.steps ?? []" :key="s.step_key" class="bell-item row" data-testid="run-step">
-                <span>{{ t('run.stepNamed', { n: i + 1, role: roleName(s.step_key), subject: stepName(s.step_key, plan.data.value).subject }) }}</span>
+                <span :title="t('run.stepNamed', { n: i + 1, role: roleName(s.step_key), subject: stepName(s.step_key, plan.data.value).full })">{{ t('run.stepNamed', { n: i + 1, role: roleName(s.step_key), subject: stepName(s.step_key, plan.data.value).subject }) }}</span>
                 <StatusChip :tone="stepWord(s) === 'held' || stepWord(s) === 'stopped' ? 'warn' : stepWord(s) === 'ready' ? 'ok' : 'info'" :label="t(`run.word.${stepWord(s)}`, stepWord(s))" />
                 <span v-if="s.error" class="mono danger-text">{{ s.error }}</span>
               </li>

@@ -18,7 +18,7 @@ export interface RouteRow {
   nav: NavEntry | null
   access: Access
   object: ObjectKind
-  heading: 'page' | 'object'
+  heading: 'page' | 'object' | 'topic'
   states: readonly PageState[]
   primaryAction: ActionId | null
   bare: boolean
@@ -72,7 +72,7 @@ export const REGISTRY = [
   stage('generate', [...LIST, 'queued'], 'generate', courses),
   stage('fix', [...LIST, 'queued'], 'rewrite', courses),
   row({ name: 'course-preview', path: '/courses/:id/preview', titleKey: 'preview.title', purposeKey: 'preview.help', parent: 'course-publish', access: { kind: 'perm', code: 'learner.view' }, object: 'course', states: LIST }),
-  row({ name: 'course-preview-topic', path: '/preview/topics/:id', titleKey: 'previewTopic.title', purposeKey: 'previewTopic.help', parent: 'course-preview', access: { kind: 'perm', code: 'learner.view' }, object: 'learn', heading: 'object', states: LIST }),
+  row({ name: 'course-preview-topic', path: '/preview/topics/:id', titleKey: 'previewTopic.title', purposeKey: 'previewTopic.help', parent: 'course-preview', access: { kind: 'perm', code: 'learner.view' }, object: 'learn', heading: 'topic', states: LIST }),
   row({ name: 'course-preview-sources', path: '/courses/:id/preview/sources', titleKey: 'learnSources.title', purposeKey: 'learnSources.help', parent: 'course-preview', access: { kind: 'perm', code: 'learner.view' }, object: 'course', states: LIST }),
   row({ name: 'course-preview-glossary', path: '/courses/:id/preview/glossary', titleKey: 'glossary.title', purposeKey: 'glossary.help', parent: 'course-preview', access: { kind: 'perm', code: 'learner.view' }, object: 'course', states: LIST }),
   stage('publish', [...ONE, 'queued'], 'publish', courses),
@@ -83,7 +83,7 @@ export const REGISTRY = [
   row({ name: 'roles', path: '/roles', titleKey: 'roles.title', purposeKey: 'roles.help', access: { kind: 'perm', code: 'role.edit' }, nav: { section: 'main', icon: 'roles', labelKey: 'nav.roles' }, states: LIST, primaryAction: 'create' }),
   row({ name: 'learn', path: '/learn', titleKey: 'learn.title', purposeKey: 'learn.help', access: { kind: 'perm', code: 'learn.read' }, nav: { section: 'main', icon: 'learn', labelKey: 'nav.learn' }, states: LIST }),
   row({ name: 'learn-course', path: '/learn/courses/:id', titleKey: 'learnCourse.title', purposeKey: 'learnCourse.help', parent: 'learn', access: { kind: 'perm', code: 'learn.read' }, object: 'learn', heading: 'object', states: [...LIST, 'notFound'], primaryAction: 'continue' }),
-  row({ name: 'learn-topic', path: '/learn/topics/:id', titleKey: 'learnTopic.title', purposeKey: 'learnTopic.help', parent: 'learn-course', access: { kind: 'perm', code: 'learn.read' }, object: 'learn', states: LIST }),
+  row({ name: 'learn-topic', path: '/learn/topics/:id', titleKey: 'learnTopic.title', purposeKey: 'learnTopic.help', parent: 'learn-course', access: { kind: 'perm', code: 'learn.read' }, object: 'learn', heading: 'topic', states: LIST }),
   row({ name: 'learn-course-sources', path: '/learn/courses/:id/sources', titleKey: 'learnSources.title', purposeKey: 'learnSources.help', parent: 'learn-course', access: { kind: 'perm', code: 'learn.read' }, object: 'learn', states: LIST }),
   row({ name: 'learn-course-glossary', path: '/learn/courses/:id/glossary', titleKey: 'glossary.title', purposeKey: 'glossary.help', parent: 'learn-course', access: { kind: 'perm', code: 'learn.read' }, object: 'learn', states: LIST }),
   row({ name: 'course-report', path: '/courses/:id/report', titleKey: 'report.title', purposeKey: 'report.help', parent: 'course-publish', access: courses, object: 'course', heading: 'object', states: LIST, primaryAction: 'export' }),
@@ -145,19 +145,27 @@ export interface TrailContext {
   t: (key: string) => string
   courseId: string | null
   courseTitle: string | null
+  moduleTitle?: string | null
+  topicTitle?: string | null
 }
 
+/** Course › module › topic: consecutive course ancestors collapse into the nearest one, the module is text, the topic is the current page. */
 export function trail(name: string, ctx: TrailContext): Crumb[] {
   const current = rowOf(name)
   const chain: RouteRow[] = []
   for (let r = current.parent ? rowOf(current.parent) : null; r; r = r.parent ? rowOf(r.parent) : null) chain.unshift(r)
+  const isCourse = (r: RouteRow): boolean => r.object === 'course' || r.object === 'learn'
   const out: Crumb[] = []
-  for (const r of chain) {
-    if (r.object === 'course' || r.object === 'learn') {
+  chain.forEach((r, i) => {
+    if (isCourse(r)) {
+      const next = chain[i + 1]
+      if (next && isCourse(next)) return
       if (ctx.courseTitle && ctx.courseId) out.push({ label: ctx.courseTitle, to: pathFor(r.name, { id: ctx.courseId }) })
     } else out.push({ label: ctx.t(r.titleKey as string), to: pathFor(r.name) })
-  }
-  out.push({ label: current.heading === 'object' ? (ctx.courseTitle ?? '') : ctx.t(current.titleKey as string) })
+  })
+  if (current.heading === 'topic' && ctx.moduleTitle) out.push({ label: ctx.moduleTitle })
+  const last = current.heading === 'object' ? ctx.courseTitle : current.heading === 'topic' ? ctx.topicTitle : ctx.t(current.titleKey as string)
+  out.push({ label: last ?? '' })
   return out
 }
 

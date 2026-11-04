@@ -114,7 +114,7 @@ async function act(kind: 'resume' | 'cancel'): Promise<void> {
       <Section :title="t('run.steps')" :help="t('run.stepsHelp')" />
       <ul class="plain-list">
         <li v-for="(s, i) in doc?.steps ?? []" :key="s.step_key" class="bell-item row" data-testid="run-step">
-          <span data-testid="run-step-name">{{ t('run.stepNamed', { n: i + 1, role: roleName(s.step_key), subject: stepName(s.step_key, plan).subject }) }}</span>
+          <span :title="t('run.stepNamed', { n: i + 1, role: roleName(s.step_key), subject: stepName(s.step_key, plan).full })" data-testid="run-step-name">{{ t('run.stepNamed', { n: i + 1, role: roleName(s.step_key), subject: stepName(s.step_key, plan).subject }) }}</span>
           <StatusChip :tone="stepWord(s) === 'held' || stepWord(s) === 'stopped' ? 'warn' : stepWord(s) === 'ready' ? 'ok' : 'info'" :label="t(`run.word.${stepWord(s)}`, stepWord(s))" />
           <span v-if="s.error" class="mono danger-text">{{ s.error }}</span>
         </li>

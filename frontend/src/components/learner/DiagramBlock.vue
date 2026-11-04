@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import type { Chip } from '@/api/types'
+import { plainText } from '@/composables/reading'
+import ReadingBlock from './ReadingBlock.vue'
 
 interface Node { id: string; label: string }
 interface Edge { from: string; to: string; label: string }
-const props = defineProps<{ content: Record<string, unknown>; uid?: string }>()
+const props = defineProps<{ content: Record<string, unknown>; uid?: string; chips?: Chip[]; openId?: string | null }>()
+const emit = defineEmits<{ open: [chip: Chip] }>()
+const caption = computed(() => String(props.content.caption ?? ''))
+const label = computed(() => plainText(caption.value).replace(/\s+/g, ' ').trim())
 const { t } = useI18n()
 const nodes = computed<Node[]>(() => (Array.isArray(props.content.nodes) ? (props.content.nodes as Array<Record<string, unknown>>).map((n) => ({ id: String(n.id ?? ''), label: String(n.label ?? '') })) : []))
 const edges = computed<Edge[]>(() => (Array.isArray(props.content.edges) ? (props.content.edges as Array<Record<string, unknown>>).map((e) => ({ from: String(e.from ?? ''), to: String(e.to ?? ''), label: String(e.label ?? '') })) : []))
@@ -42,11 +48,11 @@ watch(source, draw)
 <template>
   <figure class="stack diagram" data-block="diagram">
     <!-- eslint-disable-next-line vue/no-v-html -- svg produced by mermaid at securityLevel strict (DOMPurify) from source our code compiled -->
-    <div v-if="svg !== '' && !failed" class="diagram-canvas" role="img" :aria-label="String(content.caption ?? '')" data-testid="diagram-svg" v-html="svg"></div>
+    <div v-if="svg !== '' && !failed" class="diagram-canvas" role="img" :aria-label="label" data-testid="diagram-svg" v-html="svg"></div>
     <ol v-else class="plain-list" data-testid="diagram-fallback">
       <li v-for="n in nodes" :key="n.id">{{ n.label }}</li>
     </ol>
-    <figcaption>{{ String(content.caption ?? '') }}</figcaption>
+    <ReadingBlock caption :content="{ body: caption }" :chips="chips ?? []" :open-id="openId ?? null" @open="emit('open', $event)" />
     <p v-if="failed" class="muted">{{ t('learn.diagramFallback') }}</p>
   </figure>
 </template>

@@ -50,6 +50,7 @@ const facts = computed(() => {
     firstQuestionKey: questions[0]?.key ?? null,
     firstPendingId: pending[0]?.id ?? null,
     firstHeldId: heldList[0]?.id ?? null,
+    live: runGoing.value || c.live_work > 0,
     planStopped: stoppedPlan?.stop_marker ?? null,
   }
 })
@@ -59,7 +60,7 @@ const strip = computed(() => {
   if (!f) return []
   return stages(f, f.sourceCount).map((s) => {
     const to = pathFor(STAGE_TO_ROUTE[s.id] as string, { id })
-    const count = s.id === 'sources' ? (f.pendingSources > 0 ? `${f.sourceCount} · ${t('course.pendingCount', f.pendingSources)}` : String(f.sourceCount)) : s.id === 'fix' ? String(f.held + f.draft) : s.id === 'plan' && f.openQuestions > 0 ? t('course.questionCount', f.openQuestions) : ''
+    const count = s.id === 'sources' ? (f.pendingSources > 0 ? `${f.sourceCount} · ${t('course.pendingCount', f.pendingSources)}` : String(f.sourceCount)) : s.id === 'fix' ? (f.held > 0 ? String(f.held) : '') : s.id === 'plan' && f.openQuestions > 0 ? t('course.questionCount', f.openQuestions) : ''
     return { ...s, to, count }
   })
 })

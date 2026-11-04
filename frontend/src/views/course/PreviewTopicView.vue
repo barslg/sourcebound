@@ -14,6 +14,7 @@ import FormField from '@/components/FormField.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ResourceState from '@/components/ResourceState.vue'
 import Section from '@/components/Section.vue'
+import { holdText } from '@/composables/holdReason'
 import { emptyDraft, type Draft } from '@/composables/learnAnswer'
 import { COURSE_LANGUAGES } from '@/composables/languages'
 import { useReloading } from '@/composables/useReloading'
@@ -30,7 +31,8 @@ const drafts = reactive<Record<string, Draft>>({})
 const openId = ref<string | null>(null)
 const openTerm = ref<Term | null>(null)
 const served = computed(() => topic.data.value?.language ?? language.value)
-const courseRef = computed(() => (topic.data.value ? { id: topic.data.value.course_id, title: outline.value?.title ?? topic.data.value.course_title ?? '' } : null))
+const courseRef = computed(() => (topic.data.value ? { id: topic.data.value.course_id, title: outline.value?.title ?? topic.data.value.course_title ?? '', module: moduleTitle.value, topic: topic.data.value.title } : null))
+const moduleTitle = computed(() => outline.value?.modules.find((m) => m.topics.some((x) => x.id === topicId.value))?.title ?? null)
 const flat = computed(() => (outline.value?.modules ?? []).flatMap((m) => m.topics))
 const at = computed(() => flat.value.findIndex((x) => x.id === topicId.value))
 const next = computed(() => (at.value >= 0 ? (flat.value[at.value + 1] ?? null) : null))
@@ -66,9 +68,8 @@ function openTermOf(term: Term): void { openId.value = null; openTerm.value = op
           <Select v-model="language" input-id="pt-lang" :options="COURSE_LANGUAGES.map((code) => ({ code, label: t(`language.${code}`) }))" option-label="label" option-value="code" data-testid="preview-language" />
         </FormField>
         <p v-if="held.length > 0" class="preview-notice" role="note" data-testid="preview-held-note">{{ t('previewTopic.heldNote', held.length) }}</p>
-        <p v-if="topic.data.value.next_note" class="hint" data-testid="through-line">{{ t('learnTopic.nextLine', { note: topic.data.value.next_note }) }}</p>
         <template v-for="(b, i) in topic.data.value.blocks" :key="b.id">
-          <p v-if="b.status === 'held'" class="preview-notice" role="note" :data-block-id="b.id" data-testid="preview-held-block">{{ t('previewTopic.heldBlock', { reason: b.hold_reason }) }}</p>
+          <p v-if="b.status === 'held'" class="preview-notice" role="note" :data-block-id="b.id" data-testid="preview-held-block">{{ t('previewTopic.heldBlock', { reason: holdText(b.hold_reason ?? null, (id) => t(`holdItem.${id}`)) }) }}</p>
           <LearnBlockCard v-model:draft="drafts[b.id] as Draft" :block="b" :index="i" :result="null" :test-mode="true" :open-id="openId" :open-term="openTerm?.term ?? null" :terms="topic.data.value.terms ?? []" @open="open" @term="openTermOf" />
         </template>
         <FlashcardDeck v-if="topic.data.value.kind !== 'module_test'" :terms="topic.data.value.terms ?? []" :uid="topic.data.value.id" />

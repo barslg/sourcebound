@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ActionButton from '@/components/ActionButton.vue'
 import type { Draft } from '@/composables/learnAnswer'
+import { looksLikeCode } from '@/composables/reading'
 
 interface Step { id: string; text: string }
 const props = defineProps<{ content: Record<string, unknown>; uid?: string; modelValue?: Draft; locked?: boolean }>()
@@ -28,7 +29,7 @@ function move(index: number, by: -1 | 1): void {
 <template>
   <div v-if="modelValue === undefined" class="stack" data-block="ordering">
     <p>{{ String(content.prompt ?? '') }}</p>
-    <ol class="plain-list" data-testid="ordering-served"><li v-for="s in served" :key="s.id">{{ s.text }}</li></ol>
+    <ol class="plain-list" data-testid="ordering-served"><li v-for="s in served" :key="s.id" class="keep-lines" :class="{ mono: looksLikeCode(s.text) }">{{ s.text }}</li></ol>
   </div>
   <fieldset v-else class="stack answer-set" data-block="ordering">
     <legend>{{ String(content.prompt ?? '') }}</legend>
@@ -36,7 +37,7 @@ function move(index: number, by: -1 | 1): void {
     <ol class="plain-list" data-testid="ordering-list">
       <li v-for="(s, i) in current" :key="s.id" class="row ordering-step" :data-step="s.id">
         <span class="mono">{{ i + 1 }}.</span>
-        <span class="ordering-text">{{ s.text }}</span>
+        <span class="ordering-text keep-lines" :class="{ mono: looksLikeCode(s.text) }">{{ s.text }}</span>
         <span class="row-end row">
           <ActionButton action="move-up" :label="t('learn.moveStepUp', { n: i + 1 })" icon-only size="small" :reason="locked ? t('learn.locked') : i === 0 ? t('learn.alreadyFirst') : null" data-testid="step-up" @click="move(i, -1)" />
           <ActionButton action="move-down" :label="t('learn.moveStepDown', { n: i + 1 })" icon-only size="small" :reason="locked ? t('learn.locked') : i === current.length - 1 ? t('learn.alreadyLast') : null" data-testid="step-down" @click="move(i, 1)" />

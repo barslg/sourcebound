@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router'
 import { docTitle, rowOf, trail, type Crumb, type RouteRow } from '@/router/registry'
 import { useDocTitle } from './useDocTitle'
 
-export interface ObjectRef { id: string; title: string }
+export interface ObjectRef { id: string; title: string; module?: string | null; topic?: string | null }
 export interface RouteMeta {
   row: ComputedRef<RouteRow>
   title: ComputedRef<string>
@@ -16,8 +16,8 @@ export function useRouteMeta(course: () => ObjectRef | null | undefined = () => 
   const { t } = useI18n()
   const route = useRoute()
   const row = computed(() => rowOf(String(route.name)))
-  const ctx = computed(() => ({ t, courseId: course()?.id ?? null, courseTitle: course()?.title ?? null }))
-  const title = computed(() => (row.value.heading === 'object' ? (ctx.value.courseTitle ?? '') : t(row.value.titleKey as string)))
+  const ctx = computed(() => ({ t, courseId: course()?.id ?? null, courseTitle: course()?.title ?? null, moduleTitle: course()?.module ?? null, topicTitle: course()?.topic ?? null }))
+  const title = computed(() => (row.value.heading === 'object' ? (ctx.value.courseTitle ?? '') : row.value.heading === 'topic' ? (ctx.value.topicTitle ?? '') : t(row.value.titleKey as string)))
   const purpose = computed(() => t(row.value.purposeKey as string))
   const crumbs = computed(() => (row.value.parent === null ? [] : trail(row.value.name, ctx.value)))
   useDocTitle(() => docTitle(row.value.name, ctx.value))

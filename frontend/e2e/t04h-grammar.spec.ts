@@ -44,27 +44,28 @@ const PAGES = ROWS.filter((r) => !r.redirect)
 /** Buttons that are not ActionButtons: disclosure toggles, PrimeVue parts and ARIA widgets that carry their own role. */
 const OWN_ROLE = '[aria-expanded][aria-controls], [role="tab"], [role="combobox"], [role="switch"], [role="checkbox"], [role="radio"], .p-paginator button, .p-tree button, .p-select, .p-datatable-sort-icon, .p-datatable button, .p-multiselect, .p-toast button, .p-popover button, .p-dialog-header button, .p-inputnumber button'
 
-async function lookupTitles(page: Page, row: RouteRow, path: string): Promise<{ course: string | null }> {
+async function lookupTitles(page: Page, row: RouteRow, path: string): Promise<{ course: string | null; topic: string | null }> {
   if (row.object === 'course') {
     const id = path.split('/')[2] as string
-    return { course: ((await (await page.request.get(`/api/v1/courses/${id}`)).json()) as { title: string }).title }
+    return { course: ((await (await page.request.get(`/api/v1/courses/${id}`)).json()) as { title: string }).title, topic: null }
   }
   if (row.object === 'learn' && path.startsWith('/preview/topics/')) {
     // the author's preview of a draft topic: its course is the draft, not an enrolment
-    const topic = (await (await page.request.get(`/api/v1${path}`)).json()) as { course_id: string }
-    return { course: ((await (await page.request.get(`/api/v1/courses/${topic.course_id}`)).json()) as { title: string }).title }
+    const topic = (await (await page.request.get(`/api/v1${path}`)).json()) as { course_id: string; title: string }
+    return { course: ((await (await page.request.get(`/api/v1/courses/${topic.course_id}`)).json()) as { title: string }).title, topic: topic.title }
   }
   if (row.object === 'learn') {
     const parts = path.split('/')
-    const learnerCourse = parts[2] === 'courses' ? (parts[3] as string) : ((await (await page.request.get(`/api/v1/learn/topics/${parts[3]}`)).json()) as { course_id: string }).course_id
-    return { course: ((await (await page.request.get(`/api/v1/learn/courses/${learnerCourse}`)).json()) as { title: string }).title }
+    const learnTopic = parts[2] === 'courses' ? null : ((await (await page.request.get(`/api/v1/learn/topics/${parts[3]}`)).json()) as { course_id: string; title: string })
+    const learnerCourse = learnTopic ? learnTopic.course_id : (parts[3] as string)
+    return { course: ((await (await page.request.get(`/api/v1/learn/courses/${learnerCourse}`)).json()) as { title: string }).title, topic: learnTopic?.title ?? null }
   }
   if (row.object === 'run') {
     const run = (await (await page.request.get(path.replace('/runs/', '/api/v1/runs/'))).json()) as { course_id: string | null }
-    if (!run.course_id) return { course: null }
-    return { course: ((await (await page.request.get(`/api/v1/courses/${run.course_id}`)).json()) as { title: string }).title }
+    if (!run.course_id) return { course: null, topic: null }
+    return { course: ((await (await page.request.get(`/api/v1/courses/${run.course_id}`)).json()) as { title: string }).title, topic: null }
   }
-  return { course: null }
+  return { course: null, topic: null }
 }
 
 test('grammar: every registered route has a screen in this walk', () => {
@@ -86,9 +87,11 @@ test('grammar: purpose line, title, heading, breadcrumb and primary action of ev
     await page.waitForLoadState('networkidle')
     await expect(page.locator('[data-view="loading"]')).toHaveCount(0)
     const tag = (msg: string): void => { problems.push(`${row.name}: ${msg}`) }
-    const { course } = await lookupTitles(page, row, path)
-    const ancestors: RouteRow[] = []
-    for (let p = row.parent; p; p = rowOf(p).parent) ancestors.unshift(rowOf(p))
+    const { course, topic } = await lookupTitles(page, row, path)
+    const chain: RouteRow[] = []
+    for (let p = row.parent; p; p = rowOf(p).parent) chain.unshift(rowOf(p))
+    const isCourse = (r: RouteRow): boolean => r.object === 'course' || r.object === 'learn'
+    const ancestors = chain.filter((a, i) => !(isCourse(a) && chain[i + 1] && isCourse(chain[i + 1] as RouteRow)))
 
     const help = (await page.getByTestId('page-help').first().textContent())?.trim()
     if (help !== text(row.purposeKey as string)) tag(`purpose line is "${help}", registry says "${text(row.purposeKey as string)}"`)
@@ -97,7 +100,7 @@ test('grammar: purpose line, title, heading, breadcrumb and primary action of ev
     if (await page.title() !== wantTitle) tag(`browser title is "${await page.title()}", registry says "${wantTitle}"`)
 
     if (row.name !== 'signin') {
-      const wantH1 = row.heading === 'object' ? course : text(row.titleKey as string)
+      const wantH1 = row.heading === 'object' ? course : row.heading === 'topic' ? topic : text(row.titleKey as string)
       const h1 = (await page.locator('h1').first().textContent())?.trim()
       if (h1 !== wantH1) tag(`heading is "${h1}", registry says "${wantH1}"`)
     }
@@ -106,9 +109,11 @@ test('grammar: purpose line, title, heading, breadcrumb and primary action of ev
     if (row.parent === null) {
       if (crumbs.length > 0) tag(`has a breadcrumb but no parent in the registry`)
     } else {
-      const want = [...ancestors.map((a) => (a.object === 'course' || a.object === 'learn' ? course : text(a.titleKey as string))), row.heading === 'object' ? course : text(row.titleKey as string)]
+      const module = row.heading === 'topic' ? [crumbs[crumbs.length - 2]?.label ?? ''] : []
+      if (row.heading === 'topic' && (module[0] === '' || crumbs[crumbs.length - 2]?.href)) tag('a topic page shows course › module › topic: the module crumb is missing or a link')
+      const want = [...ancestors.map((a) => (a.object === 'course' || a.object === 'learn' ? course : text(a.titleKey as string))), ...module, row.heading === 'object' ? course : row.heading === 'topic' ? topic : text(row.titleKey as string)]
       if (JSON.stringify(crumbs.map((c) => c.label)) !== JSON.stringify(want)) tag(`breadcrumb is ${JSON.stringify(crumbs.map((c) => c.label))}, parent chain says ${JSON.stringify(want)}`)
-      const names = crumbs.slice(0, -1).map((c) => (c.href ? matchRow(c.href)?.name : '(no link)'))
+      const names = crumbs.slice(0, -1 - module.length).map((c) => (c.href ? matchRow(c.href)?.name : '(no link)'))
       if (JSON.stringify(names) !== JSON.stringify(ancestors.map((a) => a.name))) tag(`breadcrumb links go to ${JSON.stringify(names)}, parent chain says ${JSON.stringify(ancestors.map((a) => a.name))}`)
       if (crumbs[crumbs.length - 1]?.href) tag('the current page is a link in its own breadcrumb')
     }

@@ -29,8 +29,8 @@ const kindName = (k: string): string => t(`learn.kind.${k}`)
       <span class="muted">{{ t('learn.result.attempt', { n: result.attempt_no }) }}</span>
     </p>
     <dl v-if="spot" class="spot-facts">
-      <dt>{{ t('learn.result.wrongSentence') }}</dt><dd data-testid="spot-wrong">{{ spot.wrong_sentence || t('learn.result.noneWrong') }}</dd>
-      <dt>{{ t('learn.result.trueStatement') }}</dt><dd data-testid="spot-true">{{ spot.true_statement }}</dd>
+      <dt>{{ t('learn.result.wrongSentence') }}</dt><dd class="keep-lines" data-testid="spot-wrong">{{ spot.wrong_sentence || t('learn.result.noneWrong') }}</dd>
+      <dt>{{ t('learn.result.trueStatement') }}</dt><dd class="keep-lines" data-testid="spot-true">{{ spot.true_statement }}</dd>
       <dt v-if="spot.passage">{{ t('learn.result.passage') }}</dt>
       <dd v-if="spot.passage"><CitationChip :chip="spot.passage" :open="openId === spot.passage.passage_id" @open="emit('open', $event)" /></dd>
     </dl>

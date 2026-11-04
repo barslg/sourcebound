@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Draft } from '@/composables/learnAnswer'
+import { looksLikeCode } from '@/composables/reading'
 
 const props = defineProps<{ content: Record<string, unknown>; uid?: string; modelValue?: Draft; locked?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: Draft] }>()
@@ -21,14 +22,14 @@ function toggle(i: number): void {
 <template>
   <div v-if="modelValue === undefined" class="stack" data-block="choice">
     <p>{{ String(content.stem ?? '') }}</p>
-    <ol type="A" data-testid="learner-options"><li v-for="(o, i) in options" :key="i">{{ o }}</li></ol>
+    <ol type="A" data-testid="learner-options"><li v-for="(o, i) in options" :key="i" class="keep-lines" :class="{ mono: looksLikeCode(o) }">{{ o }}</li></ol>
   </div>
   <fieldset v-else class="stack answer-set" data-block="choice">
     <legend>{{ String(content.stem ?? '') }}</legend>
     <p v-if="multiple" class="hint">{{ t('learn.tickAll') }}</p>
     <label v-for="(o, i) in options" :key="i" class="answer-option">
       <input :type="multiple ? 'checkbox' : 'radio'" :name="group" :value="i" :checked="ticked(i)" :disabled="locked" data-testid="choice-option" @change="toggle(i)" />
-      <span>{{ o }}</span>
+      <span class="keep-lines" :class="{ mono: looksLikeCode(o) }">{{ o }}</span>
     </label>
   </fieldset>
 </template>

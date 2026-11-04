@@ -52,13 +52,14 @@ watch(() => topic.data.value?.course_id, async (courseId) => {
 }, { immediate: true })
 watch(id, () => { submitted.value = null; openId.value = null; openTerm.value = null; for (const k of Object.keys(results)) Reflect.deleteProperty(results, k) })
 
-const courseRef = computed(() => (topic.data.value ? { id: topic.data.value.course_id, title: outline.value?.title ?? topic.data.value.course_title ?? '' } : null))
+const courseRef = computed(() => (topic.data.value ? { id: topic.data.value.course_id, title: outline.value?.title ?? topic.data.value.course_title ?? '', module: moduleTitle.value, topic: topic.data.value.title } : null))
 const languages = computed(() => {
   const o = outline.value
   if (!o) return []
   const codes = [o.source_language, ...o.available_languages.filter((l) => l.status === 'ready' || l.status === 'partial').map((l) => l.language)]
   return [...new Set(codes)].map((code) => ({ code, label: te(`language.${code}`) ? t(`language.${code}`) : code }))
 })
+const moduleTitle = computed(() => outline.value?.modules.find((m) => m.topics.some((x) => x.id === id.value))?.title ?? null)
 const flat = computed(() => (outline.value?.modules ?? []).flatMap((m) => m.topics))
 const next = computed(() => { const at = flat.value.findIndex((x) => x.id === id.value); return at >= 0 ? (flat.value[at + 1] ?? null) : null })
 const answeredCount = computed(() => (topic.data.value?.blocks ?? []).filter((b) => payloadOf(b.block_type, drafts[b.id] ?? emptyDraft(b.block_type, b.content)) !== null).length)
@@ -132,7 +133,6 @@ function retake(): void {
           <p class="muted">{{ submitted.unanswered > 0 ? t('learnTopic.unanswered', submitted.unanswered) : t('learnTopic.allAnswered') }}</p>
           <ActionButton action="retake" :label="t('learnTopic.retake')" data-testid="retake" @click="retake" />
         </div>
-        <p v-if="topic.data.value.next_note" class="hint" data-testid="through-line">{{ t('learnTopic.nextLine', { note: topic.data.value.next_note }) }}</p>
         <LearnBlockCard v-for="(b, i) in topic.data.value.blocks" :key="b.id" v-model:draft="drafts[b.id] as Draft" :block="b" :index="i" :result="results[b.id] ?? null" :busy="busy[b.id]" :test-mode="isTest" :open-id="openId" :open-term="openTerm?.term ?? null" :terms="topic.data.value.terms ?? []" @check="check(b.id, b.block_type)" @open="open" @term="openTermOf" />
         <FlashcardDeck v-if="!isTest" :terms="topic.data.value.terms ?? []" :uid="id" />
         <div v-if="isTest && !submitted"><ActionButton accent action="submit-test" :label="t('learnTopic.submitTest')" :loading="submitting" :reason="submitReason" data-testid="submit-test" @click="submit" /></div>

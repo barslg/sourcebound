@@ -448,7 +448,7 @@ async def seed_learn(session: AsyncSession, owner: str) -> dict[str, str]:
     key["source_numbers"] = [20, 40]
     add("figure", "example", "t1", content, key, chips[1:2])
     content, key = fx("diagram")
-    content["caption"] = "Hand hygiene as the passage orders it."
+    content["caption"] = "**Hand hygiene** as the passage orders it: `alcohol rub` first. ⟦P1⟧"
     content["nodes"] = [
         {"id": "n0", "label": "alcohol rub"},
         {"id": "n1", "label": "soap and water"},
@@ -499,7 +499,7 @@ async def seed_learn(session: AsyncSession, owner: str) -> dict[str, str]:
     content, key = fx("spot_the_error")
     content["sentences"] = [
         "Alcohol rub takes forty seconds when hands are not visibly soiled.",
-        "Gloves do not replace hand hygiene.",
+        "print(rub, seconds)\n...\nalcohol rub 20\nsoap and water 40",
     ]
     key.update(
         {
@@ -713,7 +713,7 @@ async def seed_labs(session: AsyncSession, owner: str) -> dict[str, str]:
         source,
         [
             "The claim about twenty seconds is not in the cited passage.",
-            "The quote does not match the source.",
+            "grounding: Drop the claim or cite P1 for it. (evidence: Alcohol rub takes forty seconds.)",
             "The answer is visible in the question.",
         ],
     )

@@ -231,6 +231,8 @@ test('what to fix: held rows show the reason and the passage, and editing the br
   const rows = page.getByTestId('held-row')
   await expect(rows).toHaveCount(3)
   await expect(rows.first()).toContainText('The claim about twenty seconds is not in the cited passage.')
+  await expect(rows.nth(1)).toContainText('Quote: “Alcohol rub takes forty seconds.”')
+  expect(await rows.nth(1).textContent(), 'a plan handle or the checker frame on the Fix page').not.toMatch(/\bP1\b|\(evidence:/)
   await expect(rows.first().locator('blockquote')).toContainText('Alcohol rub takes twenty seconds.')
   await expect(rows.first().locator('cite')).toHaveText('para1')
   await expect(page.getByTestId('fix-batch')).toContainText('Rewrite all held blocks (3, about $0.16)')

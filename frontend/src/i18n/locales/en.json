@@ -267,6 +267,7 @@
     "plan": "build the plan",
     "questions": "answer the open questions",
     "generate": "generate the course",
+    "running": "wait for the run to finish",
     "publish": "review and publish",
     "nothing": "nothing, it is published",
     "sources": "approve the waiting sources",
@@ -955,7 +956,6 @@
     "glossaryLink": "{n} terms in the glossary | {n} term in the glossary | {n} terms in the glossary"
   },
   "learnTopic": {
-    "nextLine": "Next: {note}",
     "title": "Topic",
     "help": "Read the blocks, open a source beside the text, and check your answers. Attempts never lock.",
     "lessonHelp": "Read each block and check your answers as you go.",

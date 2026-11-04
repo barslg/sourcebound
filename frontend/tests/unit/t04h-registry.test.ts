@@ -123,6 +123,7 @@ describe('route registry: navigation and breadcrumbs read from it', () => {
     const ctx = { t, courseId: 'c1', courseTitle: 'Hygiene' }
     expect(trail('course-plan', ctx)).toEqual([{ label: '<courses.title>', to: '/courses' }, { label: 'Hygiene' }])
     expect(trail('course-preview', ctx)).toEqual([{ label: '<courses.title>', to: '/courses' }, { label: 'Hygiene', to: '/courses/c1/publish' }, { label: '<preview.title>' }])
+    expect(trail('course-preview-topic', { ...ctx, moduleTitle: 'Washing', topicTitle: 'Alcohol rub' })).toEqual([{ label: '<courses.title>', to: '/courses' }, { label: 'Hygiene', to: '/courses/c1/preview' }, { label: 'Washing' }, { label: 'Alcohol rub' }])
     expect(trail('run', ctx)).toEqual([{ label: '<courses.title>', to: '/courses' }, { label: 'Hygiene', to: '/courses/c1/plan' }, { label: '<run.title>' }])
     expect(trail('run', { ...ctx, courseId: null, courseTitle: null })).toEqual([{ label: '<courses.title>', to: '/courses' }, { label: '<run.title>' }])
   })
