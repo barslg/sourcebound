@@ -273,7 +273,8 @@ def reply_for(prompt, schema, instructions=""):
             except Exception:
                 pass
         if segs is None:
-            segs = json.loads(re.findall(r"\[\{\"id\".*\}\]", prompt)[-1])
+            line = next(ln for ln in reversed(prompt.splitlines()) if '[{"id"' in ln)
+            segs, _ = json.JSONDecoder().raw_decode(line, line.index('[{"id"'))
         return {
             **base,
             "segments": [
