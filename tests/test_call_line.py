@@ -91,3 +91,23 @@ def test_the_worker_prints_the_call_line_and_drops_the_minute_revive_job(
     assert periodic.filter(other)
     structlog.get_logger("probe").info("operation_done", kind="build")
     assert "\x1b[" in capsys.readouterr().out
+
+
+def test_pretty_lines_carry_the_machine_s_local_time(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import time
+    from datetime import datetime
+
+    from app.logging import configure_logging
+
+    monkeypatch.setenv("TZ", "Asia/Tokyo")
+    time.tzset()
+    try:
+        configure_logging("INFO", log_format="pretty")
+        structlog.get_logger("probe").info("tick")
+        printed = re.sub(r"\x1b\[[0-9;]*m", "", capsys.readouterr().out)
+        assert printed.startswith(datetime.now().strftime("%Y-%m-%d %H:")), printed
+    finally:
+        monkeypatch.delenv("TZ")
+        time.tzset()
