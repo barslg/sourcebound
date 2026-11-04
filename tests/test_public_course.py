@@ -249,23 +249,28 @@ async def test_twenty_fresh_accounts_asking_at_once_cannot_pass_the_site_limit(
         factory = create_session_factory(url)
         async with factory() as session:
             principal = await load_principal(session, user)
-            try:
-                await tutor.ask(
-                    session,
-                    principal,
-                    uuid.UUID(world.course),
-                    question,
-                    language=None,
-                    make_provider_factory=lambda: lambda s: PaidProvider(user),
-                    min_score=0.0,
-                    min_covered=1,
-                    max_passages=4,
-                    max_chars=500,
-                )
-                await session.commit()
-            except RateLimitedError:
-                return "limited"
-            return "paid"
+            while True:
+                try:
+                    await tutor.ask(
+                        session,
+                        principal,
+                        uuid.UUID(world.course),
+                        question,
+                        language=None,
+                        make_provider_factory=lambda: lambda s: PaidProvider(user),
+                        min_score=0.0,
+                        min_covered=1,
+                        max_passages=4,
+                        max_chars=500,
+                    )
+                    await session.commit()
+                except RateLimitedError as busy:
+                    await session.rollback()
+                    if "in a moment" in str(busy):
+                        await asyncio.sleep(0.05)  # a client told to retry retries
+                        continue
+                    return "limited"
+                return "paid"
 
     outcomes = await asyncio.gather(*(ask(user) for user in users))
     assert outcomes.count("paid") == limit, outcomes
@@ -302,3 +307,32 @@ async def test_recheck_holds_accepted_blocks_only_on_an_unpublished_course(
     ):
         assert await _as(world.s, user, "POST", f"/api/v1/courses/{course}/held/recheck") == 200
     assert seen == [True, False], seen
+
+
+@pytest.mark.parametrize(
+    ("held_key", "message"),
+    [
+        ("tutor:site", "The tutor is answering someone else; try again in a moment."),
+        ("tutor:USER", "Your last question is still being answered; try again in a moment."),
+    ],
+)
+async def test_a_tutor_ask_meeting_a_held_lock_answers_busy_at_once_instead_of_waiting(
+    world: World, held_key: str, message: str
+) -> None:
+    """A waiter would hold a pooled connection for the length of someone else's paid call."""
+    from conftest import test_database_url
+
+    from app.db import create_session_factory
+    from app.services import tutor
+
+    user = await sign_in_new_user(world.s, "busy")
+    factory = create_session_factory(test_database_url())
+    key = held_key.replace("USER", str(user))
+    async with factory() as holder, factory() as waiter:
+        await holder.execute(sa.text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": key})
+        with pytest.raises(RateLimitedError) as busy:
+            await asyncio.wait_for(tutor._within_daily_limit(waiter, user), timeout=3)
+        assert str(busy.value) == message
+        await holder.rollback()
+        await waiter.rollback()
+        await tutor._within_daily_limit(waiter, user)

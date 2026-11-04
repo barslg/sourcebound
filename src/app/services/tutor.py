@@ -120,11 +120,13 @@ async def _within_daily_limit(session: AsyncSession, user_id: UUID) -> None:
     """429 once this user's, or the whole site's, paid tutor calls of the last day reach a limit.
 
     The per-user advisory lock lives until the request's transaction ends, so
-    one user's parallel questions run one after another and each sees the
-    row the previous paid call wrote (the ledger commits in its own session).
-    The site-wide lock, taken after it in the same order for everyone, does
-    the same across accounts: tutor asks queue up one at a time, which is
-    cheap because they are rare and the cap is the point.
+    one user's parallel questions never overlap: the second is told to try
+    again at once (a waiter would hold a pooled connection for the whole paid
+    call of the first). The site-wide lock, taken after it in the same order
+    for everyone, does the same across accounts: while one ask is paid and
+    answered, another gets the "answering someone else" 429 and retries. Both
+    are try-locks, so the count below is always read with no paid call in
+    flight and cannot be passed by parallel asks.
 
     Counts llm_calls rows of agent "tutor" attributed to the user: only
     questions that reached the model cost the course owner money, so an
@@ -132,11 +134,19 @@ async def _within_daily_limit(session: AsyncSession, user_id: UUID) -> None:
     """
     from app.errors import RateLimitedError
 
-    await session.execute(
-        sa.text("SELECT pg_advisory_xact_lock(hashtext('tutor:' || :user))"),
-        {"user": str(user_id)},
-    )
-    await session.execute(sa.text("SELECT pg_advisory_xact_lock(hashtext('tutor:site'))"))
+    got_user = (
+        await session.execute(
+            sa.text("SELECT pg_try_advisory_xact_lock(hashtext('tutor:' || :user))"),
+            {"user": str(user_id)},
+        )
+    ).scalar_one()
+    if not got_user:
+        raise RateLimitedError("Your last question is still being answered; try again in a moment.")
+    got_site = (
+        await session.execute(sa.text("SELECT pg_try_advisory_xact_lock(hashtext('tutor:site'))"))
+    ).scalar_one()
+    if not got_site:
+        raise RateLimitedError("The tutor is answering someone else; try again in a moment.")
     site = (
         await session.execute(
             sa.text(
