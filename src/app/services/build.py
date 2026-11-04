@@ -398,6 +398,7 @@ class _Build:
                 await self.note(
                     event="A step stopped; the build resumes it.",
                     resumes=sum(self.resumes.values()) + 1,
+                    last_failed_step=step,
                 )
             async with self.factory() as session:
                 await reopen_run(session, run_id=run_id)

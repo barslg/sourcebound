@@ -182,6 +182,23 @@ async def test_a_writer_whose_replies_never_pass_the_format_check_is_held_and_th
     ).one()
     assert block[0] == "held" and block[1]
     assert len(writer_calls) == executor.CODE_REASKS + 1
+    variants = (
+        await t03_session.execute(
+            sa.text("SELECT variant FROM llm_calls WHERE run_id = :r AND agent = 'block_teach'"),
+            {"r": str(run_id)},
+        )
+    ).scalars()
+    assert sorted(variants) == [0, 1, 2]
+    output = (
+        await t03_session.execute(
+            sa.text(
+                "SELECT output FROM run_steps WHERE run_id = :r AND step_key = 'block_teach:b1'"
+            ),
+            {"r": str(run_id)},
+        )
+    ).scalar_one()
+    assert output["held"] is True
+    assert output["hold_reason"] == "The writer returned no usable result after 3 tries."
 
 
 PLAN_AGENTS = ("# Researcher", "# Outline", "# Architect")
@@ -306,7 +323,7 @@ async def test_a_tiny_cap_stops_the_build_with_the_cap_sentence_and_continue_reu
     kept = (await build.build_status(t03_session, course_id=course_id))["build"]
     assert kept["state"] == "stopped" and kept["stop_code"] == "cap" and kept["events"]
     resumed = await _queue_build(
-        t03_session, user_id, course_id, cap_usd=Decimal("15"), continue_build=True
+        t03_session, user_id, course_id, cap_usd=Decimal("15"), continue_build=True, queries=[]
     )
     detail = await _run_build(t03_session, resumed, _build_handler())
     assert detail["state"] == "ready"
@@ -790,6 +807,13 @@ async def test_a_step_that_fails_twice_in_a_row_stops_the_build_with_that_step(
         )
     ).scalar_one()
     assert row["resumes"] == 1 and row["stop_code"] == "step_failed"
+    plan_run = (
+        await t03_session.execute(sa.text("SELECT id FROM runs WHERE kind = 'plan'"))
+    ).scalar_one()
+    final = await executor.get_run(t03_session, run_id=plan_run)
+    failed_keys = [s["step_key"] for s in final["steps"] if s["status"] == "failed"]
+    assert row["last_failed_step"] == failed_keys[0] and failed_keys[0].startswith("architect")
+    assert final["stop_marker"] and str(stopped.value) == final["stop_marker"]
     assert len(outline_calls) >= 2
 
 
@@ -996,3 +1020,80 @@ async def test_a_held_block_after_a_pass_that_released_another_gets_exactly_one_
     assert kinds.count("generation") == 1
     assert kinds.count("rewrite") == 1, kinds
     assert detail["state"] == "ready" and detail["held_count"] >= 1
+
+
+async def test_the_same_idempotency_key_returns_the_first_build(t03_session: AsyncSession) -> None:
+    user_id, course_id = await _plan_course_with_source(t03_session)
+    first = await _queue_build(t03_session, user_id, course_id, idempotency_key="press-once")
+    again = await _queue_build(t03_session, user_id, course_id, idempotency_key="press-once")
+    assert again == first
+    count = (
+        await t03_session.execute(
+            sa.text("SELECT count(*) FROM operations WHERE kind = 'build_course'")
+        )
+    ).scalar_one()
+    assert count == 1
+
+
+async def test_stop_asks_the_live_run_to_cancel_and_leaves_the_build_to_end_itself(
+    t03_session: AsyncSession,
+) -> None:
+    user_id, course_id = await _plan_course_with_source(t03_session)
+    run_id = await planruns.start_plan_run(t03_session, course_id=course_id, queries=["x"])
+    await t03_session.execute(
+        sa.text("UPDATE runs SET status = 'running' WHERE id = :r"), {"r": str(run_id)}
+    )
+    operation = await _insert_op(
+        t03_session,
+        course_id,
+        user_id,
+        kind="build_course",
+        status="running",
+        minutes=0,
+        result={"current_run_id": str(run_id)},
+    )
+    await build.stop_build(
+        t03_session, actor=_plan_actor(user_id, BUILD_CODES), course_id=course_id
+    )
+    marker = (
+        await t03_session.execute(
+            sa.text("SELECT stop_marker FROM runs WHERE id = :r"), {"r": str(run_id)}
+        )
+    ).scalar_one()
+    status = (
+        await t03_session.execute(
+            sa.text("SELECT status FROM operations WHERE id = :o"), {"o": str(operation)}
+        )
+    ).scalar_one()
+    assert marker == "cancel requested" and status == "running"
+
+
+async def test_three_finished_generation_runs_that_left_drafts_stop_the_build(
+    t03_session: AsyncSession,
+) -> None:
+    from app.services.operations import _set_status
+
+    user_id, course_id = await _plan_course_with_source(t03_session)
+    first = await _queue_build(t03_session, user_id, course_id)
+    assert (await _run_build(t03_session, first, _build_handler()))["state"] == "ready"
+    for _ in range(2):
+        await executor.new_run(t03_session, course_id=course_id, kind="generation", dag=[])
+    await t03_session.execute(
+        sa.text("UPDATE runs SET status = 'done' WHERE course_id = :c"), {"c": str(course_id)}
+    )
+    await t03_session.execute(
+        sa.text(
+            "UPDATE blocks SET status = 'draft' WHERE id = (SELECT b.id FROM blocks b"
+            " JOIN topics t ON t.id = b.topic_id JOIN modules m ON m.id = t.module_id"
+            " WHERE m.course_id = :c LIMIT 1)"
+        ),
+        {"c": str(course_id)},
+    )
+    await _set_status(t03_session, first, status="failed", progress=1.0, error="stopped")
+    await t03_session.commit()
+    again = await _queue_build(t03_session, user_id, course_id, continue_build=True)
+    with pytest.raises(build.BuildStopped) as stopped:
+        await _run_build(t03_session, again, _build_handler())
+    assert stopped.value.code == "step_failed" and "could not be written" in str(stopped.value)
+    kinds = [kind for kind, _ in await _runs(t03_session, course_id)]
+    assert kinds.count("generation") == 3

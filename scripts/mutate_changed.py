@@ -13,6 +13,9 @@ Mutations (one per site): comparison flipped (== != < <= > >= in is),
 `and`/`or` swapped, `+`/`-` swapped, True/False swapped, `not` dropped,
 integer constant + 1.
 
+A mutant whose suite runs past MUTANT_TIMEOUT_SECONDS (an endless loop the
+mutation made) counts as killed.
+
 Budget: --budget seconds (default 540). Mutants not reached are counted and
 printed; they are not survivors. A run whose changed lines hold mutable
 sites but ran none fails (an empty gate is not a pass).
@@ -39,6 +42,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 ALLOWLIST_FILE = "scripts/mutation_allowlist.txt"
+MUTANT_TIMEOUT_SECONDS = 300.0
 DEFAULT_TEST_CMD = (
     "python -m pytest -x -q -m 'not live' tests --ignore=tests/gates -p no:cacheprovider"
 )
@@ -164,7 +168,9 @@ def allowed(root: Path) -> dict[str, str]:
     return entries
 
 
-def run_suite(work: Path, test_cmd: str) -> subprocess.CompletedProcess[str]:
+def run_suite(
+    work: Path, test_cmd: str, timeout: float | None = None
+) -> subprocess.CompletedProcess[str]:
     """Run the permanent suite once in the working copy."""
     return subprocess.run(
         shlex.split(test_cmd),
@@ -172,6 +178,7 @@ def run_suite(work: Path, test_cmd: str) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         text=True,
         check=False,
+        timeout=timeout,
         env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
     )
 
@@ -182,7 +189,9 @@ def run_mutant(work: Path, mutant: Mutant, test_cmd: str) -> bool:
     original = target.read_text("utf-8")
     try:
         target.write_text(apply(original, mutant.index), "utf-8")
-        return run_suite(work, test_cmd).returncode != 0
+        return run_suite(work, test_cmd, MUTANT_TIMEOUT_SECONDS).returncode != 0
+    except subprocess.TimeoutExpired:
+        return True
     finally:
         target.write_text(original, "utf-8")
 
