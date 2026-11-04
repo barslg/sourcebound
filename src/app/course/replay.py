@@ -207,7 +207,7 @@ def replay_blocks(
                 "stored_reason": block["hold_reason"],
                 "cited": cited_handles,
                 "holds": holds,
-                "author_accepted": bool(block.get("author_accepted", False)),
+                "author_accepted": bool(block.get("author_accepted")),
                 "keyed": bool(block["answer_key"]),
             }
         )
