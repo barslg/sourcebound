@@ -89,8 +89,8 @@ def ordering_holds(steps: list[str]) -> list[str]:
     """
     kinds = [_step_is_code(step) for step in steps]
     if any(kinds) and not all(kinds):
-        code = next(s for s, k in zip(steps, kinds, strict=True) if k)
-        prose = next(s for s, k in zip(steps, kinds, strict=True) if not k)
+        code = steps[kinds.index(True)]
+        prose = steps[kinds.index(False)]
         return [
             f"ordering: the items mix code and prose ({code[:40]!r} is code, {prose[:40]!r} is a"
             " sentence) - use one procedure whose steps are all code lines or all sentences"
