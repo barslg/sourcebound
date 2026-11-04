@@ -1,8 +1,8 @@
 # Sourcebound
 
-Sourcebound builds courses in which every sentence is bound to a source, grades the learner's answers with code, and teaches people to catch the AI when it is wrong: a reader model holds any block that its source does not support, the tutor answers "not in the materials" instead of guessing, and the "find the AI error" exercise plants a false claim for the learner to find. The unit of output is a course (plan, modules, topics, typed blocks), not an answer. Built for the Meta Global AI Developer Hackathon 2026, Indie track, Build for Your World, solo. Live at https://sourcebound.io.
+Sourcebound generates whole courses with a team of Meta models and checks them with code. Muse Wonder writes the scenario of the course, Muse Spark plans every module and writes every block: the models explain in their own words, and every specific (a rule, a number, a name, a code sample and its output) must come from a source the author approved: code checks every quote and every answer key verbatim against the passages, and a reader model holds a block whose specifics the sources do not support. Answers are graded by code, and the course teaches people to catch the AI when it is wrong: the tutor answers "not in the materials" instead of guessing, and the "find the AI error" exercise plants a false claim for the learner to find. The unit of output is a course (plan, modules, topics, typed blocks), not an answer. Built for the Meta Global AI Developer Hackathon 2026, Indie track, Build for Your World, solo. Live at https://sourcebound.io.
 
-Not a chatbot and not a basic RAG app: the author approves sources and edits the plan, a pipeline of Meta models writes the blocks inside structures that code owns, and code (not a model score) decides what a learner sees.
+Generation, not search: the course is written by the models, not retrieved from the web. The author approves sources and edits the plan, a pipeline of Meta models writes the blocks inside structures that code owns, and code (not a model score) decides what a learner sees. Every model call is listed on the run page with its model, step, tokens, cost and latency.
 
 ## What existed before / what was built this week
 
@@ -56,9 +56,9 @@ docker compose up -d --build       # postgres, migrate, api, worker, web on http
 ```
 
 - Google sign-in: an OAuth client of type Web application with redirect URI `http://localhost:10600/api/v1/auth/callback` (equal to `OIDC_REDIRECT_URL`); its id and secret in `.env`, plus `SESSION_SECRET_KEY` and `MODEL_KEY_SECRET` as long random strings.
-- First administrator: the Google address in `SUPERADMIN_EMAILS` becomes superadmin on its first sign-in; every other sign-in gets no rights.
+- First administrator: the Google address in `SUPERADMIN_EMAILS` becomes superadmin on its first sign-in; every other sign-in gets the learner role only, which opens the courses their author marked public.
 - Each author runs courses on their own Meta key, added on `/account` and stored encrypted; planning, generation, translation and rewrites are billed to whoever starts them, the tutor to the course owner. `MODEL_API_KEY` in `.env` is a fallback for local and test only.
-- Learners arrive by a link: the publish page makes a student link in one click; whoever opens it signs in with Google and is enrolled.
+- Learners arrive by a link or by a public course: the publish page makes a student link in one click (whoever opens it signs in with Google and is enrolled), or marks the course public so every signed-in user can take it. The tutor bills the course owner, at most 20 questions per learner and 300 per site a day.
 - Without any key: `scripts/demo_replay.sh` builds the demo course "AI literacy at work: the EU AI Act" from the recorded ledger in `tests/fixtures/` through the real product path, at cost 0.
 
 ## Deploy
