@@ -2562,3 +2562,59 @@ async def test_recheck_keeps_a_block_the_author_accepted_by_hand_when_a_check_wo
     assert blocks["b1"] == ("accepted", ""), blocks["b1"]
     assert blocks["b3"][0] == "held", blocks["b3"]
     assert result["newly_held"] == 1, result
+
+
+async def test_recheck_drops_a_giveaway_line_only_for_a_block_whose_key_it_can_read(
+    t03_session: AsyncSession,
+) -> None:
+    """A keyed choice that no longer splits is released; a keyless held draft keeps its line."""
+    from app.course.exercise_shape import giveaway_holds
+    from app.services.recheck import recheck_held
+
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-recheck-key")
+    final = await _smoke_run(t03_session, demo, dag, demo_t05.mock_demo_handler())
+    assert final["status"] == "done", final["stop_marker"]
+    line = giveaway_holds(
+        {
+            "options": [
+                {"text": "Reuse notice: EUR-Lex legal texts are re", "correct": True},
+                {"text": "A rule that nobody ever wrote down at work", "correct": False},
+            ]
+        },
+        "reuse notice eur-lex legal texts are re".split(),
+        "choice",
+    )[0]
+    block_sql = (
+        " WHERE plan_node_id = :n AND topic_id IN (SELECT t.id FROM topics t"
+        " JOIN modules m ON m.id = t.module_id WHERE m.course_id = :c)"
+    )
+    course = str(demo["course_id"])
+    await t03_session.execute(
+        sa.text(
+            "UPDATE blocks SET status = 'held', hold_reason = :r, accepted_version_id = NULL"
+            + block_sql
+        ),
+        {"r": line, "c": course, "n": "b2"},
+    )
+    await t03_session.commit()
+    await recheck_held(t03_session, course_id=demo["course_id"])
+    await t03_session.commit()
+    assert (await _smoke_blocks(t03_session, demo["course_id"]))["b2"] == ("accepted", "")
+    await t03_session.execute(
+        sa.text(
+            "UPDATE blocks SET status = 'held', hold_reason = :r, accepted_version_id = NULL"
+            + block_sql
+        ),
+        {"r": line, "c": course, "n": "b2"},
+    )
+    await t03_session.execute(
+        sa.text(
+            "UPDATE block_versions SET answer_key = NULL WHERE id IN"
+            " (SELECT current_version_id FROM blocks" + block_sql + ")"
+        ),
+        {"c": course, "n": "b2"},
+    )
+    await t03_session.commit()
+    await recheck_held(t03_session, course_id=demo["course_id"])
+    await t03_session.commit()
+    assert (await _smoke_blocks(t03_session, demo["course_id"]))["b2"] == ("held", line)

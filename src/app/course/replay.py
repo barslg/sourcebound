@@ -29,6 +29,11 @@ CODE_HOLD_PREFIXES = (
 )
 
 
+# Lines judged on the answer key. A held draft is stored without its key, so the replay
+# cannot recompute them from it: recheck keeps such a line as stored (unknown is not passed).
+KEY_HOLD_PREFIXES = ("giveaway: ", "cloze: ", "not taught: ")
+
+
 def join_hold_lines(lines: list[str]) -> str:
     """The stored `hold_reason`: lines joined by "; ", none of which may carry "; " itself.
 
@@ -203,6 +208,7 @@ def replay_blocks(
                 "cited": cited_handles,
                 "holds": holds,
                 "author_accepted": bool(block.get("author_accepted", False)),
+                "keyed": bool(block["answer_key"]),
             }
         )
     return rows

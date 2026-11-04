@@ -17,7 +17,13 @@ from uuid import UUID
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.course.replay import is_code_hold, join_hold_lines, plan_coverage_errors, replay_blocks
+from app.course.replay import (
+    KEY_HOLD_PREFIXES,
+    is_code_hold,
+    join_hold_lines,
+    plan_coverage_errors,
+    replay_blocks,
+)
 
 
 async def load_blocks(session: AsyncSession, *, course_id: UUID) -> list[dict[str, Any]]:
@@ -141,7 +147,14 @@ async def recheck_held(
             continue
         rechecked += 1
         stored = row["stored_reason"].split("; ")
-        kept = [line for line in stored if line and not is_code_hold(line)]
+        kept = [
+            line
+            for line in stored
+            if line
+            and (
+                not is_code_hold(line) or (not row["keyed"] and line.startswith(KEY_HOLD_PREFIXES))
+            )
+        ]
         lines = kept + list(row["holds"])
         if not lines:
             if await _reader_passed_this_version(
