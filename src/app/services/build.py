@@ -29,6 +29,7 @@ from app.services.audit import write_audit
 OPERATION_KIND_BUILD = "build_course"
 BUILD_LOCK_PREFIX = "build:"
 BUILD_SUBMIT_LOCK_PREFIX = "build-submit:"
+CANCEL_MARKER = "cancel requested"
 STOPPED_BY_AUTHOR = "The build was stopped by you."
 BUILD_REWRITE_ROUNDS = 1
 MAX_GENERATION_RUNS = 3
@@ -162,6 +163,13 @@ async def submit_build(
         started_at = str(last[2]["started_at"])
         cleaned = cleaned or [str(q) for q in last[2].get("queries", [])]
         extra["continue_of"] = str(last[0])
+        await session.execute(
+            sa.text(
+                "UPDATE runs SET stop_marker = NULL WHERE course_id = :c"
+                " AND status IN ('stopped', 'running') AND stop_marker = :m"
+            ),
+            {"c": str(course_id), "m": CANCEL_MARKER},
+        )
     if await _modules(session, course_id) == 0:
         course = await course_service.get_course(session, course_id=course_id)
         if course["profile"] is None:
@@ -310,6 +318,16 @@ class _Build:
             ).first()
         return (UUID(str(row[0])), str(row[1])) if row is not None else None
 
+    async def cancel_requested(self, run_id: UUID) -> bool:
+        """True when the author asked this run to stop and it has not been resumed since."""
+        async with self.factory() as session:
+            marker = (
+                await session.execute(
+                    sa.text("SELECT stop_marker FROM runs WHERE id = :r"), {"r": str(run_id)}
+                )
+            ).scalar()
+        return marker == CANCEL_MARKER
+
     async def count_runs_since(self, kind: str) -> int:
         async with self.factory() as session:
             row = await session.execute(
@@ -351,7 +369,7 @@ class _Build:
                 continue
             marker = str(final.get("stop_marker") or "")
             code = final.get("stop_code")
-            if marker == "cancel requested":
+            if marker == CANCEL_MARKER:
                 await self.stop(STOPPED_BY_AUTHOR, "cancelled")
             if code == "cap_reached":
                 spent = await self.spent()
@@ -399,6 +417,8 @@ class _Build:
         newest = await self.newest_run(kind, since=since)
         if newest is not None and newest[1] != "done":
             run_id = newest[0]
+            if await self.cancel_requested(run_id):
+                await self.stop(STOPPED_BY_AUTHOR, "cancelled")
             async with self.factory() as session:
                 await reopen_run(session, run_id=run_id)
                 await session.commit()
@@ -419,6 +439,7 @@ class _Build:
             "plan",
             "plan",
             lambda session: start_plan_run(session, course_id=self.course_id, queries=self.queries),
+            since=self.started_at,
         )
         await finish_plan_run(self.factory, course_id=self.course_id, run_id=run_id)
         async with self.factory() as session:
@@ -457,7 +478,7 @@ class _Build:
             start_generation_run,
         )
 
-        newest = await self.newest_run("generation")
+        newest = await self.newest_run("generation", since=self.started_at)
         if newest is None or newest[1] == "done":
             if await self.count_runs_since("generation") >= MAX_GENERATION_RUNS:
                 await self.stop(
@@ -473,6 +494,7 @@ class _Build:
             "generate",
             "generation",
             lambda session: start_generation_run(session, course_id=self.course_id),
+            since=self.started_at,
         )
         await finish_blocks_run(self.factory, course_id=self.course_id)
 

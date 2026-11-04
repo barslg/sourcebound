@@ -260,7 +260,7 @@ async def test_one_build_plans_assumes_the_open_question_generates_and_ends_read
     assert detail["state"] == "ready", detail
     kinds = [kind for kind, _ in await _runs(t03_session, course_id)]
     assert kinds.count("plan") == 1 and kinds.count("generation") == 1
-    assert kinds.count("rewrite") <= build.BUILD_REWRITE_ROUNDS
+    assert kinds.count("rewrite") == 0
     assert all(status == "done" for _, status in await _runs(t03_session, course_id))
     answer = (
         await t03_session.execute(
@@ -666,3 +666,333 @@ async def test_a_second_build_job_for_a_course_that_is_being_built_fails_instead
         await holder.execute(
             sa.text("SELECT pg_advisory_unlock(hashtext(:k))"), {"k": f"build:{course_id}"}
         )
+
+
+async def test_search_and_background_calls_are_refused_at_the_ceiling_like_a_json_call(
+    t03_session: AsyncSession,
+) -> None:
+    from app.agents import generate_block
+
+    _, course_id = await _plan_course_with_source(t03_session)
+    run_id = await executor.new_run(t03_session, course_id=course_id, kind="plan", dag=[])
+    await t03_session.execute(
+        sa.text("UPDATE runs SET spend_ceiling_usd = 0 WHERE id = :r"), {"r": str(run_id)}
+    )
+    await t03_session.commit()
+    seen: list[str] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        seen.append("call")
+        return httpx2.Response(500)
+
+    provider, _ = _provider(t03_session, handler)
+    with pytest.raises(SpendCapReached):
+        await provider.search_web(agent="researcher", query="literacy", run_id=run_id)
+    with pytest.raises(SpendCapReached):
+        await provider.start_background(
+            agent="block_teach",
+            prompt="p",
+            schema=generate_block.schema_for("reading"),
+            run_id=run_id,
+        )
+    assert seen == []
+
+
+async def _drive_one_writer(
+    session: AsyncSession, *, rewrite: bool, reply: dict[str, Any]
+) -> dict[str, Any]:
+    settings = _plan_settings()
+    demo = await demo_t05.setup_demo(
+        session, settings=settings, email=demo_t05.fresh_email("rw" if rewrite else "gen")
+    )
+    course_id = demo["course_id"]
+    await demo_t05.write_demo_tree(session, course_id=course_id)
+    base = {
+        "course_id": str(course_id),
+        "course_language": "en",
+        "sources": demo_t05.demo_sources(demo["passages"]),
+        "plan": {},
+    }
+    entry = {
+        "step_key": "block_teach:b1",
+        "handler": "generate_block",
+        "depends_on": [],
+        "block_type": "reading",
+        "skeleton": {"plan_node_id": "b1", "role": "teach", "block_type": "reading"},
+        **base,
+    }
+    if rewrite:
+        entry["rewrite"] = True
+    run_id = await executor.new_run(session, course_id=course_id, kind="rewrite", dag=[entry])
+    await session.commit()
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(200, json=_plan_completed(json.dumps(reply)))
+
+    provider, _ = _provider(session, handler)
+    return await executor.drive_run(
+        create_session_factory(_db_url()),
+        run_id=run_id,
+        provider_factory=lambda s: provider,
+        handlers=executor.generation_handlers(),
+    )
+
+
+async def test_a_rewrite_whose_replies_are_unusable_stops_the_run_instead_of_holding_quietly(
+    t03_session: AsyncSession,
+) -> None:
+    empty = {"block_type": "reading", "text": "", "citations": [], "answer": ""}
+    final = await _drive_one_writer(t03_session, rewrite=True, reply=empty)
+    assert final["status"] == "stopped"
+    assert {s["step_key"]: s["status"] for s in final["steps"]} == {"block_teach:b1": "failed"}
+
+
+async def test_a_second_job_for_the_build_already_being_driven_answers_duplicate(
+    t03_session: AsyncSession,
+) -> None:
+    user_id, course_id = await _plan_course_with_source(t03_session)
+    operation = await _insert_op(
+        t03_session, course_id, user_id, kind="build_course", status="running", minutes=0
+    )
+    engine = create_session_factory(_db_url()).kw["bind"]
+    async with engine.connect() as holder:
+        await holder.execute(
+            sa.text("SELECT pg_advisory_lock(hashtext(:k))"), {"k": f"build:{course_id}"}
+        )
+        detail = await _run_build(t03_session, operation, _build_handler())
+        await holder.execute(
+            sa.text("SELECT pg_advisory_unlock(hashtext(:k))"), {"k": f"build:{course_id}"}
+        )
+    assert detail == {"state": "duplicate"}
+
+
+async def test_a_step_that_fails_twice_in_a_row_stops_the_build_with_that_step(
+    t03_session: AsyncSession,
+) -> None:
+    user_id, course_id = await _plan_course_with_source(t03_session)
+    operation = await _queue_build(t03_session, user_id, course_id)
+    inner = _build_handler()
+    outline_calls: list[str] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        system = str(json.loads(request.content.decode("utf-8")).get("instructions", ""))
+        if system.startswith("# Outline"):
+            outline_calls.append("call")
+            return httpx2.Response(200, json=_plan_completed("{}"))
+        return inner(request)
+
+    with pytest.raises(build.BuildStopped) as stopped:
+        await asyncio.wait_for(_run_build(t03_session, operation, handler), timeout=60)
+    assert stopped.value.code == "step_failed"
+    row = (
+        await t03_session.execute(
+            sa.text("SELECT result FROM operations WHERE id = :o"), {"o": str(operation)}
+        )
+    ).scalar_one()
+    assert row["resumes"] == 1 and row["stop_code"] == "step_failed"
+    assert len(outline_calls) >= 2
+
+
+async def test_the_authors_stop_during_a_run_ends_the_build_at_once(
+    t03_session: AsyncSession,
+) -> None:
+    user_id, course_id = await _plan_course_with_source(t03_session)
+    operation = await _queue_build(t03_session, user_id, course_id)
+    inner = _build_handler()
+    asked: list[str] = []
+
+    async def handler(request: httpx2.Request) -> httpx2.Response:
+        system = str(json.loads(request.content.decode("utf-8")).get("instructions", ""))
+        if system.startswith("# Researcher") and not asked:
+            asked.append("stop")
+            async with create_session_factory(_db_url())() as other:
+                await other.execute(
+                    sa.text("UPDATE runs SET stop_marker = 'cancel requested' WHERE kind = 'plan'")
+                )
+                await other.commit()
+        return inner(request)
+
+    with pytest.raises(build.BuildStopped) as stopped:
+        await _run_build(t03_session, operation, handler)
+    assert stopped.value.code == "cancelled" and str(stopped.value) == build.STOPPED_BY_AUTHOR
+    assert [r for r in await _runs(t03_session, course_id) if r[0] == "plan"] == [
+        ("plan", "stopped")
+    ]
+
+
+async def test_a_cancelled_run_stays_cancelled_when_the_build_is_revived_and_continue_lifts_it(
+    t03_session: AsyncSession,
+) -> None:
+    user_id, course_id = await _plan_course_with_source(t03_session)
+    operation = await _queue_build(t03_session, user_id, course_id)
+    run_id = await planruns.start_plan_run(t03_session, course_id=course_id, queries=["x"])
+    await executor.stop_run(t03_session, run_id=run_id, marker="cancel requested")
+    handler = _build_handler()
+    with pytest.raises(build.BuildStopped) as stopped:
+        await _run_build(t03_session, operation, handler)
+    assert stopped.value.code == "cancelled" and handler.state["seen"] == []
+    from app.services.operations import _set_status
+
+    await _set_status(t03_session, operation, status="failed", progress=1.0, error="stopped")
+    await t03_session.commit()
+    resumed = await _queue_build(t03_session, user_id, course_id, continue_build=True)
+    assert (await _run_build(t03_session, resumed, _build_handler()))["state"] == "ready"
+
+
+async def test_a_plan_run_left_by_an_earlier_attempt_is_not_resumed_with_this_forms_queries(
+    t03_session: AsyncSession,
+) -> None:
+    user_id, course_id = await _plan_course_with_source(t03_session)
+    old = await planruns.start_plan_run(t03_session, course_id=course_id, queries=["old topic"])
+    await executor.stop_run(t03_session, run_id=old, marker="x")
+    operation = await _queue_build(t03_session, user_id, course_id)
+    assert (await _run_build(t03_session, operation, _build_handler()))["state"] == "ready"
+    assert [r for r in await _runs(t03_session, course_id) if r[0] == "plan"] == [
+        ("plan", "stopped"),
+        ("plan", "done"),
+    ]
+
+
+async def test_the_model_staying_down_stops_the_build_after_three_waits(
+    t03_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    user_id, course_id = await _plan_course_with_source(t03_session)
+    operation = await _queue_build(t03_session, user_id, course_id)
+    real_sleep = asyncio.sleep
+    waits: list[float] = []
+
+    async def quick(delay: float, *args: Any) -> None:
+        waits.append(delay)
+        await real_sleep(0)
+
+    monkeypatch.setattr(asyncio, "sleep", quick)
+
+    def down(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(503, json={"error": {"message": "overloaded"}})
+
+    with pytest.raises(build.BuildStopped) as stopped:
+        await asyncio.wait_for(_run_build(t03_session, operation, down), timeout=60)
+    assert stopped.value.code == "model_down"
+    assert [w for w in waits if w >= 60] == [60, 180, 540]
+
+
+async def test_a_build_stops_the_moment_spend_equals_the_cap(t03_session: AsyncSession) -> None:
+    from app.llm.calls import log_call
+
+    user_id, course_id = await _plan_course_with_source(t03_session)
+    run_id = await executor.new_run(t03_session, course_id=course_id, kind="plan", dag=[])
+    await log_call(
+        t03_session,
+        agent="researcher",
+        model="muse-spark-1.3",
+        prompt_version="v1",
+        input_tokens=1000,
+        cached_tokens=0,
+        output_tokens=500,
+        duration_ms=10,
+        request={"input": "q"},
+        response={"ranked": []},
+        run_id=run_id,
+    )
+    await t03_session.commit()
+    spent = await build.build_spent(
+        t03_session, course_id=course_id, started_at="2000-01-01T00:00:00Z"
+    )
+    assert spent > 0
+
+    def check(cap: Decimal) -> build._Build:
+        factory = create_session_factory(_db_url())
+        return build._Build(
+            operation_id=UUID(int=0),
+            course_id=course_id,
+            queries=[],
+            cap=cap,
+            started_at="2000-01-01T00:00:00Z",
+            provider_factory=None,
+            session_factory=factory,
+        )
+
+    operation = await _insert_op(
+        t03_session, course_id, user_id, kind="build_course", status="running", minutes=0
+    )
+    at_cap = check(spent)
+    at_cap.op = operation
+    with pytest.raises(build.BuildStopped) as stopped:
+        await at_cap.check_cap()
+    assert stopped.value.code == "cap"
+    above = check(spent + Decimal("0.000001"))
+    above.op = operation
+    assert await above.check_cap() == Decimal("0.000001")
+
+
+async def test_the_service_refuses_a_zero_cap_and_a_continue_with_nothing_stopped(
+    t03_session: AsyncSession,
+) -> None:
+    from app.errors import UnprocessableError, ValidationError
+
+    user_id, course_id = await _plan_course_with_source(t03_session)
+    actor = _plan_actor(user_id, BUILD_CODES)
+    with pytest.raises(ValidationError):
+        await build.submit_build(
+            t03_session, actor=actor, course_id=course_id, queries=["q"], cap_usd=Decimal("0")
+        )
+    with pytest.raises(UnprocessableError):
+        await build.submit_build(
+            t03_session,
+            actor=actor,
+            course_id=course_id,
+            queries=["q"],
+            cap_usd=Decimal("1"),
+            continue_build=True,
+        )
+    await _insert_op(t03_session, course_id, user_id, kind="build_course", status="done", minutes=0)
+    with pytest.raises(UnprocessableError):
+        await build.submit_build(
+            t03_session,
+            actor=actor,
+            course_id=course_id,
+            queries=["q"],
+            cap_usd=Decimal("1"),
+            continue_build=True,
+        )
+
+
+async def test_a_held_block_after_a_pass_that_released_another_gets_exactly_one_rewrite_run(
+    t03_session: AsyncSession,
+) -> None:
+    user_id, course_id = await _plan_course_with_source(t03_session)
+    operation = await _queue_build(t03_session, user_id, course_id)
+    inner = _build_handler()
+    order: list[str] = []
+    asks: dict[str, int] = {}
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        body = json.loads(request.content.decode("utf-8"))
+        system = str(body.get("instructions", ""))
+        if system.startswith(
+            ("# Researcher", "# Outline", "# Architect", "# Saboteur", "# Reader")
+        ):
+            return inner(request)
+        skeleton = demo_t05._section(str(body.get("input", "")), "Block skeleton")
+        node = str(skeleton.get("plan_node_id", ""))
+        if node not in order:
+            order.append(node)
+        asks[node] = asks.get(node, 0) + 1
+        always_bad = node == order[0]
+        bad_at_first = (
+            len(order) > 1 and node == order[1] and asks[node] <= executor.CODE_REASKS + 1
+        )
+        if always_bad or bad_at_first:
+            reply = inner(request).json()
+            written = json.loads(reply["output"][0]["content"][0]["text"])
+            for citation in written.get("citations", []):
+                citation["quote"] = "a sentence that no approved passage contains"
+            reply["output"][0]["content"][0]["text"] = json.dumps(written)
+            return httpx2.Response(200, json=reply)
+        return inner(request)
+
+    detail = await _run_build(t03_session, operation, handler)
+    kinds = [kind for kind, _ in await _runs(t03_session, course_id)]
+    assert kinds.count("generation") == 1
+    assert kinds.count("rewrite") == 1, kinds
+    assert detail["state"] == "ready" and detail["held_count"] >= 1
