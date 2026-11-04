@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.course.errorspot import is_content_text
 from app.course.passages import rejoin_list_passages
 
 _HANDLE_RE = re.compile(r"^P([1-9][0-9]*)$")
@@ -63,7 +64,15 @@ def numbered_passages(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         for row in rows
     ]
     merged = rejoin_list_passages(sorted(normalised, key=_order_key))
-    return [{**passage, "handle": f"P{index}"} for index, passage in enumerate(merged, 1)]
+    return [
+        {
+            **passage,
+            "handle": f"P{index}",
+            "is_content": bool(passage.get("is_content", True))
+            and is_content_text(passage["text"]),
+        }
+        for index, passage in enumerate(merged, 1)
+    ]
 
 
 def reconcile_handles(

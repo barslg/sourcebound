@@ -76,14 +76,45 @@ _SCOPES: tuple[tuple[str, str], ...] = (
 )
 
 
-def is_content_text(text: str) -> bool:
-    """False for non-content passages (reuse notice, source line).
+_HEADING_ONLY = frozenset(
+    {
+        "note",
+        "warning",
+        "see also",
+        "footnote",
+        "footnotes",
+        "tip",
+        "caution",
+        "important",
+        "danger",
+        "attention",
+        "hint",
+    }
+)
 
-    Called at ingest (the flag is stored on the passage) and again in
-    the picker, so a notice line can never become an exercise sentence.
+
+def is_heading_only(text: str) -> bool:
+    """True for a passage that is only a section label: "Warning", "Note", "See also", "Footnotes".
+
+    The label introduces content that sits in the next passage and claims
+    nothing itself. Only these words: a short bullet of a real list
+    ("Reject") is content.
+    """
+    return " ".join(str(text).split()).lower() in _HEADING_ONLY
+
+
+def is_content_text(text: str) -> bool:
+    """False for non-content passages (reuse notice, source line, a lone heading).
+
+    Called at ingest (the flag is stored on the passage), again in the
+    picker, so a notice line can never become an exercise sentence, and at
+    read time (`course.handles.numbered_passages`) so passages stored
+    before a rule existed obey it without a data edit.
     """
     head = " ".join(str(text).strip().lower().split())[:200]
     if "reuse notice:" in head or "only the official journal is authentic" in head:
+        return False
+    if is_heading_only(text):
         return False
     return not any(head.startswith(prefix) for prefix in _NON_CONTENT_PREFIXES)
 
