@@ -59,22 +59,33 @@ async def _snapshot_course(session: AsyncSession, course_id: UUID) -> dict[str, 
 
 
 async def _learners(session: AsyncSession, course: dict[str, Any]) -> list[dict[str, Any]]:
+    """Invited learners and everyone who answered; a public visitor's email stays private."""
     tags = [course["id"], *group_keys_of(course["owner_id"], course["scope_tags"])]
     rows = (
         await session.execute(
             sa.text(
-                "SELECT DISTINCT u.id, u.display_name, u.email FROM users u WHERE u.id IN ("
-                " SELECT ur.user_id FROM user_roles ur JOIN roles r ON r.id = ur.role_id"
-                " WHERE r.name = :role AND ur.scope_tags && CAST(:tags AS text[])"
+                "WITH invited AS (SELECT ur.user_id FROM user_roles ur"
+                " JOIN roles r ON r.id = ur.role_id"
+                " WHERE r.name = :role AND ur.scope_tags && CAST(:tags AS text[]))"
+                " SELECT DISTINCT u.id, u.display_name, u.email,"
+                " u.id IN (SELECT user_id FROM invited) FROM users u WHERE u.id IN ("
+                " SELECT user_id FROM invited"
                 " UNION SELECT la.user_id FROM learner_answers la"
                 " JOIN blocks b ON b.id = la.block_id"
                 " JOIN topics t ON t.id = b.topic_id JOIN modules m ON m.id = t.module_id"
-                " WHERE m.course_id = :course) ORDER BY u.email"
+                " WHERE m.course_id = :course) ORDER BY 4 DESC, 2, 3"
             ),
             {"role": learner.STUDENT_ROLE, "tags": tags, "course": course["id"]},
         )
     ).all()
-    return [{"id": str(r[0]), "name": str(r[1] or ""), "email": str(r[2])} for r in rows]
+    return [
+        {
+            "id": str(r[0]),
+            "name": str(r[1] or ""),
+            "email": str(r[2]) if r[3] else "",
+        }
+        for r in rows
+    ]
 
 
 async def course_report(

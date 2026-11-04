@@ -842,6 +842,15 @@ def test_0026_adds_is_public_false_and_gives_roleless_accounts_the_tagless_stude
         user = conn.execute(
             "INSERT INTO users (email, display_name) VALUES ('m26@example.com', 'm26') RETURNING id"
         ).fetchone()[0]  # type: ignore[index]
+        conn.execute(
+            "INSERT INTO permissions (code, category, label) VALUES ('user.list', 'users', 'List')"
+            " ON CONFLICT DO NOTHING"
+        )
+        conn.execute(
+            "INSERT INTO role_permissions (role_id, permission_code)"
+            " SELECT r.id, 'user.list' FROM roles r WHERE r.name = 'student'"
+            " ON CONFLICT DO NOTHING"
+        )
     command.downgrade(_cfg(url), "0025")
     assert "is_public" not in _harness_tables(url)["courses"]
     command.upgrade(_cfg(url), "head")
@@ -852,6 +861,11 @@ def test_0026_adds_is_public_false_and_gives_roleless_accounts_the_tagless_stude
             (user,),
         ).fetchall()
         assert grants == [("student", [])], grants
+        codes = conn.execute(
+            "SELECT rp.permission_code FROM role_permissions rp JOIN roles r ON r.id = rp.role_id"
+            " WHERE r.name = 'student' ORDER BY 1"
+        ).fetchall()
+        assert [c[0] for c in codes if not c[0].startswith("learn.")] == [], codes
         conn.execute("DELETE FROM users WHERE id = %s", (user,))
 
 

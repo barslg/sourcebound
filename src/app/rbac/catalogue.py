@@ -15,6 +15,8 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 ADMIN_ROLE_NAME = "administrator"
+STUDENT_ROLE_NAME = "student"
+STUDENT_PERMISSION_CODES: tuple[str, ...] = ("learn.read", "learn.answer", "learn.ask")
 
 
 @dataclass(frozen=True)

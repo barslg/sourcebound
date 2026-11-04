@@ -39,6 +39,12 @@ def upgrade() -> None:
         ).bindparams(sa.bindparam("codes", list(STUDENT_CODES), type_=sa.ARRAY(sa.Text())))
     )
     op.execute(
+        sa.text(
+            "DELETE FROM role_permissions WHERE role_id IN (SELECT id FROM roles WHERE name ="
+            " 'student') AND NOT (permission_code = ANY(:codes))"
+        ).bindparams(sa.bindparam("codes", list(STUDENT_CODES), type_=sa.ARRAY(sa.Text())))
+    )
+    op.execute(
         "INSERT INTO user_roles (user_id, role_id, scope_tags)"
         " SELECT u.id, r.id, '{}' FROM users u JOIN roles r ON r.name = 'student'"
         " WHERE NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = u.id"

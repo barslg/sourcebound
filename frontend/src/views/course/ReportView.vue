@@ -34,8 +34,8 @@ function download(): void { window.location.assign(csv.value) }
     <template #empty-actions><router-link :to="`/invites?course=${id}`" data-testid="report-invite">{{ t('report.inviteLink') }}</router-link></template>
     <div v-if="report.data.value" class="stack">
       <section v-for="l in report.data.value.learners" :key="l.user_id" class="bell-item stack" data-testid="report-learner">
-        <p class="row"><strong>{{ l.display_name || l.email }}</strong><span class="muted">{{ l.email }}</span><span class="muted">{{ t('report.lastActivity') }} <RelTime v-if="l.last_activity" :value="l.last_activity" /><NoValue v-else /></span></p>
-        <table class="app-table-grid" :aria-label="t('report.topicsCaption', { name: l.display_name || l.email })">
+        <p class="row"><strong>{{ l.display_name || l.email || t('report.publicLearner') }}</strong><span class="muted">{{ l.email }}</span><span class="muted">{{ t('report.lastActivity') }} <RelTime v-if="l.last_activity" :value="l.last_activity" /><NoValue v-else /></span></p>
+        <table class="app-table-grid" :aria-label="t('report.topicsCaption', { name: l.display_name || l.email || t('report.publicLearner') })">
           <thead><tr><th scope="col">{{ t('report.topic') }}</th><th scope="col">{{ t('report.completion') }}</th><th scope="col">{{ t('report.mastery') }}</th><th scope="col">{{ t('report.status') }}</th></tr></thead>
           <tbody>
             <tr v-for="x in l.topics" :key="x.topic_id" data-testid="report-topic">

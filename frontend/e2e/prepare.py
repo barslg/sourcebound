@@ -829,6 +829,8 @@ async def seed_course(session: AsyncSession, owner: str) -> dict[str, str]:
                 "model": "muse-spark-1.3",
                 "input": f"{agent} task",
                 "instructions": f"{agent} rules",
+                "prompt_cache_key": f"{agent}-cache",
+                "safety_identifier": "seeded-hash",
             },
             response={"ok": True},
             run_id=run,

@@ -977,6 +977,7 @@
     "notPublished": "Kurset er ikke publisert ennå, så ingen elever kan jobbe med det.",
     "empty": "Ingen elever er påmeldt ennå. Lag en invitasjon for å legge til den første.",
     "inviteLink": "Gå til invitasjoner",
+    "publicLearner": "Offentlig deltaker",
     "lastActivity": "Siste aktivitet",
     "topicsCaption": "Emner for {name}",
     "topic": "Emne",

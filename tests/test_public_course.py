@@ -101,7 +101,7 @@ async def test_a_visitor_sees_only_courses_flagged_public_and_never_everything(
 
 
 async def test_a_public_learner_who_answered_is_in_the_teachers_report(world: World) -> None:
-    """The report lists learners by answers: one with no invite row is there, nothing crashes."""
+    """A public learner who answered is in the report, without the email they never shared."""
     assert (await _flip(world, "owner", world.course, True))[0] == 200
     visitor = await sign_in_new_user(world.s, "reported")
     cookies, csrf = await cookie_for(world.s, visitor)
@@ -121,7 +121,9 @@ async def test_a_public_learner_who_answered_is_in_the_teachers_report(world: Wo
     email = (
         await world.s.execute(sa.text("SELECT email FROM users WHERE id = :u"), {"u": str(visitor)})
     ).scalar_one()
-    assert email in [row["email"] for row in report.json()["learners"]]
+    learners = report.json()["learners"]
+    assert str(visitor) in [row["user_id"] for row in learners]
+    assert email not in [row["email"] for row in learners]
 
 
 async def test_the_tutor_stops_at_twenty_paid_questions_a_day_per_user(world: World) -> None:
@@ -171,3 +173,19 @@ async def test_the_tutor_stops_at_twenty_paid_questions_a_day_per_user(world: Wo
     )
     await world.s.commit()
     assert (await ask(visitor))[0] == 200, "a call older than a day no longer counts"
+
+
+async def test_the_student_role_never_gains_a_code_outside_learning(world: World) -> None:
+    """Every sign-in holds the student role with no tags, so its codes would be global."""
+    import pytest
+
+    from app.errors import ValidationError
+    from app.rbac.roles import update_role
+
+    await sign_in_new_user(world.s, "frozen")
+    with pytest.raises(ValidationError):
+        await update_role(
+            world.s,
+            name="student",
+            permission_codes=["learn.read", "learn.answer", "learn.ask", "user.list"],
+        )

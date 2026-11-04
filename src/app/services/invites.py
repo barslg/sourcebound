@@ -22,17 +22,11 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import ConflictError, NotFoundError
+from app.rbac.catalogue import STUDENT_PERMISSION_CODES, STUDENT_ROLE_NAME
 from app.rbac.principal import Principal
 from app.rbac.require import require, require_scope
 from app.rbac.tags import GROUP_SEP, display_tag, display_tags, group_key, is_course_id
 from app.services.audit import write_audit
-
-STUDENT_ROLE_NAME = "student"
-STUDENT_PERMISSION_CODES: tuple[str, ...] = (
-    "learn.read",
-    "learn.answer",
-    "learn.ask",
-)
 
 
 async def _owned(session: AsyncSession, owner_id: UUID) -> tuple[set[str], set[str]]:
@@ -334,9 +328,9 @@ async def _ensure_student_role(session: AsyncSession, role_name: str) -> None:
     await session.execute(
         sa.text(
             "DELETE FROM role_permissions WHERE role_id = :role"
-            " AND permission_code = 'section.courses'"
+            " AND NOT (permission_code = ANY(:codes))"
         ),
-        {"role": str(exists[0])},
+        {"role": str(exists[0]), "codes": list(STUDENT_PERMISSION_CODES)},
     )
     for code in STUDENT_PERMISSION_CODES:
         await session.execute(
