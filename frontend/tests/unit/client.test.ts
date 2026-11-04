@@ -16,7 +16,7 @@ beforeAll(async () => {
   server = createServer((req, res) => {
     seen.push({ method: req.method ?? '', url: req.url ?? '', csrf: req.headers['x-csrf-token'] as string | undefined })
     const handler = routes.get(`${req.method} ${(req.url ?? '').split('?')[0]}`)
-    if (!handler) {
+    if (typeof handler !== 'function') {
       res.writeHead(404, { 'content-type': 'application/json' }).end(JSON.stringify({ detail: 'Not Found' }))
       return
     }
