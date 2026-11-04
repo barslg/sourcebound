@@ -274,6 +274,12 @@ async def mark_notification_read(ctx: RequestContext, *, notification_id: str) -
     )
 
 
+async def clear_notifications(ctx: RequestContext) -> int:
+    from app.services.notifications import clear_notifications as clear_use_case
+
+    return await clear_use_case(ctx.db, actor=require_auth(ctx))
+
+
 async def invite_preview(ctx: RequestContext, *, token: str) -> dto.InvitePreview:
     from app.services.invites import hash_invite_token
     from app.services.invites import invite_preview as preview_use_case

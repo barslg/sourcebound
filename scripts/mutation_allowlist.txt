@@ -15,3 +15,7 @@ src/app/providers/llm.py:228:int+1 duration of a rejected call; informational, t
 src/app/runs/executor.py:2197:int+1 the 500-character bound on the error text kept in a held step's output: a log-size bound, no behaviour
 src/app/course/exercise_shape.py:88:const:True zip(strict=True) over steps and kinds built from them one to one: the lengths are always equal, strict is a runtime assertion with no observable result
 src/app/course/exercise_shape.py:89:const:True same as above
+src/app/agents/architect.py:201:cmp:Eq retired chain's planner: the module-test pool choice is guarded by the stored-plan replay, not the permanent suite
+src/app/agents/architect.py:213:int+1 message truncation count in a rejection line, no behaviour
+src/app/agents/blueprint.py:26:cmp:NotEq brief rows are the only constraint rows a lecture-first profile writes; the filter is guarded by the stand pilot, not a probe
+src/app/agents/blueprint.py:55:cmp:In duplicate module ids are already renamed by normalise_ids before this check runs

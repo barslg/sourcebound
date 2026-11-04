@@ -40,6 +40,7 @@ const failed = (n: NotificationRow): boolean => n.status === 'failed' || n.statu
     <div class="bell-panel" role="region" :aria-label="t('bell.title')">
       <h2 class="page-title">{{ t('bell.title') }}</h2>
       <p class="hint" data-testid="section-help">{{ t('bell.help') }}</p>
+      <div class="row"><ActionButton action="clear-notifications" size="small" :reason="ops.list.length === 0 && ops.notifications.length === 0 ? t('bell.empty') : null" data-testid="bell-clear" @click="ops.clearNotifications()" /></div>
       <p v-if="ops.failure" class="mono danger-text">{{ t('bell.error', { message: ops.failure }) }}</p>
       <p v-if="ops.list.length === 0 && ops.notifications.length === 0" class="muted" data-testid="bell-empty">{{ t('bell.empty') }}</p>
       <ul v-if="ops.list.length > 0">

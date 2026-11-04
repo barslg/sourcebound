@@ -164,6 +164,14 @@ async def list_notifications(
     return await controller.list_notifications(ctx)
 
 
+@notifications_router.delete("")
+async def clear_notifications(
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, int]:
+    """Remove every notification of the caller (the bell's Clear)."""
+    return {"removed": await controller.clear_notifications(ctx)}
+
+
 @notifications_router.post("/{notification_id}/read")
 async def mark_notification_read(
     notification_id: Annotated[str, Depends(notification_id_param)],

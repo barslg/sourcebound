@@ -77,3 +77,14 @@ async def mark_notification_read(
         sa.text("UPDATE notifications SET read_at = now() WHERE id = :note"),
         {"note": str(notification_id)},
     )
+
+
+async def clear_notifications(session: AsyncSession, *, actor: Principal) -> int:
+    """Delete every notification of the caller; the count removed."""
+    rows = (
+        await session.execute(
+            sa.text("DELETE FROM notifications WHERE user_id = :user RETURNING id"),
+            {"user": str(actor.user_id)},
+        )
+    ).all()
+    return len(rows)

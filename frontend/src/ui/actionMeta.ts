@@ -57,6 +57,7 @@ export const ACTIONS = [
   a('signin', 'primary', ['signin', 'invite']),
   a('theme', 'navigation', ['shell']),
   a('notifications', 'navigation', ['shell']),
+  a('clear-notifications', 'secondary', ['shell']),
   a('more', 'navigation', ['users', 'roles']),
   a('shortcuts', 'navigation', ['shell'], { shortcut: '?' }),
   a('retry', 'secondary', ['all states', 'toasts']),

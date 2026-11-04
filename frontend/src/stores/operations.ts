@@ -96,6 +96,18 @@ export const useOperationsStore = defineStore('operations', () => {
     void markNotificationsRead()
   }
 
+  /** The bell's Clear: every notification of the caller is removed on the server and here. */
+  async function clearNotifications(): Promise<void> {
+    try {
+      await request(ENDPOINTS.notifications, { method: 'DELETE' })
+      notifications.value = []
+      unread.value = new Set()
+      failure.value = null
+    } catch (cause) {
+      failure.value = cause instanceof Error ? cause.message : String(cause)
+    }
+  }
+
   function reset(): void {
     items.value = {}
     order.value = []
@@ -104,7 +116,7 @@ export const useOperationsStore = defineStore('operations', () => {
     notifications.value = []
   }
 
-  return { items, order, list, unread, unreadCount, failure, notifications, loadNotifications, markNotificationsRead, refresh, register, onBus, refetchOpen, markAllRead, reset, tagOperation, openFor }
+  return { items, order, list, unread, unreadCount, failure, notifications, loadNotifications, markNotificationsRead, clearNotifications, refresh, register, onBus, refetchOpen, markAllRead, reset, tagOperation, openFor }
 })
 
 export function isTerminal(status: string): boolean {

@@ -1,6 +1,6 @@
 import type { Component } from 'vue'
 import {
-  ArchiveX, ArrowDown, FastForward, Hammer, ArrowRight, ChevronRight, ClipboardCheck, Download, FileCheck, MessageCircleQuestion, RotateCcw, ArrowUp, Ban, Bell, CircleCheck, CircleX, CloudDownload, CloudUpload, Copy, Ellipsis, Eye, EyeOff, FileUp, FileX, Globe, Keyboard, Languages,
+  ArchiveX, ArrowDown, BellOff, FastForward, Hammer, ArrowRight, ChevronRight, ClipboardCheck, Download, FileCheck, MessageCircleQuestion, RotateCcw, ArrowUp, Ban, Bell, CircleCheck, CircleX, CloudDownload, CloudUpload, Copy, Ellipsis, Eye, EyeOff, FileUp, FileX, Globe, Keyboard, Languages,
   Link2Off, ListChecks, ListPlus, ListTree, LogIn, LogOut, Pencil, PencilLine, Play, Plus, RefreshCcw, RefreshCcwDot, RefreshCw, RotateCw, Save, Search, Send, ShieldCheck, SquarePlus,
   Sparkles, Square, SunMoon, TextCursorInput, Trash2, Upload, UserCheck, UserPlus, X,
 } from 'lucide-vue-next'
@@ -45,6 +45,7 @@ export const ACTION_ICONS: Record<ActionId, Component> = {
   signin: LogIn,
   theme: SunMoon,
   notifications: Bell,
+  'clear-notifications': BellOff,
   more: Ellipsis,
   shortcuts: Keyboard,
   retry: RotateCw,
