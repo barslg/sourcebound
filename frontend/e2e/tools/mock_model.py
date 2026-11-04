@@ -15,6 +15,10 @@ CALLS = [0]
 NB = "Dette er en norsk tekst også for ansatte, fordi det gjelder deres arbeid"
 
 
+def spelled(count):
+    return "".join(chr(ord("a") + int(digit)) for digit in str(count))
+
+
 def fill(s):
     t = s.get("type")
     if "enum" in s:
@@ -306,8 +310,9 @@ def reply_for(prompt, schema, instructions=""):
     rights = [str(item["text"])[:40] for item in by_handle.values() if item.get("text")] or [quote]
     return {
         "block_type": block_type,
-        # a reading never names its sourcing (narration check) and teaches in its own words
-        "text": f"Staff apply the routine at work (take {CALLS[0]}).",
+        # a reading never names its sourcing (narration check), teaches in its own words and
+        # shows no digit (number check): the call count that varies replies is spelled in letters
+        "text": f"Staff apply the routine at work (take {spelled(CALLS[0])}).",
         "citations": citations,
         # the key is quoted from the passage in `answer`; every option is the writer's own
         # words in one shape, so nothing about an option's look gives the key away

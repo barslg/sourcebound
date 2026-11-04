@@ -26,6 +26,10 @@ Rules:
   the marker ⟦P<n>⟧ of the new passage at the start of the first
   sentence drawn from it, inside the paragraph; a paragraph break is
   also a boundary.
+- The case never adds a number, a limit or a condition that the cited
+  code and output do not have; where the passages cannot carry the case,
+  explain without it (code holds a number that no passage of the topic
+  contains).
 - Attribute nothing the passages do not attribute: no "studies show",
   no expert, author or statistic unless a passage names it. Never coin
   a capitalised name for an idea, and never present a phrase as an

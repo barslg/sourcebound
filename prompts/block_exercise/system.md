@@ -55,6 +55,12 @@ Rules:
   placeholders in a fenced `python` block or a `>>>` line (code
   compiles every snippet and holds one that does not). Write
   characters themselves, never `\u2019`-style escapes.
+- Every number in the stem, options, items and code comes from a taught
+  passage: borrow only the values the taught code and output show, never
+  add a number, a limit or a condition to the case that the code does not
+  have (code holds a number that no passage of the topic contains). When
+  the code cannot carry the case, ask about the code in its own values,
+  without the case.
 - Cite the passages the key rests on with the handle and a verbatim
   quote.
 - `handoff` is empty and `leftovers` is empty for an exercise. Output

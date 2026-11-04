@@ -23,6 +23,7 @@ from app.course.text_checks import (
     decode_escapes,
     escape_holds,
     narration_holds,
+    number_holds,
     python_code_holds,
 )
 
@@ -527,8 +528,9 @@ def test_no_hold_line_of_a_code_check_carries_the_line_separator() -> None:
         ),
         *python_code_holds(PLACEHOLDER_CODE),
         *escape_holds("The character \\u00e9 is written out"),
+        *number_holds("A total of 85 and 7731 held", [LIMIT_PASSAGE]),
     ]
-    assert len(lines) == 9
+    assert len(lines) == 10
     assert [line for line in lines if "; " in line] == []
 
 
@@ -623,3 +625,64 @@ def test_replay_reads_the_narration_words_of_the_blocks_own_cited_passage_as_its
     }
     assert rows["own"] == []
     assert len(rows["other"]) == 1 and rows["other"][0].startswith("narration: ")
+
+
+SIGN_PASSAGE = (
+    "A branch tests a value:\n\n```python\nif x < 0:\n    print('Negative')\n"
+    "elif x == 0:\n    print('Zero')\nelif x == 1:\n    print('Single')\n"
+    "else:\n    print('More')\n```"
+)
+LIMIT_PASSAGE = "The loop stops after 3 tries, and 2.5 seconds pass between tries."
+
+
+def test_a_number_no_cited_passage_shows_is_held_and_named() -> None:
+    """The story's total 85 and limit 50 are in none of the passages; 0 and 1 are in the code."""
+    held = number_holds(
+        "With a total of 85 and a limit of 50 held in x, the check x == 0 is False.\n"
+        "```python\nif x == 1:\n    print('Single')\n```",
+        [SIGN_PASSAGE],
+    )
+    assert len(held) == 1 and held[0].startswith("number: ")
+    assert "'85'" in held[0] and "'50'" in held[0]
+    assert "'0'" not in held[0] and "'1'" not in held[0]
+    assert "; " not in held[0]
+
+
+def test_numbers_the_passages_show_are_not_held_and_digits_inside_words_are_not_numbers() -> None:
+    """3 and 2.5 are the passage's; `x2`, `v3.1` and `2nd` are names and ordinals, not values."""
+    text = "Retry 3 times, wait 2.5 seconds; the x2 variable, version v3.1 and the 2nd try."
+    assert number_holds(text, [LIMIT_PASSAGE]) == []
+    assert len(number_holds("Wait 25 seconds.", [LIMIT_PASSAGE])) == 1
+
+
+def _topic_block(node: str, role: str, body: str, cited: str) -> dict[str, Any]:
+    block = _stored(node, role, "reading", {"body": body}, {})
+    block["plan_content"] = {"source_handles": [cited]}
+    block["citations"] = [({"P1": "pid1", "P2": "pid2"}[cited], "")]
+    return block
+
+
+def _number_lines(blocks: list[dict[str, Any]]) -> dict[str, list[str]]:
+    numbered = [
+        {"passage_id": "pid1", "handle": "P1", "text": SIGN_PASSAGE},
+        {"passage_id": "pid2", "handle": "P2", "text": LIMIT_PASSAGE},
+    ]
+    return {
+        r["node"]: [h for h in r["holds"] if h.startswith("number: ")]
+        for r in replay_blocks(blocks, numbered)
+    }
+
+
+def test_replay_reads_a_number_against_every_passage_the_topic_cites_not_only_the_blocks_own() -> (
+    None
+):
+    """An example citing P1 may use 3 from the sibling reading's P2, but not 85 from nowhere."""
+    lines = _number_lines(
+        [
+            _topic_block("t1-b1", "teach", "Retry 3 times.", "P2"),
+            _topic_block("t1-b2", "example", "Here x == 1 and the retry count 3 is shown.", "P1"),
+            _topic_block("t1-b3", "example", "A total of 85 sits in x.", "P1"),
+        ]
+    )
+    assert lines["t1-b1"] == [] and lines["t1-b2"] == []
+    assert len(lines["t1-b3"]) == 1 and "'85'" in lines["t1-b3"][0]

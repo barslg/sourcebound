@@ -24,6 +24,7 @@ CODE_HOLD_PREFIXES = (
     "ordering: ",
     "giveaway: ",
     "narration: ",
+    "number: ",
     "code: ",
     "escape: ",
 )
@@ -121,7 +122,13 @@ def replay_blocks(
     """Run every code check over the stored blocks; one row per generated block."""
     from app.course import grounding
     from app.course.exercise_shape import exercise_holds
-    from app.course.text_checks import escape_holds, narration_holds, python_code_holds
+    from app.course.text_checks import (
+        escape_holds,
+        learner_text,
+        narration_holds,
+        number_holds,
+        python_code_holds,
+    )
 
     by_id: dict[str, dict[str, Any]] = {}
     handle_of: dict[str, str] = {}
@@ -169,6 +176,19 @@ def replay_blocks(
         if block["block_type"] != "cloze":
             holds += python_code_holds(text)
         holds += escape_holds(text)
+        if block["block_type"] not in ("figure", "diagram"):
+            topic_handles = grounding.taught_handles_for(plan, block["node"])
+            topic_pids = (
+                [by_handle[h] for h in topic_handles[0] if h in by_handle] if topic_handles else []
+            )
+            holds += number_holds(
+                learner_text(block["content"]),
+                [
+                    by_id[str(pid)]["text"]
+                    for pid in dict.fromkeys([*topic_pids, *cited_pids])
+                    if str(pid) in by_id
+                ],
+            )
         if block["block_type"] == "figure":
             kinds = {
                 grounding.passage_kind(by_id.get(pid, {}).get("text", "")) for pid in cited_pids

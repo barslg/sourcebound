@@ -1588,6 +1588,25 @@ async def test_generation_holds_a_narrating_reading_and_a_giveaway_choice_throug
     )
 
 
+async def test_generation_holds_a_reading_with_a_number_no_cited_passage_has_through_the_executor(
+    t03_session: AsyncSession,
+) -> None:
+    """Wiring of the number check: a draft with a figure no passage shows is held."""
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-number")
+
+    def invent(prompt: str, reply: dict[str, Any]) -> dict[str, Any]:
+        skeleton = prompt.rsplit("## Block skeleton", 1)[-1]
+        if '"plan_node_id": "b1"' in skeleton and "citations" in reply:
+            reply["text"] = str(reply["text"]) + " The total of 7731 sits over the limit."
+        return reply
+
+    final = await _smoke_run(t03_session, demo, dag, _edited(demo_t05.mock_demo_handler(), invent))
+    assert final["status"] == "done", final["stop_marker"]
+    blocks = await _smoke_blocks(t03_session, demo["course_id"])
+    assert blocks["b1"][0] == "held" and "number: '7731' appears in no passage" in blocks["b1"][1]
+    assert blocks["b3"][0] != "held" or "number: " not in blocks["b3"][1], blocks
+
+
 async def test_generation_run_never_ends_done_with_a_block_no_reader_covered(
     t03_session: AsyncSession,
 ) -> None:

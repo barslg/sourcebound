@@ -2219,7 +2219,13 @@ async def generate_block_step(
         # Fix list) up to CODE_REASKS times; only what passes code reaches
         # the reader, who judges meaning, never a line code already knew.
         async def judge(output: dict[str, Any]) -> _CodeVerdict:
-            from app.course.text_checks import decode_escapes_in, narration_holds, python_code_holds
+            from app.course.text_checks import (
+                decode_escapes_in,
+                learner_text,
+                narration_holds,
+                number_holds,
+                python_code_holds,
+            )
 
             # a literal \\uXXXX in the prose is repaired, never a reason to ask again
             output = {
@@ -2325,6 +2331,17 @@ async def generate_block_step(
                 output, block_type=block_type, citations=resolved_citations
             )
             holds += type_errors
+            if content and block_type not in ("figure", "diagram"):
+                topic_handles = taught_handles_for(dict(entry.get("plan", {})), node_id)
+                topic_pids = (
+                    [handle_to_passage[h] for h in topic_handles[0] if h in handle_to_passage]
+                    if topic_handles
+                    else []
+                )
+                holds += number_holds(
+                    learner_text(content),
+                    [stored.get(pid, "") for pid in dict.fromkeys([*topic_pids, *citation_pids])],
+                )
             handoff = " ".join(str(output.get("handoff", "")).split())
             if content:
                 content["handoff"] = handoff

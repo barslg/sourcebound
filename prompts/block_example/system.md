@@ -17,6 +17,13 @@ Rules:
   verbatim from a cited passage; code checks the quotes. Where the
   passages give no concrete value, show the step without one; never
   invent a value.
+- The running case borrows only the values the cited code and output
+  show: never add a number, a limit or a condition to the story that the
+  code does not have (a "total of 85 against a limit of 50" beside code
+  that tests `x < 0` and `x == 1` teaches a false model of the code;
+  code holds a number that no passage of the topic contains). When the
+  passage's code cannot carry the case, tell the example without the
+  case, in the passage's own values.
 - The learner sees the example, not how it was made: never mention
   passages, the brief, the spec, the case input, a "stand-in", or that
   a value is "not given" or "not invented". Write the example as the

@@ -179,3 +179,52 @@ def python_code_holds(text: str) -> list[str]:
                 f"{shown[:80]!r} - show code a learner can type as written"
             )
     return list(dict.fromkeys(holds))
+
+
+_NUMBER_RE = re.compile(r"(?<![\w.])\d+(?:\.\d+)?(?![\w])")
+_MARKER_RE = re.compile(r"⟦P\d+⟧")
+_NOT_LEARNER_TEXT = frozenset({"citations", "citation", "handoff", "leftovers", "source_handles"})
+_NUMBERS_NAMED = 6
+
+
+def learner_text(content: Any) -> str:
+    """Every string a learner reads in a block's content (no sourcing fields, no markers)."""
+    parts: list[str] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, str):
+            parts.append(node)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+        elif isinstance(node, dict):
+            for key, value in node.items():
+                if key not in _NOT_LEARNER_TEXT:
+                    walk(value)
+
+    walk(content)
+    return _MARKER_RE.sub(" ", " ".join(parts))
+
+
+def number_holds(learner: str, passage_texts: list[str]) -> list[str]:
+    """Hold a block that shows the learner a number none of the topic's cited passages contains.
+
+    A value in a story that the cited code does not have teaches a false
+    model of that code (a total of 85 beside `x == 1`). The check establishes
+    that every number token of the learner text, code and output included,
+    occurs as a token in at least one passage the topic cites; with no
+    passage text there is nothing to compare with and no verdict.
+    """
+    if not any(passage_texts):
+        return []
+    have = {n for passage in passage_texts for n in _NUMBER_RE.findall(passage)}
+    missing = sorted(
+        {n for n in _NUMBER_RE.findall(learner) if n not in have}, key=lambda n: (float(n), n)
+    )
+    if not missing:
+        return []
+    shown = ", ".join(repr(n) for n in missing[:_NUMBERS_NAMED])
+    return [
+        f"number: {shown} appears in no passage this topic cites - take every value "
+        "from a cited passage, or tell the case without numbers"
+    ]
