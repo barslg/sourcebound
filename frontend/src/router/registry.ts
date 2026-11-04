@@ -101,7 +101,7 @@ export const STAGE_TO_ROUTE: Readonly<Record<string, RouteName>> = {
   fix: 'course-fix',
   publish: 'course-publish',
 }
-export const EXTERNAL_ORIGINS: readonly string[] = []
+export const EXTERNAL_ORIGINS: readonly string[] = ['https://dev.meta.ai']
 export const BACKEND_HREF_PREFIXES: readonly string[] = ['/api/v1/auth/']
 
 export function rowOf(name: string): RouteRow {
