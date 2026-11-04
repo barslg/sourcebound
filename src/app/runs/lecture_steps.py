@@ -514,7 +514,7 @@ async def illustrations_step(
         session, run_id=run_id, step_key=str(entry["step_key"]), input_digest=digest
     )
     if claim["reused_output"] is None:
-        store_root = str(get_settings().source_store_path)
+        store_root = str(await asyncio.to_thread(Path(get_settings().source_store_path).resolve))
         gate = asyncio.Semaphore(PARALLEL_LECTURES)
         jobs = []
         for topic in topics:
