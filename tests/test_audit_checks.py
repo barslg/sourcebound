@@ -323,7 +323,7 @@ def test_the_ordering_hold_names_the_code_line_and_the_sentence_cut_at_forty_cha
     holds = ordering_holds([LONG_CODE, LONG_PROSE, "print(result_value)"])
     assert holds == [
         "ordering: the items mix code and prose ('result_value = compute_total(first_amoun' is"
-        " code, 'The loop keeps asking for the next entry' is a sentence); use one procedure"
+        " code, 'The loop keeps asking for the next entry' is a sentence) - use one procedure"
         " whose steps are all code lines or all sentences"
     ]
 
@@ -345,11 +345,11 @@ def test_a_cloze_hold_quotes_the_blank_cut_at_sixty_characters() -> None:
     prompt_blank = ">>> " + "a" * 70
     long_blank = " ".join(["word"] * 20)
     assert cloze_holds([prompt_blank]) == [
-        f"cloze: the blank {('>>> ' + 'a' * 56)!r} starts with a prompt character;"
+        f"cloze: the blank {('>>> ' + 'a' * 56)!r} starts with a prompt character -"
         " a blank is a term or a code token without the prompt"
     ]
     assert cloze_holds([long_blank]) == [
-        f"cloze: the blank {('word ' * 12)!r} is 20 words; a blank is a term or a code"
+        f"cloze: the blank {('word ' * 12)!r} is 20 words - a blank is a term or a code"
         " token of at most 3 words, taken verbatim from a taught passage"
     ]
 
@@ -504,3 +504,64 @@ def test_a_transcript_continuation_line_keeps_its_own_first_character() -> None:
     """`... else:` is the statement `else:`: the four-character prompt is all that is dropped."""
     text = "```pycon\n>>> if x:\n...     pass\n... else:\n...     pass\n...\n```"
     assert python_code_holds(text.replace("if x:", "if True:")) == []
+
+
+def test_no_hold_line_of_a_code_check_carries_the_line_separator() -> None:
+    """Hold lines are re-split on "; ": a line holding one leaves a fragment recheck keeps."""
+    lines = [
+        *narration_holds("The values are not given in the passages."),
+        *cloze_holds(["one two three four", ">>> x = 1"]),
+        *matching_holds([{"left": "a", "right": "b"}]),
+        *ordering_holds(["a, b = 0, 1", "The body of the loop is indented"]),
+        *exercise_holds(GUESSABLE_8997, "choice", HASH_TAUGHT),
+        *exercise_holds(
+            {
+                "answer": "Type after the prompt.",
+                "options": [
+                    {"text": "Type after prompt", "correct": True},
+                    {"text": HASH_TAUGHT[1][:140], "correct": False},
+                ],
+            },
+            "choice",
+            HASH_TAUGHT,
+        ),
+        *python_code_holds(PLACEHOLDER_CODE),
+        *escape_holds("The character \\u00e9 is written out"),
+    ]
+    assert len(lines) == 9
+    assert [line for line in lines if "; " in line] == []
+
+
+def test_a_stored_reason_built_from_every_code_hold_prefix_splits_back_into_its_lines() -> None:
+    """Every CODE_HOLD_PREFIXES prefix, with a quoted run holding "; ", survives the join."""
+    from app.course.replay import CODE_HOLD_PREFIXES, is_code_hold, join_hold_lines
+
+    quoted = "x = 1; y = 2"
+    lines = [f"{prefix}{quoted!r} and more" for prefix in CODE_HOLD_PREFIXES]
+    reader = "b2: the note (evidence: a; b)"
+    stored = join_hold_lines([*lines, reader])
+    pieces = stored.split("; ")
+    assert [p for p in pieces if is_code_hold(p)] == [line.replace("; ", ", ") for line in lines]
+    assert [p for p in pieces if not is_code_hold(p)] == ["b2: the note (evidence: a, b)"]
+
+
+def test_a_short_option_that_is_a_passage_line_counts_as_copied_so_it_splits_nothing() -> None:
+    """m2-test-b1: the right option `break` and the wrong ones are all lines of the passages."""
+    taught = ["Use break to leave a loop early.\n\nfor n in range(2, 10):\n\nwhile n > 1: print(n)"]
+    options = {
+        "answer": "break leaves the loop",
+        "options": [
+            {"text": "break", "correct": True},
+            {"text": "for n in range(2, 10):", "correct": False},
+            {"text": "while n > 1: print(n)", "correct": False},
+        ],
+    }
+    assert exercise_holds(options, "choice", taught) == []
+
+
+def test_python_code_that_overflows_the_compiler_is_not_a_hold_and_never_crashes() -> None:
+    """A deep expression raises RecursionError or MemoryError from compile(), not SyntaxError."""
+    recursion = "```python\nx = " + "+".join(["1"] * 100000) + "\n```"
+    memory = "```python\nx = " + "-" * 100000 + "1\n```"
+    assert python_code_holds(recursion) == []
+    assert python_code_holds(memory) == []

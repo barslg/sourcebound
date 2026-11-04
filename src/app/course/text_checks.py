@@ -39,7 +39,7 @@ def narration_holds(text: str) -> list[str]:
     return [
         "narration: the text mentions its own sourcing ("
         + ", ".join(repr(w) for w in found[:4])
-        + "); say what the value is, never where the writer got it"
+        + ") - say what the value is, never where the writer got it"
     ]
 
 
@@ -81,7 +81,7 @@ def decode_escapes_in(value: Any) -> Any:
 def escape_holds(text: str) -> list[str]:
     """Hold a stored text whose prose carries a literal `\\uXXXX` (new drafts are repaired)."""
     if decode_escapes(text) != text:
-        return ["escape: the text carries a literal \\uXXXX sequence; write the character itself"]
+        return ["escape: the text carries a literal \\uXXXX sequence - write the character itself"]
     return []
 
 
@@ -159,12 +159,14 @@ def python_code_holds(text: str) -> list[str]:
             continue
         try:
             compile(source, "<block>", "exec")
+        except (MemoryError, RecursionError):
+            continue  # the compiler gave up on the size of the snippet: no verdict, no hold
         except SyntaxError as error:
             lines = source.splitlines()
             at = error.lineno or 1
             shown = lines[at - 1].strip() if 0 < at <= len(lines) else ""
             holds.append(
                 f"code: a Python snippet does not compile ({error.msg}) at line {at}: "
-                f"{shown[:80]!r}; show code a learner can type as written"
+                f"{shown[:80]!r} - show code a learner can type as written"
             )
     return list(dict.fromkeys(holds))

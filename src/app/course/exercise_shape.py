@@ -43,12 +43,12 @@ def cloze_holds(blanks: list[str]) -> list[str]:
         count = len(blank.split())
         if _PROMPT_START_RE.match(blank):
             holds.append(
-                f"cloze: the blank {blank[:60]!r} starts with a prompt character;"
+                f"cloze: the blank {blank[:60]!r} starts with a prompt character -"
                 " a blank is a term or a code token without the prompt"
             )
         elif count > CLOZE_BLANK_MAX_WORDS:
             holds.append(
-                f"cloze: the blank {blank[:60]!r} is {count} words; a blank is a term or a code"
+                f"cloze: the blank {blank[:60]!r} is {count} words - a blank is a term or a code"
                 f" token of at most {CLOZE_BLANK_MAX_WORDS} words, taken verbatim from a taught"
                 " passage"
             )
@@ -56,11 +56,15 @@ def cloze_holds(blanks: list[str]) -> list[str]:
 
 
 def matching_holds(pairs: list[Any]) -> list[str]:
-    """Hold a matching with fewer pairs than MIN_MATCHING_PAIRS (two are guessed by elimination)."""
+    """Hold a matching below the floor of MIN_MATCHING_PAIRS pairs (two are guessed by elimination).
+
+    The floor is what code enforces (three, so a stored block with three pairs is kept); the
+    architect's prompt asks new plans for four.
+    """
     count = len([p for p in pairs if isinstance(p, dict)])
     if count < MIN_MATCHING_PAIRS:
         return [
-            f"matching: {count} pairs; at least {MIN_MATCHING_PAIRS} real pairs are needed"
+            f"matching: {count} pairs - at least {MIN_MATCHING_PAIRS} real pairs are needed"
             " (ask about fewer, firmer facts only in a choice)"
         ]
     return []
@@ -89,7 +93,7 @@ def ordering_holds(steps: list[str]) -> list[str]:
         prose = next(s for s, k in zip(steps, kinds, strict=True) if not k)
         return [
             f"ordering: the items mix code and prose ({code[:40]!r} is code, {prose[:40]!r} is a"
-            " sentence); use one procedure whose steps are all code lines or all sentences"
+            " sentence) - use one procedure whose steps are all code lines or all sentences"
         ]
     return []
 
@@ -102,7 +106,7 @@ def passage_shaped(text: str, taught_words: list[str]) -> bool:
     """
     words = words_of(text)
     if len(words) < QUOTED_SPAN_WORDS:
-        return False
+        return _contiguous(words, taught_words)  # a short line is copied when it is verbatim
     marked = [False] * len(words)
     for i in range(len(words) - QUOTED_SPAN_WORDS + 1):
         if _contiguous(words[i : i + QUOTED_SPAN_WORDS], taught_words):
@@ -140,12 +144,12 @@ def giveaway_holds(output: dict[str, Any], taught_words: list[str], block_type: 
         return []
     if all(right) and not any(wrong):
         return [
-            "giveaway: only the correct options are copied passage lines; write every option in"
+            "giveaway: only the correct options are copied passage lines - write every option in"
             " your own words in one shape and keep the quote in `answer` and the citations"
         ]
     if not any(right) and all(wrong):
         return [
-            "giveaway: only the wrong options are copied passage lines; write every option in"
+            "giveaway: only the wrong options are copied passage lines - write every option in"
             " your own words in one shape and keep the quote in `answer` and the citations"
         ]
     return []
