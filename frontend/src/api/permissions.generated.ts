@@ -14,6 +14,7 @@ export const ROUTE_CODES: Readonly<Record<string, readonly string[]>> = {
   "GET /api/v1/courses": ["course.edit"],
   "GET /api/v1/courses/{course_id}": ["course.edit"],
   "GET /api/v1/courses/{course_id}/build": ["run.start"],
+  "GET /api/v1/courses/{course_id}/calls/tree": ["run.start"],
   "GET /api/v1/courses/{course_id}/estimate": ["course.edit"],
   "GET /api/v1/courses/{course_id}/held": ["course.edit"],
   "GET /api/v1/courses/{course_id}/plan": ["course.edit"],

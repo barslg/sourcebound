@@ -614,6 +614,20 @@ async def list_course_runs(ctx: RequestContext, *, course_id: str) -> list[dict[
     return await list_use_case(ctx.db, course_id=UUID(course_id))
 
 
+async def get_call_tree(ctx: RequestContext, *, course_id: str) -> dict[str, Any]:
+    from app.runs.call_tree import course_call_tree
+    from app.services.courses import get_course as get_course_use_case
+    from app.services.courses import read_tree
+    from app.services.hold_text import handle_labels
+
+    actor = require_auth(ctx)
+    require(actor, "run.start")
+    course = await get_course_use_case(ctx.db, course_id=UUID(course_id))
+    _owner_or_404(course, actor.user_id, actor.is_superadmin)
+    labels = handle_labels(await read_tree(ctx.db, course_id=UUID(course_id)))
+    return await course_call_tree(ctx.db, course_id=UUID(course_id), hold_labels=labels)
+
+
 async def get_run(ctx: RequestContext, *, run_id: str) -> dict[str, Any]:
     actor = require_auth(ctx)
     require(actor, "run.start")

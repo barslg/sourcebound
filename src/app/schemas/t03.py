@@ -71,3 +71,13 @@ class TranslateRequest(BaseModel):
 class SourceLanguageRequest(BaseModel):
     language: str = Field(min_length=2, max_length=10)
     passage_id: str | None = None
+
+
+class CallTreeNode(BaseModel):
+    id: str
+    kind: str
+    label: str
+    status: str | None = None
+    facts: dict[str, Any] = Field(default_factory=dict)
+    children: list[CallTreeNode] = Field(default_factory=list)
+    deps: list[str] = Field(default_factory=list)

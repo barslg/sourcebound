@@ -88,6 +88,15 @@ async def list_course_runs(
     return await controller.list_course_runs(ctx, course_id=course_id)
 
 
+@courses_router.get("/{course_id}/calls/tree", response_model=dto.CallTreeNode)
+async def get_call_tree(
+    course_id: Annotated[str, Depends(course_id_param)],
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, Any]:
+    """Every run's agents and model calls as one tree with block dependencies, no bodies."""
+    return await controller.get_call_tree(ctx, course_id=course_id)
+
+
 @courses_router.get("/{course_id}/plan")
 async def get_plan(
     course_id: Annotated[str, Depends(course_id_param)],
