@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CourseCreateRequest(BaseModel):
@@ -41,6 +42,15 @@ class PlanSubmitRequest(BaseModel):
 
 class GenerateSubmitRequest(BaseModel):
     idempotency_key: str | None = None
+
+
+class BuildSubmitRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    queries: list[str] = Field(default_factory=list)
+    cap_usd: Decimal = Field(gt=0, le=1000)
+    idempotency_key: str | None = None
+    continue_build: bool = Field(default=False, alias="continue")
 
 
 class SourceFetchRequest(BaseModel):

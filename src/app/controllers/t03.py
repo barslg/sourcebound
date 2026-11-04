@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -512,6 +513,47 @@ async def submit_generate(
         defer=lambda op: enqueue_operation(op, ctx.settings.database_url),
     )
     return {"operation_id": str(operation_id)}
+
+
+async def build_course(
+    ctx: RequestContext,
+    *,
+    course_id: str,
+    queries: list[str],
+    cap_usd: Decimal,
+    idempotency_key: str | None,
+    continue_build: bool,
+) -> dict[str, str]:
+    from app.services.build import submit_build
+    from app.services.courses import get_course as get_use_case
+    from app.tasks.jobs import enqueue_operation
+
+    actor = require_auth(ctx)
+    require(actor, "course.plan")
+    course = await get_use_case(ctx.db, course_id=UUID(course_id))
+    _owner_or_404(course, actor.user_id, actor.is_superadmin)
+    operation_id = await submit_build(
+        ctx.db,
+        actor=actor,
+        course_id=UUID(course_id),
+        queries=queries,
+        cap_usd=cap_usd,
+        idempotency_key=idempotency_key,
+        continue_build=continue_build,
+        defer=lambda op: enqueue_operation(op, ctx.settings.database_url),
+    )
+    return {"operation_id": str(operation_id)}
+
+
+async def get_build(ctx: RequestContext, *, course_id: str) -> dict[str, Any]:
+    from app.services.build import build_status
+    from app.services.courses import get_course as get_use_case
+
+    actor = require_auth(ctx)
+    require(actor, "run.start")
+    course = await get_use_case(ctx.db, course_id=UUID(course_id))
+    _owner_or_404(course, actor.user_id, actor.is_superadmin)
+    return await build_status(ctx.db, course_id=UUID(course_id))
 
 
 async def _run_in_scope(ctx: RequestContext, *, run_id: UUID) -> dict[str, Any]:

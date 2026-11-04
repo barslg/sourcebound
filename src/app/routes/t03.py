@@ -216,6 +216,32 @@ async def submit_generate(
     )
 
 
+@courses_router.post("/{course_id}/build", status_code=202)
+async def build_course(
+    course_id: Annotated[str, Depends(course_id_param)],
+    body: dto.BuildSubmitRequest,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, str]:
+    """Build the whole course on its own: plan, assume open questions, generate, rewrite."""
+    return await controller.build_course(
+        ctx,
+        course_id=course_id,
+        queries=body.queries,
+        cap_usd=body.cap_usd,
+        idempotency_key=body.idempotency_key,
+        continue_build=body.continue_build,
+    )
+
+
+@courses_router.get("/{course_id}/build")
+async def get_build(
+    course_id: Annotated[str, Depends(course_id_param)],
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, Any]:
+    """The course's latest build: state, stage, spend against the cap, events, exits."""
+    return await controller.get_build(ctx, course_id=course_id)
+
+
 @sources_router.post("/upload", status_code=201)
 async def upload_source(
     file: UploadFile,

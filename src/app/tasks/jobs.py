@@ -37,3 +37,24 @@ async def enqueue_operation(operation_id: UUID, database_url: str) -> None:
     task = ephemeral.task(queue="operations", name="operations.run")(run_operation_job)
     async with ephemeral.open_async():
         await task.defer_async(operation_id=str(operation_id))
+
+
+@app.periodic(cron="* * * * *")
+@app.task(queue="operations", name="builds.revive", queueing_lock="builds.revive")
+async def revive_builds_job(timestamp: int) -> None:
+    """Every minute: re-queue course builds that say running while no worker drives them."""
+    from app.config import get_settings
+    from app.db import create_session_factory
+    from app.services.build import revive_stranded_builds
+
+    url = get_settings().database_url
+    factory = create_session_factory(url)
+    try:
+        async with factory() as session:
+            await revive_stranded_builds(
+                session, defer=lambda operation_id: enqueue_operation(operation_id, url)
+            )
+    finally:
+        bind = factory.kw.get("bind")
+        if bind is not None:
+            await bind.dispose()

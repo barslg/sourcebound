@@ -65,7 +65,7 @@ services:
       - .env
     volumes:
       - sources:/app/var/sources
-    command: ["procrastinate", "--app", "app.tasks.worker.app", "worker"]
+    command: ["procrastinate", "--app", "app.tasks.worker.app", "worker", "--concurrency", "3"]
 
   web:
     build: ./frontend
