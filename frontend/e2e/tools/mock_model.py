@@ -303,18 +303,29 @@ def reply_for(prompt, schema, instructions=""):
         for a in assigned
         if a in by_handle
     ] or [{"passage_id": h, "quote": quote}]
+    rights = [str(item["text"])[:40] for item in by_handle.values() if item.get("text")] or [quote]
     return {
         "block_type": block_type,
-        "text": f"Staff apply the cited passage at work (take {CALLS[0]}).",
+        # a reading never names its sourcing (narration check) and teaches in its own words
+        "text": f"Staff apply the routine at work (take {CALLS[0]}).",
         "citations": citations,
-        # keys are quoted from the passage: the taught check asks provenance
+        # the key is quoted from the passage in `answer`; every option is the writer's own
+        # words in one shape, so nothing about an option's look gives the key away
         "answer": quote,
-        "options": [{"text": quote, "correct": True}, {"text": "No", "correct": False}],
-        "pairs": [{"left": "a", "right": quote}],
+        "options": [
+            {"text": "Wash at the moment the routine names", "correct": True},
+            {"text": "Skip it when the shift is busy", "correct": False},
+            {"text": "Rinse once at the end of the day", "correct": False},
+        ],
+        # three pairs (the matching floor); every right side is quoted from a passage
+        "pairs": [
+            {"left": f"Fact {i + 1}", "right": rights[i % len(rights)]} for i in range(3)
+        ],
+        # a blank is one term taken verbatim from a passage
         "blanks": [quote.split()[0] if quote.split() else "x"],
         "items": [{"text": quote, "passage_id": h, "tier": "correct"}],
         "sentences": ["Alpha is apply.", "Beta is apply."],
-        "handoff": "The learner now knows the cited passage and the case moved one step.",
+        "handoff": "The learner now knows the routine and the case moved one step.",
         "leftovers": [],
     }
 
