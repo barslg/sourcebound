@@ -68,6 +68,11 @@ const CONTROLS: Array<[RegExp, Call]> = [
   [/^Reload theirs$/, 'GET /api/v1/courses/{}/plan'],
   [/^Keep mine$/, 'PATCH /api/v1/courses/{}/plan'],
   [/^Try again$/, 'ui'],
+  [/^Build the whole course$/, 'POST /api/v1/courses/{}/build'],
+  [/^Build the rest automatically$/, 'POST /api/v1/courses/{}/build'],
+  [/^Continue the build$/, 'POST /api/v1/courses/{}/build'],
+  [/^Stop the build$/, 'POST /api/v1/runs/{}/cancel'],
+  [/^Show request and reply/, 'GET /api/v1/runs/{}/calls/{}'],
 ]
 
 function shape(path: string): string {
@@ -278,8 +283,9 @@ test('walk: tab counts equal the API counts', async ({ page, context }) => {
       if (pending > 0) await expect(sourcesTab).toContainText(`${pending} pending`)
       else await expect(sourcesTab).not.toContainText('pending')
     }
-    const draft = ((await (await page.request.get(`/api/v1/courses/${id}`)).json()) as { draft_count: number }).draft_count
-    await expect(fixTab).toContainText(String(held.blocks.length + draft))
+    // The Fix stage counts held blocks only: a draft is unread, not something to fix.
+    if (held.blocks.length > 0) await expect(fixTab).toContainText(String(held.blocks.length))
+    else await expect(fixTab).not.toContainText(/\d/)
   }
 })
 
