@@ -7,6 +7,7 @@ Format — [Keep a Changelog](https://keepachangelog.com/). Versioning — [SemV
 ### Added
 
 - Deploy from `main`: `.github/workflows/deploy.yml` runs after a green `ci`.
+  `wrangler.jsonc` declares the custom domain `sourcebound.io` for the Worker.
   The `frontend` job builds the site and runs `wrangler deploy` with
   `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; the `api` job writes the production `.env` (Google OAuth client, session and key
   secrets, superadmins, `OIDC_REDIRECT_URL` under `sourcebound.io`) from the
