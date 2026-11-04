@@ -2276,7 +2276,7 @@ async def generate_block_step(
                     leftovers=[x for x in output.get("leftovers", []) if isinstance(x, dict)],
                 )
             if is_reading and block_type not in ("figure", "diagram"):
-                holds += narration_holds(text)
+                holds += narration_holds(text, list(cited_texts.values()))
             if block_type != "cloze":
                 holds += python_code_holds(text)
             if block_type == "figure":

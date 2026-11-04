@@ -180,9 +180,9 @@ def test_example_that_narrates_its_sourcing_is_held_and_a_clean_example_is_not()
         "**Input**\n\n⟦P420⟧ Without arguments, `dir()` lists the names you have defined "
         "currently: the session has already run `a = [1, 2, 3, 4, 5]` for the expense list."
     )
-    held = narration_holds(narrating)
+    held = narration_holds(narrating, [])
     assert len(held) == 1 and "'not given in'" in held[0] and "'passages'" in held[0]
-    assert narration_holds(clean) == []
+    assert narration_holds(clean, []) == []
 
 
 SYNTAX_LESSON = (
@@ -509,7 +509,7 @@ def test_a_transcript_continuation_line_keeps_its_own_first_character() -> None:
 def test_no_hold_line_of_a_code_check_carries_the_line_separator() -> None:
     """Hold lines are re-split on "; ": a line holding one leaves a fragment recheck keeps."""
     lines = [
-        *narration_holds("The values are not given in the passages."),
+        *narration_holds("The values are not given in the passages.", []),
         *cloze_holds(["one two three four", ">>> x = 1"]),
         *matching_holds([{"left": "a", "right": "b"}]),
         *ordering_holds(["a, b = 0, 1", "The body of the loop is indented"]),
@@ -565,3 +565,61 @@ def test_python_code_that_overflows_the_compiler_is_not_a_hold_and_never_crashes
     memory = "```python\nx = " + "-" * 100000 + "1\n```"
     assert python_code_holds(recursion) == []
     assert python_code_holds(memory) == []
+
+
+META_DOC_PASSAGE = (
+    "The request carries the brief you want answered. The model reads each passage you attach "
+    "and returns one answer per passage; a prompt can stand in for a system message."
+)
+
+
+def test_a_narration_word_the_cited_passages_use_is_course_vocabulary_not_narration() -> None:
+    """The Meta API docs say "the brief" 34 times, "passage" 20: teaching them is not narrating."""
+    teaching = (
+        "Send the brief with the request; the model answers once for each passage you attach."
+    )
+    assert narration_holds(teaching, [META_DOC_PASSAGE]) == []
+    assert len(narration_holds(teaching, ["A different page about error codes."])) == 1
+
+
+def test_only_the_narration_words_missing_from_the_cited_passages_are_reported() -> None:
+    """`the brief` is in the passage, `not given in` is not: the line names the second alone."""
+    text = "Use the brief as shown; the limit is not given in the material."
+    held = narration_holds(text, [META_DOC_PASSAGE])
+    assert len(held) == 1 and "'not given in'" in held[0] and "'the brief'" not in held[0]
+
+
+def test_replay_reads_the_narration_words_of_the_blocks_own_cited_passage_as_its_vocabulary() -> (
+    None
+):
+    """A stored example saying "the brief" is held unless the passage it cites says it too."""
+    numbered = [
+        {"passage_id": "pid1", "handle": "P1", "text": META_DOC_PASSAGE},
+        {"passage_id": "pid2", "handle": "P2", "text": "Errors carry a code and a message."},
+    ]
+
+    def example(node: str, cited: str) -> Any:
+        return {
+            "id": node,
+            "node": node,
+            "role": "example",
+            "block_type": "reading",
+            "status": "accepted",
+            "hold_reason": "",
+            "version_id": f"v-{node}",
+            "content": {"body": "Send the brief with each request."},
+            "answer_key": {},
+            "topic": "t1",
+            "topic_kind": "lesson",
+            "topic_title": "Requests",
+            "objectives": [],
+            "plan_content": {"source_handles": ["P1", "P2"]},
+            "citations": [(cited, "")],
+        }
+
+    rows = {
+        r["node"]: r["holds"]
+        for r in replay_blocks([example("own", "pid1"), example("other", "pid2")], numbered)
+    }
+    assert rows["own"] == []
+    assert len(rows["other"]) == 1 and rows["other"][0].startswith("narration: ")

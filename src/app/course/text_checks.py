@@ -24,16 +24,25 @@ _ERROR_SHOWN_RE = re.compile(r"SyntaxError|IndentationError|TabError|invalid syn
 _AFTER_SNIPPET = 200
 
 
-def narration_holds(text: str) -> list[str]:
+def narration_holds(text: str, cited_passages: list[str]) -> list[str]:
     """Hold a reading that talks about its own sourcing instead of teaching.
 
     A learner never saw "the passages", "the brief" or "example_spec": a
     sentence that names them narrates the pipeline (22 of 29 examples of
     the 2026-11-04 Python course). The check establishes that none of the
     pipeline's words reaches the learner; whether the teaching is right is
-    the reader's call.
+    the reader's call. A word the block's own cited passages use (the Meta API
+    docs say "the brief" 34 times and "passage" 20) is the sources' vocabulary,
+    which the block is bound to teach, so it is not narration.
     """
-    found = list(dict.fromkeys(m.group(0).lower() for m in NARRATION_RE.finditer(text)))
+    theirs = {
+        m.group(0).lower() for passage in cited_passages for m in NARRATION_RE.finditer(passage)
+    }
+    found = [
+        word
+        for word in dict.fromkeys(m.group(0).lower() for m in NARRATION_RE.finditer(text))
+        if word not in theirs
+    ]
     if not found:
         return []
     return [

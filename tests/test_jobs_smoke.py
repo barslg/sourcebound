@@ -2502,7 +2502,7 @@ async def test_recheck_releases_a_block_held_by_a_stored_narration_and_code_line
     final = await _smoke_run(t03_session, demo, dag, demo_t05.mock_demo_handler())
     assert final["status"] == "done", final["stop_marker"]
     lines = [
-        *narration_holds("The values are not given in the passages."),
+        *narration_holds("The values are not given in the passages.", []),
         *python_code_holds("```python\nx = (1\n```"),
     ]
     assert len(lines) == 2

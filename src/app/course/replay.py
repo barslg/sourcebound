@@ -157,7 +157,7 @@ def replay_blocks(
             "figure",
             "diagram",
         ):
-            holds += narration_holds(text)
+            holds += narration_holds(text, list(cited_texts.values()))
         if block["block_type"] != "cloze":
             holds += python_code_holds(text)
         holds += escape_holds(text)
