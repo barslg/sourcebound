@@ -466,8 +466,8 @@ async def _write_lecture_block(
 
 
 def illustration_file(store_root: str, course_id: str, node: str) -> Path:
-    """Where a topic's picture lives: <store>/illustrations/<course>/<topic>.png."""
-    return Path(store_root) / "illustrations" / course_id / f"{node}.png"
+    """Where a topic's picture lives: <store>/illustrations/<course>/<topic>.webp."""
+    return Path(store_root) / "illustrations" / course_id / f"{node}.webp"
 
 
 async def _one_illustration(

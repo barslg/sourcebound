@@ -326,7 +326,7 @@ async def preview_illustration(
 ) -> FileResponse:
     """The draft topic's picture for its author."""
     path = await controller.preview_illustration(ctx, topic_id=topic_id)
-    return FileResponse(path, media_type="image/png")
+    return FileResponse(path, media_type="image/webp")
 
 
 @preview_router.post("/blocks/{block_id}/check")

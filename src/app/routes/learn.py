@@ -89,7 +89,7 @@ async def get_illustration(
 ) -> FileResponse:
     """The topic's picture (one simple image per topic drawn at build time)."""
     path = await controller.get_illustration(ctx, topic_id=topic_id)
-    return FileResponse(path, media_type="image/png")
+    return FileResponse(path, media_type="image/webp")
 
 
 @router.post("/blocks/{block_id}/answer")
