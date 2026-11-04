@@ -122,6 +122,9 @@ async def _within_daily_limit(session: AsyncSession, user_id: UUID) -> None:
     The per-user advisory lock lives until the request's transaction ends, so
     one user's parallel questions run one after another and each sees the
     row the previous paid call wrote (the ledger commits in its own session).
+    The site-wide lock, taken after it in the same order for everyone, does
+    the same across accounts: tutor asks queue up one at a time, which is
+    cheap because they are rare and the cap is the point.
 
     Counts llm_calls rows of agent "tutor" attributed to the user: only
     questions that reached the model cost the course owner money, so an
@@ -133,6 +136,7 @@ async def _within_daily_limit(session: AsyncSession, user_id: UUID) -> None:
         sa.text("SELECT pg_advisory_xact_lock(hashtext('tutor:' || :user))"),
         {"user": str(user_id)},
     )
+    await session.execute(sa.text("SELECT pg_advisory_xact_lock(hashtext('tutor:site'))"))
     site = (
         await session.execute(
             sa.text(

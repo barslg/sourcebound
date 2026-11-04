@@ -8,12 +8,16 @@ the real routes and the real sign-in; the world is the sentinel world.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
+from typing import Any
 
+import pytest
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from t06_helpers import World, cookie_for, http, seed_world, sign_in_new_user
 
+from app.errors import RateLimitedError
 from app.llm.calls import log_call
 from app.rbac.roles import assign_role
 
@@ -189,3 +193,79 @@ async def test_the_student_role_never_gains_a_code_outside_learning(world: World
             name="student",
             permission_codes=["learn.read", "learn.answer", "learn.ask", "user.list"],
         )
+
+
+async def test_twenty_fresh_accounts_asking_at_once_cannot_pass_the_site_limit(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The site-wide count is read under one lock for all accounts: only `limit` asks are paid."""
+    from conftest import test_database_url
+
+    from app.db import create_session_factory
+    from app.rbac.principal import load_principal
+    from app.services import tutor
+
+    assert (await _flip(world, "owner", world.course, True))[0] == 200
+    passage = (
+        await world.s.execute(
+            sa.text(
+                "SELECT p.text FROM passages p JOIN course_sources cs ON cs.source_id = p.source_id"
+                " WHERE cs.course_id = :c AND p.is_content ORDER BY p.id LIMIT 1"
+            ),
+            {"c": world.course},
+        )
+    ).scalar_one()
+    question = " ".join(str(passage).split()[:12])
+    limit = 5
+    monkeypatch.setattr(tutor, "TUTOR_SITE_DAILY_LIMIT", limit)
+    url = test_database_url()
+    ledger = create_session_factory(url)
+    users = [await sign_in_new_user(world.s, f"flood{i}") for i in range(20)]
+
+    class PaidProvider:
+        def __init__(self, user: uuid.UUID) -> None:
+            self.user = user
+
+        async def generate_json(self, **kwargs: Any) -> dict[str, Any]:
+            await asyncio.sleep(0.3)
+            async with ledger() as session:
+                await log_call(
+                    session,
+                    agent="tutor",
+                    model="muse-spark-1.3",
+                    prompt_version="v1",
+                    input_tokens=100,
+                    cached_tokens=0,
+                    output_tokens=50,
+                    duration_ms=300,
+                    request={"input": "q"},
+                    response={"quotes": []},
+                    subject_user_id=self.user,
+                )
+                await session.commit()
+            return {"quotes": []}
+
+    async def ask(user: uuid.UUID) -> str:
+        factory = create_session_factory(url)
+        async with factory() as session:
+            principal = await load_principal(session, user)
+            try:
+                await tutor.ask(
+                    session,
+                    principal,
+                    uuid.UUID(world.course),
+                    question,
+                    language=None,
+                    make_provider_factory=lambda: lambda s: PaidProvider(user),
+                    min_score=0.0,
+                    min_covered=1,
+                    max_passages=4,
+                    max_chars=500,
+                )
+                await session.commit()
+            except RateLimitedError:
+                return "limited"
+            return "paid"
+
+    outcomes = await asyncio.gather(*(ask(user) for user in users))
+    assert outcomes.count("paid") == limit, outcomes
