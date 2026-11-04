@@ -7,6 +7,7 @@ import re
 from decimal import Decimal
 
 import pytest
+import structlog
 
 from app.llm.call_line import GREEN, RED, render_call_line
 
@@ -69,7 +70,9 @@ def test_the_worker_prints_the_call_line_and_drops_the_minute_revive_job(
         run_id=None,
         step_key="reader:m1-t1",
     )
-    printed = re.sub(r"\x1b\[[0-9;]*m", "", capsys.readouterr().out)
+    raw = capsys.readouterr().out
+    assert GREEN + "completed" in raw
+    printed = re.sub(r"\x1b\[[0-9;]*m", "", raw)
     assert "model call  Muse Spark 1.3  POST " in printed and "{" not in printed
     periodic = logging.getLogger("procrastinate.periodic")
     record = periodic.makeRecord(
@@ -86,3 +89,5 @@ def test_the_worker_prints_the_call_line_and_drops_the_minute_revive_job(
         "procrastinate.periodic", logging.INFO, "x", 1, "Starting job courses.build[2]", (), None
     )
     assert periodic.filter(other)
+    structlog.get_logger("probe").info("operation_done", kind="build")
+    assert "\x1b[" in capsys.readouterr().out
