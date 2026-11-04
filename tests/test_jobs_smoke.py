@@ -2489,3 +2489,76 @@ async def test_recheck_on_an_unpublished_course_holds_an_accepted_block_a_curren
     status, reason = (await _smoke_blocks(t03_session, demo["course_id"]))["b1"]
     assert status == "held" and reason.startswith("quote is not verbatim"), (status, reason)
     assert result["newly_held"] == 1, result
+
+
+async def test_recheck_releases_a_block_held_by_a_stored_narration_and_code_line(
+    t03_session: AsyncSession,
+) -> None:
+    """The reason the executor stored for a draft that has since been fixed is dropped whole."""
+    from app.course.text_checks import narration_holds, python_code_holds
+    from app.services.recheck import recheck_held
+
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-recheck-lines")
+    final = await _smoke_run(t03_session, demo, dag, demo_t05.mock_demo_handler())
+    assert final["status"] == "done", final["stop_marker"]
+    lines = [
+        *narration_holds("The values are not given in the passages."),
+        *python_code_holds("```python\nx = (1\n```"),
+    ]
+    assert len(lines) == 2
+    await t03_session.execute(
+        sa.text(
+            "UPDATE blocks SET status = 'held', hold_reason = :r, accepted_version_id = NULL"
+            " WHERE plan_node_id = 'b1' AND topic_id IN (SELECT t.id FROM topics t"
+            " JOIN modules m ON m.id = t.module_id WHERE m.course_id = :c)"
+        ),
+        {"r": "; ".join(lines), "c": str(demo["course_id"])},
+    )
+    await t03_session.commit()
+    result = await recheck_held(t03_session, course_id=demo["course_id"])
+    await t03_session.commit()
+    assert (await _smoke_blocks(t03_session, demo["course_id"]))["b1"] == ("accepted", "")
+    assert result["released"] == 1, result
+
+
+async def test_recheck_keeps_a_block_the_author_accepted_by_hand_when_a_check_would_hold_it(
+    t03_session: AsyncSession,
+) -> None:
+    """accept_block pins the version; the sweep holds only what the run accepted on its own."""
+    from app.services.courses import accept_block
+    from app.services.recheck import recheck_held
+
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-recheck-hand")
+    final = await _smoke_run(t03_session, demo, dag, demo_t05.mock_demo_handler())
+    assert final["status"] == "done", final["stop_marker"]
+    course = str(demo["course_id"])
+    versions = {}
+    for node in ("b1", "b3"):
+        versions[node] = (
+            await t03_session.execute(
+                sa.text(
+                    "SELECT b.id, b.current_version_id FROM blocks b JOIN topics t"
+                    " ON t.id = b.topic_id JOIN modules m ON m.id = t.module_id"
+                    " WHERE m.course_id = :c AND b.plan_node_id = :n"
+                ),
+                {"c": course, "n": node},
+            )
+        ).one()
+        await t03_session.execute(
+            sa.text(
+                "UPDATE citations SET quote = 'words no passage says' WHERE block_version_id = :v"
+            ),
+            {"v": str(versions[node][1])},
+        )
+    await t03_session.execute(
+        sa.text("UPDATE blocks SET status = 'held', hold_reason = 'x' WHERE id = :b"),
+        {"b": str(versions["b1"][0])},
+    )
+    await accept_block(t03_session, block_id=versions["b1"][0])
+    await t03_session.commit()
+    result = await recheck_held(t03_session, course_id=demo["course_id"], hold_accepted=True)
+    await t03_session.commit()
+    blocks = await _smoke_blocks(t03_session, demo["course_id"])
+    assert blocks["b1"] == ("accepted", ""), blocks["b1"]
+    assert blocks["b3"][0] == "held", blocks["b3"]
+    assert result["newly_held"] == 1, result

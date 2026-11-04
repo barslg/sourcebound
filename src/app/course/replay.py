@@ -29,6 +29,15 @@ CODE_HOLD_PREFIXES = (
 )
 
 
+def join_hold_lines(lines: list[str]) -> str:
+    """The stored `hold_reason`: lines joined by "; ", none of which may carry "; " itself.
+
+    `recheck_held` splits the reason back on "; ", so a quoted run that holds one
+    (code with a semicolon, a key clause) would leave a tail that no code check owns.
+    """
+    return "; ".join(line.replace("; ", ", ") for line in lines)
+
+
 def is_code_hold(line: str) -> bool:
     """True for a hold line that `replay_blocks` recomputes from stored content."""
     return line.startswith(CODE_HOLD_PREFIXES)
@@ -193,6 +202,7 @@ def replay_blocks(
                 "stored_reason": block["hold_reason"],
                 "cited": cited_handles,
                 "holds": holds,
+                "author_accepted": bool(block.get("author_accepted", False)),
             }
         )
     return rows

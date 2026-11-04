@@ -17,7 +17,7 @@ from uuid import UUID
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.course.replay import is_code_hold, plan_coverage_errors, replay_blocks
+from app.course.replay import is_code_hold, join_hold_lines, plan_coverage_errors, replay_blocks
 
 
 async def load_blocks(session: AsyncSession, *, course_id: UUID) -> list[dict[str, Any]]:
@@ -30,7 +30,8 @@ async def load_blocks(session: AsyncSession, *, course_id: UUID) -> list[dict[st
                 " t.plan_node_id, t.kind, t.title, t.objectives,"
                 " (SELECT content FROM block_versions"
                 "  WHERE block_id = b.id AND content -> 'source_handles' IS NOT NULL"
-                "  ORDER BY version_no DESC LIMIT 1)"
+                "  ORDER BY version_no DESC LIMIT 1),"
+                " b.accepted_version_id = b.current_version_id"
                 " FROM blocks b JOIN topics t ON t.id = b.topic_id"
                 " JOIN modules m ON m.id = t.module_id"
                 " LEFT JOIN block_versions bv ON bv.id = b.current_version_id"
@@ -68,6 +69,7 @@ async def load_blocks(session: AsyncSession, *, course_id: UUID) -> list[dict[st
             "topic_title": str(r[11]),
             "objectives": list(r[12] or []),
             "plan_content": dict(r[13] or {}),
+            "author_accepted": bool(r[14]),
             "citations": cited.get(str(r[6]), []) if r[6] is not None else [],
         }
         for r in rows
@@ -114,7 +116,8 @@ async def recheck_held(
 
     With `hold_accepted` (the author's button on an unpublished course) an
     accepted block that a current check rejects is held too, so a check added
-    after the run reaches the blocks it already accepted.
+    after the run reaches the blocks it already accepted. A version the author
+    accepted by hand (`accept_block`) stays accepted, as on the reader path.
     """
     from app.services import courses as course_service
 
@@ -122,10 +125,15 @@ async def recheck_held(
     replayed = await replay_course(session, course_id=course_id)
     rechecked = released = unread = newly_held = 0
     for row in replayed["blocks"]:
-        if hold_accepted and row["stored_status"] == "accepted" and row["holds"]:
+        if (
+            hold_accepted
+            and row["stored_status"] == "accepted"
+            and row["holds"]
+            and not row["author_accepted"]
+        ):
             await session.execute(
                 sa.text("UPDATE blocks SET status = 'held', hold_reason = :r WHERE id = :b"),
-                {"r": "; ".join(row["holds"]), "b": row["id"]},
+                {"r": join_hold_lines(row["holds"]), "b": row["id"]},
             )
             newly_held += 1
             continue
@@ -159,7 +167,7 @@ async def recheck_held(
                 )
                 unread += 1
             continue
-        reason = "; ".join(lines)
+        reason = join_hold_lines(lines)
         if reason != row["stored_reason"]:
             await session.execute(
                 sa.text("UPDATE blocks SET hold_reason = :r WHERE id = :b"),

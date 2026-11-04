@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.course.grounding import locate_verbatim
 from app.course.handles import address_sort_key, handle_map
+from app.course.replay import join_hold_lines
 from app.errors import LLMError, UnparseableReplyError, ValidationError
 from app.llm.registry import resolve_step
 from app.runs.stop_text import (
@@ -2364,9 +2365,9 @@ async def generate_block_step(
                 answer_key=None,
                 step_id=claim["step_id"],
                 status="held",
-                hold_reason="; ".join(holds),
+                hold_reason=join_hold_lines(holds),
             )
-            output = {**output, "held": True, "hold_reason": "; ".join(holds)}
+            output = {**output, "held": True, "hold_reason": join_hold_lines(holds)}
             await finish_step(session, step_id=claim["step_id"], output=output)
             await session.commit()
             return
@@ -2618,7 +2619,9 @@ async def read_topic_step(
                 if isinstance(v, dict) and v.get("verdict") == "hold"
             ]
             if verdict.get("verdict") == "hold" or reasons:
-                reason = "; ".join(reasons) or str(verdict.get("hold_reason") or "reader hold")
+                reason = join_hold_lines(reasons) or str(
+                    verdict.get("hold_reason") or "reader hold"
+                )
                 await session.execute(
                     sa.text(
                         "UPDATE blocks SET status = 'held', hold_reason = :r"
