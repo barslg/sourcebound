@@ -740,6 +740,7 @@ async def _drive_one_writer(
     }
     if rewrite:
         entry["rewrite"] = True
+        entry["variant_offset"] = 4
     run_id = await executor.new_run(session, course_id=course_id, kind="rewrite", dag=[entry])
     await session.commit()
 
@@ -762,6 +763,12 @@ async def test_a_rewrite_whose_replies_are_unusable_stops_the_run_instead_of_hol
     final = await _drive_one_writer(t03_session, rewrite=True, reply=empty)
     assert final["status"] == "stopped"
     assert {s["step_key"]: s["status"] for s in final["steps"]} == {"block_teach:b1": "failed"}
+    variants = (
+        await t03_session.execute(
+            sa.text("SELECT variant FROM llm_calls WHERE run_id = :r"), {"r": str(final["id"])}
+        )
+    ).scalars()
+    assert sorted(variants) == [4, 5, 6]
 
 
 async def test_a_second_job_for_the_build_already_being_driven_answers_duplicate(

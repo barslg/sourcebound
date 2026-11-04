@@ -326,7 +326,7 @@ class _Build:
                     sa.text("SELECT stop_marker FROM runs WHERE id = :r"), {"r": str(run_id)}
                 )
             ).scalar()
-        return marker == CANCEL_MARKER
+        return bool(marker == CANCEL_MARKER)
 
     async def count_runs_since(self, kind: str) -> int:
         async with self.factory() as session:

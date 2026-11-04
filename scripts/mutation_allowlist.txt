@@ -18,3 +18,4 @@ src/app/llm/registry.py:119:int+1 context window of the test-provider entry; inf
 src/app/llm/registry.py:129:int+1 context window of the second test-provider entry; informational, never read by the product path
 src/app/providers/llm.py:228:arith:Sub duration of a rejected call; informational, the cost row is what the smoke guards
 src/app/providers/llm.py:228:int+1 duration of a rejected call; informational, the cost row is what the smoke guards
+src/app/runs/executor.py:2197:int+1 the 500-character bound on the error text kept in a held step's output: a log-size bound, no behaviour
