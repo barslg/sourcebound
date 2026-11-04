@@ -11,13 +11,63 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
+import sqlalchemy as sa
+import structlog
 from sqlalchemy.engine.cursor import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.llm.registry import compute_cost_usd
+from app.config import get_settings
+from app.llm.registry import MODELS, compute_cost_usd
 from app.models.llm import llm_calls
 
 WIPED_REQUEST: dict[str, Any] = {"wiped": True}
+
+_log = structlog.get_logger("model_call")
+
+
+def endpoint_for(model: str) -> str:
+    """The HTTP request one call of this model makes, e.g. `POST https://api.meta.ai/v1/responses`."""
+    settings = get_settings()
+    spec = MODELS.get(model)
+    if spec is not None and spec.provider == "anthropic":
+        return f"POST {settings.anthropic_api_base_url}/v1/messages"
+    if spec is not None and spec.unit == "audio_hour":
+        return f"POST {settings.model_api_base_url}/audio/transcriptions"
+    return f"POST {settings.model_api_base_url}/responses"
+
+
+def emit_model_call(
+    *,
+    agent: str,
+    model: str,
+    response_id: str | None,
+    status: str,
+    input_tokens: int,
+    cached_tokens: int,
+    output_tokens: int,
+    reasoning_tokens: int,
+    cost_usd: Decimal,
+    duration_ms: int,
+    run_id: UUID | None,
+    step_key: str | None,
+) -> None:
+    """One structured stdout line per recorded call: metadata only, never prompt, reply or key."""
+    _log.info(
+        "model_call",
+        agent=agent,
+        model=model,
+        endpoint=endpoint_for(model),
+        response_id=response_id,
+        status=status,
+        tokens_input=input_tokens,
+        tokens_cached=cached_tokens,
+        tokens_output=output_tokens,
+        tokens_reasoning=reasoning_tokens,
+        cost_usd=str(cost_usd),
+        duration_ms=duration_ms,
+        run_id=str(run_id) if run_id is not None else None,
+        step_key=step_key,
+    )
 
 
 def sanitize_json(value: Any) -> Any:
@@ -29,6 +79,18 @@ def sanitize_json(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [sanitize_json(v) for v in value]
     return value
+
+
+async def _step_key(session: AsyncSession, step_id: UUID | None) -> str | None:
+    """The step key a call belongs to, for the log line."""
+    if step_id is None:
+        return None
+    key = (
+        await session.execute(
+            sa.text("SELECT step_key FROM run_steps WHERE id = :step"), {"step": str(step_id)}
+        )
+    ).scalar()
+    return str(key) if key is not None else None
 
 
 async def log_call(
@@ -86,6 +148,20 @@ async def log_call(
     )
     call_id = result.scalar()
     assert isinstance(call_id, uuid.UUID)
+    emit_model_call(
+        agent=agent,
+        model=model,
+        response_id=response_id,
+        status=status,
+        input_tokens=input_tokens,
+        cached_tokens=cached_tokens,
+        output_tokens=output_tokens,
+        reasoning_tokens=reasoning_tokens,
+        cost_usd=cost,
+        duration_ms=duration_ms,
+        run_id=run_id,
+        step_key=await _step_key(session, step_id),
+    )
     return call_id
 
 
@@ -104,19 +180,38 @@ async def complete_background_call(
 ) -> None:
     """Flip a pending background row to completed (or rejected) with usage and registry cost."""
     cost = compute_cost_usd(model, input_tokens, cached_tokens, output_tokens, reasoning_tokens)
-    await session.execute(
-        llm_calls.update()
-        .where(llm_calls.c.id == call_id)
-        .values(
-            status=status,
-            tokens_input=input_tokens,
-            tokens_cached=cached_tokens,
-            tokens_output=output_tokens,
-            tokens_reasoning=reasoning_tokens,
-            cost_usd=cost,
-            duration_ms=duration_ms,
-            response=sanitize_json(response),
+    row = (
+        await session.execute(
+            llm_calls.update()
+            .where(llm_calls.c.id == call_id)
+            .values(
+                status=status,
+                tokens_input=input_tokens,
+                tokens_cached=cached_tokens,
+                tokens_output=output_tokens,
+                tokens_reasoning=reasoning_tokens,
+                cost_usd=cost,
+                duration_ms=duration_ms,
+                response=sanitize_json(response),
+            )
+            .returning(
+                llm_calls.c.agent, llm_calls.c.response_id, llm_calls.c.run_id, llm_calls.c.step_id
+            )
         )
+    ).one()
+    emit_model_call(
+        agent=row.agent,
+        model=model,
+        response_id=row.response_id,
+        status=status,
+        input_tokens=input_tokens,
+        cached_tokens=cached_tokens,
+        output_tokens=output_tokens,
+        reasoning_tokens=reasoning_tokens,
+        cost_usd=cost,
+        duration_ms=duration_ms,
+        run_id=row.run_id,
+        step_key=await _step_key(session, row.step_id),
     )
 
 

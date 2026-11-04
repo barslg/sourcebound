@@ -17,6 +17,7 @@ import hashlib
 import json
 import re
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -28,6 +29,7 @@ from app.config import Settings
 from app.course.passages import BULLET_LINE_RE, rejoin_list_passages
 from app.course.tree import TS_CONFIGS
 from app.errors import NotFoundError, UnsupportedMediaError, ValidationError
+from app.llm.calls import emit_model_call
 from app.providers.web import FetchedPage as FetchedPage
 
 UPLOAD_MEDIA = ("pdf", "text", "markdown", "image", "audio")
@@ -1221,6 +1223,20 @@ async def transcribe_source(
             "cost": transcription_cost_usd(hours),
             "request": json.dumps({"source_id": str(source_id), "segments": len(segments)}),
         },
+    )
+    emit_model_call(
+        agent="transcriber",
+        model="muse-voice-transcribe-1.0",
+        response_id=None,
+        status="completed",
+        input_tokens=0,
+        cached_tokens=0,
+        output_tokens=0,
+        reasoning_tokens=0,
+        cost_usd=Decimal(str(transcription_cost_usd(hours))),
+        duration_ms=0,
+        run_id=None,
+        step_key=None,
     )
     await session.execute(
         sa.text(

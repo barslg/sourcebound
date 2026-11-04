@@ -10,6 +10,8 @@ from __future__ import annotations
 from procrastinate import App, PsycopgConnector
 
 from app.config import get_settings
+from app.logging import configure_logging
+from app.redact import settings_secrets
 
 
 def psycopg_dsn(url: str) -> str:
@@ -25,8 +27,11 @@ def create_worker_app() -> App:
 
     import_paths pulls in app.tasks.jobs, so the worker process that
     loads this app always registers the operation tasks (no TaskNotFound).
+    It also configures structlog, so the worker prints the same redacted
+    `model_call` lines as the API.
     """
     settings = get_settings()
+    configure_logging(settings.log_level, secrets=tuple(settings_secrets(settings)))
     return App(
         connector=PsycopgConnector(conninfo=psycopg_dsn(settings.database_url)),
         import_paths=["app.tasks.jobs"],

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, UploadFile
+from fastapi import APIRouter, Depends, Query, UploadFile
 
 from app.auth.ctx import RequestContext, get_ctx
 from app.controllers import t03 as controller
 from app.routes.ids import (
     block_id_param,
+    call_id_param,
     candidate_id_param,
     course_id_param,
     item_id_param,
@@ -358,6 +359,27 @@ async def get_run(
 ) -> dict[str, Any]:
     """One run with its steps in DAG order."""
     return await controller.get_run(ctx, run_id=run_id)
+
+
+@runs_router.get("/{run_id}/calls")
+async def list_run_calls(
+    run_id: Annotated[str, Depends(run_id_param)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, Any]:
+    """The run's model calls: totals per agent, one page of calls, block and quote numbers."""
+    return await controller.list_run_calls(ctx, run_id=run_id, limit=limit, offset=offset)
+
+
+@runs_router.get("/{run_id}/calls/{call_id}")
+async def get_run_call(
+    run_id: Annotated[str, Depends(run_id_param)],
+    call_id: Annotated[str, Depends(call_id_param)],
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, Any]:
+    """One call of the run with its request and reply."""
+    return await controller.get_run_call(ctx, run_id=run_id, call_id=call_id)
 
 
 @runs_router.post("/{run_id}/resume", status_code=202)

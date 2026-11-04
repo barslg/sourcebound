@@ -25,6 +25,10 @@ def run_id_param(run_id: str) -> str:
     return _validated(run_id)
 
 
+def call_id_param(call_id: str) -> str:
+    return _validated(call_id)
+
+
 def block_id_param(block_id: str) -> str:
     return _validated(block_id)
 

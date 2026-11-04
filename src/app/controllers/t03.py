@@ -551,6 +551,29 @@ async def get_run(ctx: RequestContext, *, run_id: str) -> dict[str, Any]:
     return await _run_in_scope(ctx, run_id=UUID(run_id))
 
 
+async def list_run_calls(
+    ctx: RequestContext, *, run_id: str, limit: int, offset: int
+) -> dict[str, Any]:
+    from app.runs.call_log import list_run_calls as list_use_case
+    from app.runs.call_log import run_numbers
+
+    actor = require_auth(ctx)
+    require(actor, "run.start")
+    run = await _run_in_scope(ctx, run_id=UUID(run_id))
+    course_id = UUID(str(run["course_id"])) if run.get("course_id") is not None else None
+    page = await list_use_case(ctx.db, run_id=UUID(run_id), limit=limit, offset=offset)
+    return {**page, "numbers": await run_numbers(ctx.db, course_id=course_id)}
+
+
+async def get_run_call(ctx: RequestContext, *, run_id: str, call_id: str) -> dict[str, Any]:
+    from app.runs.call_log import get_run_call as get_use_case
+
+    actor = require_auth(ctx)
+    require(actor, "run.start")
+    await _run_in_scope(ctx, run_id=UUID(run_id))
+    return await get_use_case(ctx.db, run_id=UUID(run_id), call_id=UUID(call_id))
+
+
 async def resume_run(ctx: RequestContext, *, run_id: str) -> dict[str, str]:
     from app.services.planruns import resume_run as resume_use_case
     from app.tasks.jobs import enqueue_operation

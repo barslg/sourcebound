@@ -42,6 +42,8 @@ export const ROUTE_CODES: Readonly<Record<string, readonly string[]>> = {
   "GET /api/v1/preview/topics/{topic_id}": ["learner.view"],
   "GET /api/v1/roles": ["role.edit"],
   "GET /api/v1/runs/{run_id}": ["run.start"],
+  "GET /api/v1/runs/{run_id}/calls": ["run.start"],
+  "GET /api/v1/runs/{run_id}/calls/{call_id}": ["run.start"],
   "GET /api/v1/tags": ["course.edit"],
   "GET /api/v1/users": ["user.list"],
   "PATCH /api/v1/blocks/{block_id}": ["course.edit"],

@@ -31,7 +31,7 @@ class UnpricedModelError(ValueError):
 
 @dataclass(frozen=True)
 class ModelSpec:
-    """One servable model: id, dated USD prices, limits, billing unit.
+    """One servable model: id, display name, dated USD prices, limits, billing unit.
 
     unit is "token" (per-1M-tokens prices below), "image" (per generated
     image), or "search" (per web_search call); unit_price_usd prices one
@@ -40,6 +40,7 @@ class ModelSpec:
     """
 
     model_id: str
+    display_name: str
     input_per_1m_usd: Decimal | None
     cached_per_1m_usd: Decimal | None
     output_per_1m_usd: Decimal | None
@@ -61,6 +62,7 @@ TEST_PROVIDER_NOTE = (
 MODELS: dict[str, ModelSpec] = {
     "muse-spark-1.3": ModelSpec(
         model_id="muse-spark-1.3",
+        display_name="Muse Spark 1.3",
         input_per_1m_usd=Decimal("1.25"),
         cached_per_1m_usd=Decimal("0.15"),
         output_per_1m_usd=Decimal("4.25"),
@@ -69,6 +71,7 @@ MODELS: dict[str, ModelSpec] = {
     ),
     "muse-wonder-1.0": ModelSpec(
         model_id="muse-wonder-1.0",
+        display_name="Muse Wonder 1.0",
         input_per_1m_usd=Decimal("4.00"),
         cached_per_1m_usd=Decimal("0.20"),
         output_per_1m_usd=Decimal("20.00"),
@@ -77,6 +80,7 @@ MODELS: dict[str, ModelSpec] = {
     ),
     "muse-image-1.0": ModelSpec(
         model_id="muse-image-1.0",
+        display_name="Muse Image 1.0",
         input_per_1m_usd=None,
         cached_per_1m_usd=None,
         output_per_1m_usd=None,
@@ -88,6 +92,7 @@ MODELS: dict[str, ModelSpec] = {
     ),
     "web_search": ModelSpec(
         model_id="web_search",
+        display_name="Web search",
         input_per_1m_usd=None,
         cached_per_1m_usd=None,
         output_per_1m_usd=None,
@@ -100,6 +105,7 @@ MODELS: dict[str, ModelSpec] = {
     ),
     "muse-voice-transcribe-1.0": ModelSpec(
         model_id="muse-voice-transcribe-1.0",
+        display_name="Muse Voice Transcribe 1.0",
         input_per_1m_usd=None,
         cached_per_1m_usd=None,
         output_per_1m_usd=None,
@@ -112,6 +118,7 @@ MODELS: dict[str, ModelSpec] = {
     ),
     "claude-sonnet-5-5": ModelSpec(
         model_id="claude-sonnet-5-5",
+        display_name="Claude Sonnet 5.5 (test provider)",
         input_per_1m_usd=Decimal("2.00"),
         cached_per_1m_usd=Decimal("0.20"),
         output_per_1m_usd=Decimal("10.00"),
@@ -122,6 +129,7 @@ MODELS: dict[str, ModelSpec] = {
     ),
     "claude-opus-5-5": ModelSpec(
         model_id="claude-opus-5-5",
+        display_name="Claude Opus 5.5 (test provider)",
         input_per_1m_usd=Decimal("4.00"),
         cached_per_1m_usd=Decimal("0.20"),
         output_per_1m_usd=Decimal("20.00"),
@@ -132,6 +140,7 @@ MODELS: dict[str, ModelSpec] = {
     ),
     "muse-spark-1.3-contributor": ModelSpec(
         model_id="muse-spark-1.3-contributor",
+        display_name="Muse Spark 1.3 Contributor (dev only)",
         input_per_1m_usd=Decimal("0.10"),
         cached_per_1m_usd=Decimal("0.002"),
         output_per_1m_usd=Decimal("0.20"),
@@ -234,6 +243,12 @@ def resolve_step(
         raise ConfigurationError(f"step {agent}: max_output_tokens must be positive")
     get_model(resolved_model)
     return resolved_model, resolved_effort, resolved_tokens
+
+
+def display_name_of(model_id: str) -> str:
+    """The human name of a model for the UI; an id outside the registry shows as itself."""
+    spec = MODELS.get(model_id)
+    return spec.display_name if spec is not None else model_id
 
 
 def get_model(model_id: str) -> ModelSpec:
