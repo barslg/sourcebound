@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.course.grounding import locate_verbatim
 from app.course.handles import address_sort_key, handle_map
 from app.course.replay import join_hold_lines
-from app.errors import LLMError, UnparseableReplyError, ValidationError
+from app.errors import LLMError, RunCancelled, UnparseableReplyError, ValidationError
 from app.llm.registry import resolve_step
 from app.runs.stop_text import (
     CAP_REACHED,
@@ -546,6 +546,19 @@ async def _drive_locked(
                 await handler(
                     session, run_id=run_id, entry=entry, provider_factory=provider_factory
                 )
+            except RunCancelled as cancelled:
+                await session.rollback()
+                async with factory() as failed:
+                    await failed.execute(
+                        sa.text(
+                            "UPDATE run_steps SET status = 'failed', error = :error,"
+                            " finished_at = now() WHERE run_id = :run AND step_key = :key"
+                        ),
+                        {"error": str(cancelled), "run": str(run_id), "key": step_key},
+                    )
+                    await stop_run(failed, run_id=run_id, marker=str(cancelled))
+                async with factory() as fresh:
+                    return await get_run(fresh, run_id=run_id)
             except Exception as exc:
                 await session.rollback()
                 async with factory() as failed:

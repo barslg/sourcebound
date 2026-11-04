@@ -2674,3 +2674,70 @@ def test_recheck_lines_keep_key_lines_only_where_the_key_is_unreadable_and_never
     assert remaining_lines(row("choice", [taught], [])) == [taught]
     assert remaining_lines(row("cloze", [cloze], [])) == [cloze]
     assert remaining_lines({**row("choice", [taught], []), "keyed": True}) == []
+
+
+async def test_a_cancel_inside_the_rework_step_stops_before_its_next_paid_call(
+    t03_session: AsyncSession,
+) -> None:
+    """The author's Stop lands while the rework rereads: no further call is paid, the run stops.
+
+    The 2026-11-04 Gemini bench: a cancel at 15:22 was honoured only after the
+    rework step had paid six more reader calls (13 minutes, $0.88).
+    """
+    import psycopg
+
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-rework-cancel")
+    final = await _smoke_run(t03_session, demo, dag, demo_t05.mock_demo_handler())
+    assert final["status"] == "done", final["stop_marker"]
+    course = str(demo["course_id"])
+    run_id = UUID(str(final["id"]))
+    await t03_session.execute(
+        sa.text(
+            "INSERT INTO block_versions"
+            " (block_id, version_no, content, answer_key, schema_version, run_step_id)"
+            " SELECT bv.block_id, bv.version_no + 1, bv.content, bv.answer_key,"
+            " bv.schema_version, bv.run_step_id FROM blocks b"
+            " JOIN block_versions bv ON bv.id = b.current_version_id"
+            " JOIN topics t ON t.id = b.topic_id JOIN modules m ON m.id = t.module_id"
+            " WHERE m.course_id = :c"
+        ),
+        {"c": course},
+    )
+    await t03_session.execute(
+        sa.text(
+            "UPDATE blocks SET status = 'draft', hold_reason = NULL, accepted_version_id = NULL,"
+            " current_version_id = (SELECT id FROM block_versions"
+            "  WHERE block_id = blocks.id ORDER BY version_no DESC LIMIT 1)"
+            " WHERE id IN (SELECT b.id FROM blocks b JOIN topics t ON t.id = b.topic_id"
+            " JOIN modules m ON m.id = t.module_id WHERE m.course_id = :c)"
+        ),
+        {"c": course},
+    )
+    await t03_session.execute(
+        sa.text(
+            "UPDATE run_steps SET status = 'failed', error = 'LLMError: polling timed out'"
+            " WHERE run_id = :run AND step_key = 'rework:named-blocks'"
+        ),
+        {"run": str(run_id)},
+    )
+    await t03_session.execute(
+        sa.text("UPDATE runs SET status = 'stopped' WHERE id = :run"), {"run": str(run_id)}
+    )
+    await t03_session.execute(sa.text("DELETE FROM llm_replies"))
+    await t03_session.commit()
+    before = await demo_t05.paid_by_step(t03_session, run_id=run_id)
+    inner = demo_t05.mock_demo_handler()
+    dsn = _db_url().replace("postgresql+asyncpg://", "postgresql://")
+
+    def cancel_on_first_call(request: httpx2.Request) -> httpx2.Response:
+        with psycopg.connect(dsn, autocommit=True) as conn:
+            conn.execute(
+                "UPDATE runs SET stop_marker = 'cancel requested' WHERE id = %s", (str(run_id),)
+            )
+        return inner(request)
+
+    stopped = await _smoke_drive(run_id, cancel_on_first_call)
+    after = await demo_t05.paid_by_step(t03_session, run_id=run_id)
+    paid = sum(v["paid"] for v in after.values()) - sum(v["paid"] for v in before.values())
+    assert paid == 1, {k: (before.get(k), v) for k, v in after.items() if before.get(k) != v}
+    assert (stopped["status"], stopped["stop_marker"]) == ("stopped", "cancel requested")

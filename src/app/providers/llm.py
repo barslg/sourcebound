@@ -37,6 +37,7 @@ from app.errors import (
     ConfigurationError,
     ForbiddenError,
     LLMError,
+    RunCancelled,
     SpendCapReached,
     UnparseableReplyError,
     ValidationError,
@@ -91,7 +92,7 @@ class MetaProvider:
         return self._client
 
     async def _guard_spend(self, run_id: UUID | None) -> None:
-        """Refuse a paid call when the run has spent its ceiling (NULL = no ceiling).
+        """Refuse a paid call when the run was stopped or has spent its ceiling (NULL = no ceiling).
 
         Read through the ledger session, so the sum sees every committed call;
         the overshoot is at most the one call already in flight.
@@ -104,11 +105,13 @@ class MetaProvider:
                     sa.text(
                         "SELECT r.spend_ceiling_usd,"
                         " (SELECT COALESCE(SUM(l.cost_usd), 0) FROM llm_calls l"
-                        " WHERE l.run_id = r.id) FROM runs r WHERE r.id = :run"
+                        " WHERE l.run_id = r.id), r.stop_marker FROM runs r WHERE r.id = :run"
                     ),
                     {"run": str(run_id)},
                 )
             ).first()
+        if row is not None and row[2]:
+            raise RunCancelled(str(row[2]))
         if row is not None and row[0] is not None and row[1] >= row[0]:
             raise SpendCapReached("The spending cap of this run was reached.")
 
