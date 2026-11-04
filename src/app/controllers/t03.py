@@ -545,6 +545,18 @@ async def build_course(
     return {"operation_id": str(operation_id)}
 
 
+async def stop_build(ctx: RequestContext, *, course_id: str) -> dict[str, bool]:
+    from app.services.build import stop_build as stop_use_case
+    from app.services.courses import get_course as get_use_case
+
+    actor = require_auth(ctx)
+    require(actor, "course.generate")
+    course = await get_use_case(ctx.db, course_id=UUID(course_id))
+    _owner_or_404(course, actor.user_id, actor.is_superadmin)
+    await stop_use_case(ctx.db, actor=actor, course_id=UUID(course_id))
+    return {"ok": True}
+
+
 async def get_build(ctx: RequestContext, *, course_id: str) -> dict[str, Any]:
     from app.services.build import build_status
     from app.services.courses import get_course as get_use_case

@@ -233,6 +233,15 @@ async def build_course(
     )
 
 
+@courses_router.post("/{course_id}/build/stop")
+async def stop_build(
+    course_id: Annotated[str, Depends(course_id_param)],
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> dict[str, bool]:
+    """The author's Stop: cancel the live child run, or end a build nothing drives."""
+    return await controller.stop_build(ctx, course_id=course_id)
+
+
 @courses_router.get("/{course_id}/build")
 async def get_build(
     course_id: Annotated[str, Depends(course_id_param)],

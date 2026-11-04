@@ -497,9 +497,172 @@ async def test_the_build_routes_are_owner_scoped_and_a_live_build_blocks_a_block
         rewrite = await client.post(f"/api/v1/blocks/{block}/rewrite", headers=headers)
         assert rewrite.status_code == 409, rewrite.text
         assert (await client.post(url, json={"cap_usd": "0"}, headers=headers)).status_code == 422
+        assert (await client.post(f"{url}/stop", headers=headers)).status_code == 200
+        ended = (await client.get(url)).json()["build"]
+        assert ended["state"] == "stopped" and ended["error"] == build.STOPPED_BY_AUTHOR
+        assert (await client.post(f"{url}/stop", headers=headers)).status_code == 409
     other = await cookie_for(t03_session, stranger)
     async with http(other[0]) as client:
         assert (await client.get(url)).status_code == 404
+        assert (
+            await client.post(f"{url}/stop", headers={"X-CSRF-Token": other[1]})
+        ).status_code == 404
     outsider = await cookie_for(t03_session, nobody)
     async with http(outsider[0]) as client:
         assert (await client.get(url)).status_code == 403
+
+
+async def _insert_op(
+    session: AsyncSession,
+    course_id: UUID,
+    user_id: UUID,
+    *,
+    kind: str,
+    status: str,
+    minutes: int,
+    result: dict[str, Any] | None = None,
+) -> UUID:
+    params = {"course_id": str(course_id), "cap_usd": "15", "started_at": "2026-11-01T00:00:00Z"}
+    row = await session.execute(
+        sa.text(
+            "INSERT INTO operations (kind, status, params, result, progress, actor_id, updated_at)"
+            " VALUES (:k, :s, CAST(:p AS jsonb), CAST(:r AS jsonb), 0, :a,"
+            " now() - make_interval(mins => :m)) RETURNING id"
+        ),
+        {
+            "k": kind,
+            "s": status,
+            "p": json.dumps(params),
+            "r": json.dumps(result) if result is not None else None,
+            "a": str(user_id),
+            "m": minutes,
+        },
+    )
+    await session.commit()
+    return UUID(str(row.scalar_one()))
+
+
+async def test_an_operation_nothing_drives_no_longer_locks_the_course(
+    t03_session: AsyncSession,
+) -> None:
+    user_id, course_id = await _plan_course_with_source(t03_session)
+    actor = _plan_actor(user_id, frozenset({*BUILD_CODES, "operation.run"}))
+    stale_queued = await _insert_op(
+        t03_session, course_id, user_id, kind="build_course", status="queued", minutes=600
+    )
+    stale_running = await _insert_op(
+        t03_session, course_id, user_id, kind="submit_generate", status="running", minutes=600
+    )
+    assert not await planruns.live_work_on(t03_session, course_id=course_id)
+    await planruns.submit_plan(t03_session, actor=actor, course_id=course_id, queries=["x"])
+    for op in (stale_queued, stale_running):
+        await t03_session.execute(
+            sa.text("UPDATE operations SET updated_at = now() WHERE id = :o"), {"o": str(op)}
+        )
+    await t03_session.commit()
+    assert await planruns.live_work_on(t03_session, course_id=course_id)
+
+
+async def test_a_quiet_build_whose_driver_still_holds_the_lock_keeps_the_course_busy(
+    t03_session: AsyncSession,
+) -> None:
+    user_id, course_id = await _plan_course_with_source(t03_session)
+    await _insert_op(
+        t03_session, course_id, user_id, kind="build_course", status="running", minutes=10
+    )
+    assert not await planruns.live_work_on(t03_session, course_id=course_id)
+    engine = create_session_factory(_db_url()).kw["bind"]
+    async with engine.connect() as holder:
+        await holder.execute(
+            sa.text("SELECT pg_advisory_lock(hashtext(:k))"), {"k": f"build:{course_id}"}
+        )
+        assert await planruns.live_work_on(t03_session, course_id=course_id)
+        await holder.execute(
+            sa.text("SELECT pg_advisory_unlock(hashtext(:k))"), {"k": f"build:{course_id}"}
+        )
+
+
+async def test_a_stranded_running_operation_whose_run_is_live_still_counts(
+    t03_session: AsyncSession,
+) -> None:
+    user_id, course_id = await _plan_course_with_source(t03_session)
+    run_id = await executor.new_run(t03_session, course_id=course_id, kind="generation", dag=[])
+    await t03_session.commit()
+    await _insert_op(
+        t03_session,
+        course_id,
+        user_id,
+        kind="submit_generate",
+        status="running",
+        minutes=600,
+        result={"run_id": str(run_id)},
+    )
+    await executor.stop_run(t03_session, run_id=run_id, marker="x")
+    assert not await planruns.live_work_on(t03_session, course_id=course_id)
+    await t03_session.execute(
+        sa.text("UPDATE runs SET status = 'running' WHERE id = :r"), {"r": str(run_id)}
+    )
+    await t03_session.commit()
+    assert await planruns.live_work_on(t03_session, course_id=course_id)
+
+
+async def test_revive_re_queues_a_build_that_never_started_and_stop_ends_one_nothing_drives(
+    t03_session: AsyncSession,
+) -> None:
+    user_id, course_id = await _plan_course_with_source(t03_session)
+    operation = await _insert_op(
+        t03_session, course_id, user_id, kind="build_course", status="queued", minutes=10
+    )
+    queued: list[UUID] = []
+
+    async def defer(op: UUID) -> None:
+        queued.append(op)
+
+    assert await build.revive_stranded_builds(t03_session, defer=defer) == [operation]
+    shown = (await build.build_status(t03_session, course_id=course_id))["build"]
+    assert shown["state"] == "building" and shown["can_stop"] is True
+    actor = _plan_actor(user_id, BUILD_CODES)
+    await build.stop_build(t03_session, actor=actor, course_id=course_id)
+    stopped = (await build.build_status(t03_session, course_id=course_id))["build"]
+    assert stopped["state"] == "stopped" and stopped["error"] == build.STOPPED_BY_AUTHOR
+    assert not await planruns.live_work_on(t03_session, course_id=course_id)
+
+
+async def test_two_submits_at_once_make_one_build(t03_session: AsyncSession) -> None:
+    user_id, course_id = await _plan_course_with_source(t03_session)
+    actor = _plan_actor(user_id, BUILD_CODES)
+
+    async def submit() -> str:
+        async with create_session_factory(_db_url())() as session:
+            try:
+                await build.submit_build(
+                    session, actor=actor, course_id=course_id, queries=["q"], cap_usd=Decimal("1")
+                )
+            except ConflictError:
+                return "refused"
+            return "queued"
+
+    outcomes = sorted(await asyncio.gather(submit(), submit(), submit()))
+    assert outcomes == ["queued", "refused", "refused"]
+
+
+async def test_a_second_build_job_for_a_course_that_is_being_built_fails_instead_of_idling(
+    t03_session: AsyncSession,
+) -> None:
+    user_id, course_id = await _plan_course_with_source(t03_session)
+    await _insert_op(
+        t03_session, course_id, user_id, kind="build_course", status="running", minutes=0
+    )
+    duplicate = await _insert_op(
+        t03_session, course_id, user_id, kind="build_course", status="queued", minutes=0
+    )
+    engine = create_session_factory(_db_url()).kw["bind"]
+    async with engine.connect() as holder:
+        await holder.execute(
+            sa.text("SELECT pg_advisory_lock(hashtext(:k))"), {"k": f"build:{course_id}"}
+        )
+        with pytest.raises(ConflictError, match="another build"):
+            await _run_build(t03_session, duplicate, _build_handler())
+        await holder.execute(
+            sa.text("SELECT pg_advisory_unlock(hashtext(:k))"), {"k": f"build:{course_id}"}
+        )

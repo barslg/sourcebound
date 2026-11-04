@@ -28,6 +28,8 @@ from app.services.audit import write_audit
 
 OPERATION_KIND_BUILD = "build_course"
 BUILD_LOCK_PREFIX = "build:"
+BUILD_SUBMIT_LOCK_PREFIX = "build-submit:"
+STOPPED_BY_AUTHOR = "The build was stopped by you."
 BUILD_REWRITE_ROUNDS = 1
 MAX_GENERATION_RUNS = 3
 MAX_EVENTS = 5
@@ -55,6 +57,17 @@ class BuildStopped(Exception):
 
 async def _now_iso(session: AsyncSession) -> str:
     return str((await session.execute(sa.text("SELECT now()"))).scalar_one().isoformat())
+
+
+async def build_lock_free(session: AsyncSession, *, course_id: UUID) -> bool:
+    """True when no worker holds the course's build lock, i.e. nobody is driving a build."""
+    key = f"{BUILD_LOCK_PREFIX}{course_id}"
+    free = (
+        await session.execute(sa.text("SELECT pg_try_advisory_lock(hashtext(:key))"), {"key": key})
+    ).scalar()
+    if free:
+        await session.execute(sa.text("SELECT pg_advisory_unlock(hashtext(:key))"), {"key": key})
+    return bool(free)
 
 
 async def _modules(session: AsyncSession, course_id: UUID) -> int:
@@ -125,6 +138,10 @@ async def submit_build(
         ).first()
         if existing is not None:
             return UUID(str(existing[0]))
+    await session.execute(
+        sa.text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+        {"key": f"{BUILD_SUBMIT_LOCK_PREFIX}{course_id}"},
+    )
     if await live_work_on(session, course_id=course_id):
         raise ConflictError("A run is already going")
     started_at = await _now_iso(session)
@@ -248,8 +265,20 @@ class _Build:
         await self.note(stop_code=code, event=event or reason)
         raise BuildStopped(reason, code)
 
+    async def ensure_not_stopped(self) -> None:
+        """Raise the stop when the author ended this build (the row is no longer going)."""
+        async with self.factory() as session:
+            status = (
+                await session.execute(
+                    sa.text("SELECT status FROM operations WHERE id = :op"), {"op": str(self.op)}
+                )
+            ).scalar()
+        if status == "failed":
+            raise BuildStopped(STOPPED_BY_AUTHOR, "cancelled")
+
     async def check_cap(self) -> Decimal:
         """Raise the stop when the cap is spent; else the amount still available."""
+        await self.ensure_not_stopped()
         spent = await self.spent()
         if spent >= self.cap:
             await self.stop(f"{CAP_REACHED} Spent ${spent:.2f} of ${self.cap:.2f}.", "cap")
@@ -323,7 +352,7 @@ class _Build:
             marker = str(final.get("stop_marker") or "")
             code = final.get("stop_code")
             if marker == "cancel requested":
-                await self.stop("The build was stopped by you.", "cancelled")
+                await self.stop(STOPPED_BY_AUTHOR, "cancelled")
             if code == "cap_reached":
                 spent = await self.spent()
                 await self.stop(f"{CAP_REACHED} Spent ${spent:.2f} of ${self.cap:.2f}.", "cap")
@@ -491,6 +520,7 @@ class _Build:
     async def run(self) -> dict[str, Any]:
         await self.note(stage="starting", cap_usd=str(self.cap), started_at=self.started_at)
         while True:
+            await self.ensure_not_stopped()
             facts = await self.facts()
             if facts["modules"] == 0:
                 await self.check_cap()
@@ -557,6 +587,17 @@ async def run_build_operation(
             )
         ).scalar()
         if not acquired:
+            rival = (
+                await session.execute(
+                    sa.text(
+                        "SELECT 1 FROM operations WHERE kind = :k AND status = 'running'"
+                        " AND params ->> 'course_id' = :c AND id <> :op"
+                    ),
+                    {"k": OPERATION_KIND_BUILD, "c": str(course_id), "op": str(operation_id)},
+                )
+            ).first()
+            if rival is not None:
+                raise ConflictError("another build of this course is running")
             return {"state": "duplicate"}
         try:
             return await _Build(
@@ -591,13 +632,6 @@ async def build_status(session: AsyncSession, *, course_id: UUID) -> dict[str, A
     params = dict(row[4])
     spent = await build_spent(session, course_id=course_id, started_at=str(params["started_at"]))
     current = result.get("current_run_id")
-    live = False
-    if current:
-        live = (
-            await session.execute(
-                sa.text("SELECT status = 'running' FROM runs WHERE id = :r"), {"r": str(current)}
-            )
-        ).scalar() is True
     assumed = (
         await session.execute(
             sa.text(
@@ -625,7 +659,7 @@ async def build_status(session: AsyncSession, *, course_id: UUID) -> dict[str, A
             "spent_usd": str(spent),
             "started_at": str(params["started_at"]),
             "current_run_id": str(current) if current else None,
-            "can_stop": live and row[1] in ("queued", "running"),
+            "can_stop": row[1] in ("queued", "running"),
             "events": [str(e) for e in result.get("events", [])],
             "assumed": [
                 {"key": a[0], "question": a[1], "value": str((a[2] or {}).get("value", ""))}
@@ -640,12 +674,57 @@ async def build_status(session: AsyncSession, *, course_id: UUID) -> dict[str, A
     }
 
 
+async def stop_build(session: AsyncSession, *, actor: Principal, course_id: UUID) -> None:
+    """The author's Stop: cancel the live child run, or end the build row nothing drives.
+
+    A running child run gets the ordinary cooperative cancel and the loop stops
+    on it. Otherwise the row is marked failed with a plain reason; a driver that
+    is only between stages sees the failed row before its next paid step.
+    """
+    from app.runs.executor import cancel_run
+
+    require(actor, "course.generate")
+    row = (
+        await session.execute(
+            sa.text(
+                "SELECT id, status, result FROM operations WHERE kind = :k"
+                " AND params->>'course_id' = :c ORDER BY created_at DESC LIMIT 1"
+            ),
+            {"k": OPERATION_KIND_BUILD, "c": str(course_id)},
+        )
+    ).first()
+    if row is None or row[1] not in ("queued", "running"):
+        raise ConflictError("There is no build going to stop.")
+    current = (row[2] or {}).get("current_run_id")
+    live = (
+        current is not None
+        and (
+            await session.execute(
+                sa.text("SELECT status = 'running' FROM runs WHERE id = :r"), {"r": str(current)}
+            )
+        ).scalar()
+        is True
+    )
+    if live:
+        await cancel_run(session, run_id=UUID(str(current)))
+        return
+    await session.execute(
+        sa.text(
+            "UPDATE operations SET status = 'failed', progress = 1, error = :e,"
+            " result = COALESCE(result, '{}'::jsonb) || CAST(:r AS jsonb), updated_at = now()"
+            " WHERE id = :op"
+        ),
+        {"e": STOPPED_BY_AUTHOR, "r": json.dumps({"stop_code": "cancelled"}), "op": str(row[0])},
+    )
+    await session.commit()
+
+
 async def revive_stranded_builds(
     session: AsyncSession, *, defer: Callable[[UUID], Awaitable[None]]
 ) -> list[UUID]:
-    """Re-queue builds that say running while no worker drives them.
+    """Re-queue builds that say queued or running while no worker drives them.
 
-    Needs status running, no touch for REVIVE_AFTER_SECONDS, and the course's
+    Needs status queued or running, no touch for REVIVE_AFTER_SECONDS, and the course's
     build lock free: the lock is held for the whole job, so a free lock proves
     nobody is driving. The row is touched so the next minute does not queue it again.
     """
@@ -653,7 +732,7 @@ async def revive_stranded_builds(
         await session.execute(
             sa.text(
                 "SELECT id, params->>'course_id' FROM operations WHERE kind = :k"
-                " AND status = 'running'"
+                " AND status IN ('queued', 'running')"
                 " AND updated_at < now() - make_interval(secs => :age) ORDER BY created_at"
             ),
             {"k": OPERATION_KIND_BUILD, "age": REVIVE_AFTER_SECONDS},
@@ -661,15 +740,8 @@ async def revive_stranded_builds(
     ).all()
     revived: list[UUID] = []
     for operation_id, course_id in rows:
-        key = f"{BUILD_LOCK_PREFIX}{course_id}"
-        free = (
-            await session.execute(
-                sa.text("SELECT pg_try_advisory_lock(hashtext(:key))"), {"key": key}
-            )
-        ).scalar()
-        if not free:
+        if not await build_lock_free(session, course_id=UUID(str(course_id))):
             continue
-        await session.execute(sa.text("SELECT pg_advisory_unlock(hashtext(:key))"), {"key": key})
         await session.execute(
             sa.text("UPDATE operations SET updated_at = now() WHERE id = :op"),
             {"op": str(operation_id)},

@@ -27,28 +27,50 @@ OPERATION_KIND_SUBMIT_PLAN = "submit_plan"
 OPERATION_KIND_SUBMIT_GENERATE = "submit_generate"
 
 
+OPERATION_FRESH_SECONDS = 120
 LIVE_OPERATION_KINDS = ("submit_plan", "submit_generate", "submit_translate", "build_course")
 
 
 async def live_work_on(session: AsyncSession, *, course_id: UUID) -> bool:
     """True while a run of the course is queued or running, or a plan, generate,
-    translate or build operation of it is waiting or going."""
+    translate or build operation of it is really going.
+
+    An operation counts only while something can still be driving it: it was
+    touched within OPERATION_FRESH_SECONDS, or the run it points at is live, or
+    (a build) its driver holds the course's build lock. A row left queued or
+    running by a dead worker proves nothing and must not lock the course.
+    """
+    from app.services.build import OPERATION_KIND_BUILD, build_lock_free
+
     live_run = (
         await session.execute(
             sa.text("SELECT id FROM runs WHERE course_id = :c AND status IN ('queued', 'running')"),
             {"c": str(course_id)},
         )
     ).first()
-    live_op = (
+    if live_run is not None:
+        return True
+    rows = (
         await session.execute(
             sa.text(
-                "SELECT id FROM operations WHERE kind = ANY(:kinds)"
-                " AND status IN ('queued', 'running') AND params->>'course_id' = :c"
+                "SELECT o.kind, o.updated_at > now() - make_interval(secs => :fresh),"
+                " EXISTS (SELECT 1 FROM runs r WHERE CAST(r.id AS text) = o.result ->> 'run_id'"
+                " AND r.status IN ('queued', 'running'))"
+                " FROM operations o WHERE o.kind = ANY(:kinds)"
+                " AND o.status IN ('queued', 'running') AND o.params ->> 'course_id' = :c"
             ),
-            {"kinds": list(LIVE_OPERATION_KINDS), "c": str(course_id)},
+            {
+                "kinds": list(LIVE_OPERATION_KINDS),
+                "c": str(course_id),
+                "fresh": OPERATION_FRESH_SECONDS,
+            },
         )
-    ).first()
-    return live_run is not None or live_op is not None
+    ).all()
+    if any(fresh or run_live for _, fresh, run_live in rows):
+        return True
+    if not any(kind == OPERATION_KIND_BUILD for kind, _, _ in rows):
+        return False
+    return not await build_lock_free(session, course_id=course_id)
 
 
 async def _submit(
