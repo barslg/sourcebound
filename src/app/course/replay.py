@@ -54,8 +54,9 @@ def is_code_hold(line: str) -> bool:
 
 def plan_of(blocks: list[dict[str, Any]]) -> dict[str, Any]:
     """The frozen plan shape the generators see, from the stored blocks."""
-    topics: dict[str, dict[str, Any]] = {}
+    modules: dict[str, dict[str, dict[str, Any]]] = {}
     for block in blocks:
+        topics = modules.setdefault(str(block.get("module", "m")), {})
         topic = topics.setdefault(
             block["topic"],
             {
@@ -75,7 +76,12 @@ def plan_of(blocks: list[dict[str, Any]]) -> dict[str, Any]:
                 "source_passages": dict(block["plan_content"].get("source_passages", {})),
             }
         )
-    return {"modules": [{"plan_node_id": "m", "topics": list(topics.values())}]}
+    return {
+        "modules": [
+            {"plan_node_id": node, "topics": list(topics.values())}
+            for node, topics in modules.items()
+        ]
+    }
 
 
 def generator_output(block: dict[str, Any]) -> dict[str, Any]:
@@ -200,9 +206,10 @@ def replay_blocks(
             taught_pids: list[str] = []
             if taught is not None:
                 stored: dict[str, Any] = {}
-                for topic in plan["modules"][0]["topics"]:
-                    for item in topic["blocks"]:
-                        stored.update(item.get("source_passages", {}))
+                for module in plan["modules"]:
+                    for topic in module["topics"]:
+                        for item in topic["blocks"]:
+                            stored.update(item.get("source_passages", {}))
                 taught_pids = [str(stored[h]) for h in taught[0] if h in stored]
             taught_texts = [
                 by_id.get(pid, {}).get("text", "") for pid in (taught_pids or cited_pids)
@@ -268,7 +275,8 @@ def plan_coverage_errors(blocks: list[dict[str, Any]], numbered: list[dict[str, 
                                 for b in topic["blocks"]
                             ],
                         }
-                        for topic in plan["modules"][0]["topics"]
+                        for module in plan["modules"]
+                        for topic in module["topics"]
                     ],
                 }
             ],

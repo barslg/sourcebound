@@ -39,7 +39,7 @@ async def load_blocks(session: AsyncSession, *, course_id: UUID) -> list[dict[st
                 " (SELECT content FROM block_versions"
                 "  WHERE block_id = b.id AND content -> 'source_handles' IS NOT NULL"
                 "  ORDER BY version_no DESC LIMIT 1),"
-                " b.accepted_version_id = b.current_version_id"
+                " b.accepted_version_id = b.current_version_id, m.id"
                 " FROM blocks b JOIN topics t ON t.id = b.topic_id"
                 " JOIN modules m ON m.id = t.module_id"
                 " LEFT JOIN block_versions bv ON bv.id = b.current_version_id"
@@ -78,6 +78,7 @@ async def load_blocks(session: AsyncSession, *, course_id: UUID) -> list[dict[st
             "objectives": list(r[12] or []),
             "plan_content": dict(r[13] or {}),
             "author_accepted": bool(r[14]),
+            "module": str(r[15]),
             "citations": cited.get(str(r[6]), []) if r[6] is not None else [],
         }
         for r in rows

@@ -686,3 +686,29 @@ def test_replay_reads_a_number_against_every_passage_the_topic_cites_not_only_th
     )
     assert lines["t1-b1"] == [] and lines["t1-b2"] == []
     assert len(lines["t1-b3"]) == 1 and "'85'" in lines["t1-b3"][0]
+
+
+def test_a_module_test_is_judged_against_its_own_module_not_the_whole_course() -> None:
+    """65536 is module 1's number: a module-2 test using it is held, while 3 (module 2's) is not."""
+    numbered = [
+        {"passage_id": "pid1", "handle": "P1", "text": "The buffer holds 65536 bytes."},
+        {"passage_id": "pid2", "handle": "P2", "text": "The loop stops after 3 tries."},
+    ]
+
+    def block(node: str, module: str, topic: str, kind: str, role: str, body: str, cited: str):
+        item = _topic_block(node, role, body, cited)
+        item.update({"module": module, "topic": topic, "topic_kind": kind})
+        return item
+
+    blocks = [
+        block("m1-t1-b1", "m1", "m1-t1", "lesson", "teach", "The buffer holds 65536.", "P1"),
+        block("m2-t1-b1", "m2", "m2-t1", "lesson", "teach", "The loop stops after 3.", "P2"),
+        block("m2-test-b1", "m2", "m2-test", "module_test", "test", "The limit is 65536?", "P2"),
+        block("m2-test-b2", "m2", "m2-test", "module_test", "test", "It stops after 3?", "P2"),
+    ]
+    lines = {
+        r["node"]: [h for h in r["holds"] if h.startswith("number: ")]
+        for r in replay_blocks(blocks, numbered)
+    }
+    assert len(lines["m2-test-b1"]) == 1 and "'65536'" in lines["m2-test-b1"][0]
+    assert lines["m2-test-b2"] == [] and lines["m1-t1-b1"] == []
