@@ -163,12 +163,15 @@ test('readability: measure at most 75 characters, one h1, headings in order, no 
   for (const [name, path] of authorRoutes()) {
     await open(page, path)
     const r = await page.evaluate(() => {
-      const probe = document.createElement('div')
-      probe.style.width = '75ch'
-      document.querySelector('main')?.appendChild(probe)
-      const limit = probe.getBoundingClientRect().width + 1
-      probe.remove()
-      const wide = [...document.querySelectorAll('main p')].filter((p) => (p as HTMLElement).checkVisibility() && p.getBoundingClientRect().width > limit).map((p) => (p.textContent ?? '').slice(0, 30))
+      const widerThan75OwnCharacters = (p: Element): boolean => {
+        const probe = document.createElement('span')
+        probe.style.cssText = 'display:inline-block;width:75ch'
+        p.appendChild(probe)
+        const limit = probe.getBoundingClientRect().width + 1
+        probe.remove()
+        return p.getBoundingClientRect().width > limit
+      }
+      const wide = [...document.querySelectorAll('main p')].filter((p) => (p as HTMLElement).checkVisibility() && widerThan75OwnCharacters(p)).map((p) => (p.textContent ?? '').slice(0, 30))
       const levels = [...document.querySelectorAll('h1, h2, h3, h4')].filter((h) => (h as HTMLElement).checkVisibility() && !h.closest('.p-toast')).map((h) => Number(h.tagName[1]))
       const jumps = levels.filter((l, k) => k > 0 && l - (levels[k - 1] as number) > 1)
       const caps = [...document.querySelectorAll('body *')].filter((e) => getComputedStyle(e).textTransform === 'uppercase' && (e as HTMLElement).checkVisibility()).length
