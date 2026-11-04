@@ -568,9 +568,9 @@
       "accept": "Blokken er godtatt.",
       "edit": "Blokken er lagret.",
       "batch": "Omskriving av alle holdte blokker er satt i kø.",
-      "recheck": "Ny sjekk ferdig: {released} frigitt, {unread} tilbake til utkast for lesing, {held} fortsatt holdt tilbake."
+      "recheck": "Ny sjekk ferdig: {released} frigitt, {unread} tilbake til utkast for lesing, {held} fortsatt holdt tilbake, {newly} godkjente blokker nå holdt tilbake av en gjeldende sjekk."
     },
-    "recheck": "Sjekk holdte blokker på nytt",
+    "recheck": "Sjekk alle blokker på nytt",
     "batch": "Skriv om alle blokker som er holdt tilbake ({count}, omtrent {price})",
     "noPassage": "Kildeavsnittet er ikke tilgjengelig.",
     "editHint": "Beskriv hva blokken skal si; ikke lim svaret inn i spørsmålet.",

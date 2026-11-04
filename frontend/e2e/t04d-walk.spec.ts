@@ -38,7 +38,7 @@ const CONTROLS: Array<[RegExp, Call]> = [
   [/^Add module$/, 'PATCH /api/v1/courses/{}/plan'],
   [/^Show or hide the blocks of /, 'ui'],
   [/^Rewrite all held blocks/, 'POST /api/v1/courses/{}/held/rewrite'],
-  [/^Re-check held blocks$/, 'POST /api/v1/courses/{}/held/recheck'],
+  [/^Re-check all blocks$/, 'POST /api/v1/courses/{}/held/recheck'],
   [/^Rewrite block$/, 'POST /api/v1/blocks/{}/rewrite'],
   [/^Edit brief$/, 'ui'],
   [/^Save brief$/, 'PATCH /api/v1/blocks/{}'],

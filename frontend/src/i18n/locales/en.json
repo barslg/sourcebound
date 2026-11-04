@@ -568,9 +568,9 @@
       "accept": "Block accepted.",
       "edit": "Block saved.",
       "batch": "Rewrite of all held blocks queued.",
-      "recheck": "Re-check done: {released} released, {unread} back to draft for a reading, {held} still held."
+      "recheck": "Re-check done: {released} released, {unread} back to draft for a reading, {held} still held, {newly} accepted blocks now held by a current check."
     },
-    "recheck": "Re-check held blocks",
+    "recheck": "Re-check all blocks",
     "batch": "Rewrite all held blocks ({count}, about {price})",
     "noPassage": "The source passage is not available.",
     "editHint": "Describe what the block should say; do not paste the answer into the question.",

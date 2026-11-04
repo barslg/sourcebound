@@ -67,8 +67,8 @@ async function rewriteAll(): Promise<void> {
 async function recheckAll(): Promise<void> {
   working.value = 'recheck'
   try {
-    const result = await request<{ rechecked: number; released: number; unread: number; held: number }>(courseRecheckHeld(courseId.value), { method: 'POST' })
-    notify('success', t('fix.done.recheck', { released: result.released, unread: result.unread, held: result.held }))
+    const result = await request<{ rechecked: number; released: number; unread: number; held: number; newly_held: number }>(courseRecheckHeld(courseId.value), { method: 'POST' })
+    notify('success', t('fix.done.recheck', { released: result.released, unread: result.unread, held: result.held, newly: result.newly_held }))
     await Promise.all([held.reload(true), plan.reload(true), header.value?.reload()])
   } catch (cause) {
     notifyError(cause, () => void recheckAll())
