@@ -14,6 +14,7 @@ const STAGES: Stage[] = [
   { id: 'blueprint', agents: ['blueprint', 'outline', 'architect'] },
   { id: 'lectures', agents: ['lecture'] },
   { id: 'blockplan', agents: [], code: true },
+  { id: 'illustrations', agents: ['illustrator'] },
   { id: 'exercises', agents: ['block_exercise', 'block_teach', 'block_example'] },
   { id: 'corrector', agents: ['corrector', 'reader'] },
   { id: 'translation', agents: ['translator'] },

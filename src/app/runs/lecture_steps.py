@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -464,6 +465,94 @@ async def _write_lecture_block(
         )
 
 
+def illustration_file(store_root: str, course_id: str, node: str) -> Path:
+    """Where a topic's picture lives: <store>/illustrations/<course>/<topic>.png."""
+    return Path(store_root) / "illustrations" / course_id / f"{node}.png"
+
+
+async def _one_illustration(
+    provider_factory: Callable[[AsyncSession], Any],
+    *,
+    run_id: UUID,
+    step_id: UUID,
+    course_id: str,
+    node: str,
+    prompt: str,
+    store_root: str,
+    gate: asyncio.Semaphore,
+) -> tuple[str, str]:
+    target = illustration_file(store_root, course_id, node)
+    if await asyncio.to_thread(target.exists):
+        return node, str(target)
+    async with gate, get_session_factory()() as session:
+        image = await provider_factory(session).generate_image(
+            agent="illustrator", prompt=prompt, run_id=run_id, step_id=step_id
+        )
+    await asyncio.to_thread(target.parent.mkdir, parents=True, exist_ok=True)
+    await asyncio.to_thread(target.write_bytes, image)
+    return node, str(target)
+
+
+async def illustrations_step(
+    session: AsyncSession,
+    *,
+    run_id: UUID,
+    entry: dict[str, Any],
+    provider_factory: Callable[[AsyncSession], Any],
+) -> None:
+    """One simple picture per topic, all at once; the path lands in the topic's scenario row."""
+    from app.config import get_settings
+
+    course_id = str(entry["course_id"])
+    plan = await _step_output(session, run_id=run_id, step_key=pipeline.BLUEPRINT_STEP)
+    topics = blueprint_agent.topics_of(plan)
+    nodes = [str(t.get("plan_node_id", "")) for t in topics]
+    digest = step_digest(
+        agent="illustrator", prompt=json.dumps({"course": course_id, "topics": nodes})
+    )
+    claim = await claim_step(
+        session, run_id=run_id, step_key=str(entry["step_key"]), input_digest=digest
+    )
+    if claim["reused_output"] is None:
+        store_root = str(get_settings().source_store_path)
+        gate = asyncio.Semaphore(PARALLEL_LECTURES)
+        jobs = []
+        for topic in topics:
+            prompt = pipeline.illustration_prompt(
+                str(topic.get("title", "")), str(plan.get("case", ""))
+            )
+            jobs.append(
+                _one_illustration(
+                    provider_factory,
+                    run_id=run_id,
+                    step_id=claim["step_id"],
+                    course_id=course_id,
+                    node=str(topic.get("plan_node_id", "")),
+                    prompt=prompt,
+                    store_root=store_root,
+                    gate=gate,
+                )
+            )
+        done = await asyncio.gather(*jobs)
+        for node, path in done:
+            await session.execute(
+                sa.text(
+                    "UPDATE topics SET scenario = scenario"
+                    " || jsonb_build_object('illustration', CAST(:p AS text))"
+                    " WHERE plan_node_id = :n"
+                    " AND module_id IN (SELECT id FROM modules WHERE course_id = :c)"
+                ),
+                {"p": path, "n": node, "c": course_id},
+            )
+        await finish_step(session, step_id=claim["step_id"], output={"illustrations": dict(done)})
+    await session.commit()
+
+
 def handlers() -> dict[str, Any]:
     """The lecture-first plan handlers, by DAG handler name."""
-    return {"blueprint": blueprint_step, "lectures": lectures_step, "blockplan": blockplan_step}
+    return {
+        "blueprint": blueprint_step,
+        "lectures": lectures_step,
+        "blockplan": blockplan_step,
+        "illustrations": illustrations_step,
+    }

@@ -473,3 +473,4 @@ span.cite-mark { cursor: default; color: var(--sb-muted); }
 
 .ordering-step { flex-wrap: nowrap; align-items: flex-start; }
 .ordering-text { flex: 1 1 auto; min-width: 0; }
+.topic-illustration { display: block; max-width: 24rem; width: 100%; height: auto; border-radius: var(--sb-radius); border: 1px solid var(--sb-border); }

@@ -129,8 +129,9 @@ test('states: building a plan is queued, announced, and the plan is fetched agai
   await page.goto(`/courses/${ids().empty}/plan`)
   await queuedFlow(page, {
     go: async () => {
-      await page.getByLabel('Direct instruction').check()
-      await page.getByLabel('What to look for in the sources').fill('hand hygiene steps')
+      await page.locator('#b-levels').fill('Beginner to confident novice')
+      await page.locator('#b-context').fill('Hand hygiene on a hospital ward')
+      await page.locator('#b-outcomes').fill('Washes hands at every moment the routine names')
       await page.getByTestId('plan-build').click()
     },
     refetched: /\/courses\/[^/]+\/plan$/,

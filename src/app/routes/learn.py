@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header
+from fastapi.responses import FileResponse
 
 from app.auth.ctx import RequestContext, get_ctx
 from app.controllers import learn as controller
@@ -79,6 +80,16 @@ async def get_passage(
     return await controller.get_passage(
         ctx, passage_id=passage_id, language=_lang(lang, accept_language)
     )
+
+
+@router.get("/topics/{topic_id}/illustration")
+async def get_illustration(
+    topic_id: Annotated[str, Depends(topic_id_param)],
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> FileResponse:
+    """The topic's picture (one simple image per topic drawn at build time)."""
+    path = await controller.get_illustration(ctx, topic_id=topic_id)
+    return FileResponse(path, media_type="image/png")
 
 
 @router.post("/blocks/{block_id}/answer")

@@ -6,7 +6,7 @@ const patterns = [
   /^\/api\/v1\/users\/[^/]+(\/ban)?$/, /^\/api\/v1\/roles\/[^/]+(\/assign|\/revoke)?$/,
   /^\/api\/v1\/courses\/[^/]+(\/(profile|plan|plan\/validate|plan\/submit|generate\/submit|sources|estimate|held|held\/rewrite|held\/recheck|publish|runs|calls\/tree|build|build\/stop|visibility))?$/,
   /^\/api\/v1\/sources\/[^/]+\/(approve|reject)$/, /^\/api\/v1\/runs\/[^/]+(\/(resume|cancel|calls|calls\/[^/]+))?$/, /^\/api\/v1\/blocks\/[^/]+(\/(rewrite|accept))?$/,
-  /^\/api\/v1\/preview\/blocks\/[^/]+\/check$/, /^\/api\/v1\/operations\/[^/]+$/, /^\/api\/v1\/human-queue(\/[^/]+\/resolve)?$/, /^\/api\/v1\/invites\/[^/]+\/(revoke|accept)$/, /^\/api\/v1\/notifications\/[^/]+\/read$/,
+  /^\/api\/v1\/preview\/blocks\/[^/]+\/check$/, /^\/api\/v1\/(preview|learn)\/topics\/[^/]+\/illustration$/, /^\/api\/v1\/operations\/[^/]+$/, /^\/api\/v1\/human-queue(\/[^/]+\/resolve)?$/, /^\/api\/v1\/invites\/[^/]+\/(revoke|accept)$/, /^\/api\/v1\/notifications\/[^/]+\/read$/,
 ]
 
 test('every request path comes from the endpoint table and unsafe ones carry CSRF', async ({ page, context }) => {
@@ -55,8 +55,9 @@ test('a real queued operation goes queued, toast, bell, then reaches a final sta
   const { source_id: sourceId } = (await up.json()) as { source_id: string }
   await page.request.post(`/api/v1/sources/${sourceId}/approve`, { headers })
   await page.goto(`/courses/${courseId}/plan`)
-  await page.getByLabel('Direct instruction').check()
-  await page.getByLabel('What to look for in the sources').fill('hand hygiene steps')
+  await page.locator('#b-levels').fill('Beginner to confident novice')
+  await page.locator('#b-context').fill('Hand hygiene on a hospital ward')
+  await page.locator('#b-outcomes').fill('Washes hands at every moment the routine names')
   await page.getByTestId('plan-build').click()
   await expect(page.getByText('Queued. You will find it in the bell.').first()).toBeVisible()
   await page.getByTestId('bell').click()

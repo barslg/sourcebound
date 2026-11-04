@@ -150,7 +150,7 @@ export interface GlossaryEntry { term: string; definition: string; topic_id: str
 export interface GlossaryPage { course_id: string; title: string; terms: GlossaryEntry[] }
 export interface Attempts { count: number; best_score: number | null; last_score: number | null }
 export interface LearnBlockView { id: string; block_type: string; role: string; ordinal: number; content: Record<string, unknown>; citations: Chip[]; language: string; fallback_notice: string | null; attempts: Attempts; passage_options?: Chip[]; status?: string; hold_reason?: string }
-export interface LearnTopic { id: string; course_id: string; course_title?: string; module_id: string; kind: string; title: string; objectives: string[]; language: string; progress: LearnProgress; blocks: LearnBlockView[]; terms?: Term[] }
+export interface LearnTopic { id: string; course_id: string; course_title?: string; module_id: string; kind: string; title: string; objectives: string[]; language: string; progress: LearnProgress; blocks: LearnBlockView[]; terms?: Term[]; illustration?: boolean }
 export interface LearnPassage { id: string; text: string; address_label: string; source_title: string; source_number?: number; as_of: string | null; course_id: string }
 export interface KindCounts { hits: number; false_alarms: number; misses: number }
 export interface SpotFeedback { wrong_sentence: string; true_statement: string; passage: Chip | null; habit_line: string }

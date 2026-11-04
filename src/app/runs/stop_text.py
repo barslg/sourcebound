@@ -15,6 +15,7 @@ _STEP_LABELS = {
     "blueprint": "blueprint",
     "lectures": "lecture writer",
     "blockplan": "block plan",
+    "illustrations": "illustrator",
     "reader": "reader",
     "block": "block writer",
 }

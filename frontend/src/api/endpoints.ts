@@ -57,6 +57,7 @@ export const learnSources = (id: string): string => `${learnCourse(id)}/sources`
 export const learnGlossary = (id: string): string => `${learnCourse(id)}/glossary`
 export const learnTopic = (id: string): string => `${API}/learn/topics/${enc(id)}`
 export const learnSubmit = (id: string): string => `${learnTopic(id)}/submit`
+export const learnIllustration = (id: string): string => `${learnTopic(id)}/illustration`
 export const learnPassage = (id: string): string => `${API}/learn/passages/${enc(id)}`
 export const learnAnswer = (id: string): string => `${API}/learn/blocks/${enc(id)}/answer`
 export const courseReport = (id: string): string => `${courseItem(id)}/report`
@@ -75,6 +76,7 @@ export const blockAccept = (id: string): string => `${blockItem(id)}/accept`
 export const courseTranslate = (id: string): string => `${courseItem(id)}/translate`
 export const coursePreview = (id: string): string => `${courseItem(id)}/preview`
 export const previewTopic = (topicId: string): string => `${API}/preview/topics/${enc(topicId)}`
+export const previewIllustration = (topicId: string): string => `${API}/preview/topics/${enc(topicId)}/illustration`
 export const previewCheck = (blockId: string): string => `${API}/preview/blocks/${enc(blockId)}/check`
 export const coursePreviewPassage = (id: string, passageId: string): string => `${coursePreview(id)}/passages/${enc(passageId)}`
 export const coursePreviewSources = (id: string): string => `${coursePreview(id)}/sources`

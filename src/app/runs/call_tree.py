@@ -253,7 +253,7 @@ class _RunTree:
             query["children"].append(call)
         elif agent == "architect":
             self.group("planning", step_key=step_key)["children"].append(call)
-        elif agent in ("blueprint", "blockplan"):
+        elif agent in ("blueprint", "blockplan", "illustrations"):
             self.group(agent, step_key=step_key)["children"].append(call)
         elif agent == "lectures":
             self._lecture_home(call, step_key)["children"].append(call)

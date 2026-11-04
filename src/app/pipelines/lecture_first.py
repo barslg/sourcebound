@@ -30,6 +30,7 @@ METHODOLOGY = "lecture_first"
 BLUEPRINT_STEP = "blueprint:course"
 LECTURES_STEP = "lectures:course"
 BLOCKPLAN_STEP = "blockplan:course"
+ILLUSTRATIONS_STEP = "illustrations:course"
 LECTURE_SOURCE_TITLE = "Lectures"
 LESSON_ROLES = ("teach", "check", "practice")
 
@@ -51,7 +52,7 @@ def lecture_source_sha(course_id: str) -> str:
 def compile_plan_dag(
     *, course_id: str, language: str, profile: dict[str, Any], constraints: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
-    """Blueprint, then every lecture, then the code-made block plan."""
+    """Blueprint, then every lecture, then the code-made block plan, then one picture per topic."""
     return [
         {
             "step_key": BLUEPRINT_STEP,
@@ -73,6 +74,13 @@ def compile_plan_dag(
             "step_key": BLOCKPLAN_STEP,
             "handler": "blockplan",
             "depends_on": [BLUEPRINT_STEP, LECTURES_STEP],
+            "course_id": course_id,
+            "language": language,
+        },
+        {
+            "step_key": ILLUSTRATIONS_STEP,
+            "handler": "illustrations",
+            "depends_on": [BLOCKPLAN_STEP],
             "course_id": course_id,
             "language": language,
         },
@@ -260,3 +268,13 @@ def build_tree(
         ),
     )
     return tree, scenario
+
+
+def illustration_prompt(title: str, case: str) -> str:
+    """A simple picture: one object for the topic, no text, no people, plain background."""
+    scene = " ".join(case.split())[:200]
+    return (
+        f"A simple flat illustration for a lesson called '{title}' in a course where {scene}"
+        " One clear object in the middle, soft colours, plain light background,"
+        " no text, no letters, no numbers, no people, no faces."
+    )

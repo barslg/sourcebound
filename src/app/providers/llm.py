@@ -352,6 +352,34 @@ class MetaProvider:
             await ledger.commit()
         return answered.results
 
+    async def generate_image(
+        self, *, agent: str, prompt: str, run_id: UUID | None, step_id: UUID | None
+    ) -> bytes:
+        """One paid image, logged per picture at the image model's unit price; never cached."""
+        model = "muse-image-1.0"
+        await self._guard_spend(run_id)
+        started = time.monotonic()
+        image = await self._get_client().generate_image(model=model, prompt=prompt)
+        async with self._ledger_factory() as ledger:
+            await calls.log_call(
+                ledger,
+                agent=agent,
+                model=model,
+                prompt_version=prompts.version_of(f"{agent}:image"),
+                input_tokens=0,
+                cached_tokens=0,
+                output_tokens=0,
+                reasoning_tokens=0,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                request={"prompt": prompt},
+                response={"bytes": len(image)},
+                run_id=run_id,
+                step_id=step_id,
+                extra_cost_usd=unit_cost_usd(model, 1),
+            )
+            await ledger.commit()
+        return image
+
     async def start_background(
         self,
         *,

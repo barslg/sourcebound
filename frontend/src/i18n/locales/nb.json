@@ -926,7 +926,8 @@
     },
     "diagramFallback": "Diagrammet kunne ikke tegnes; trinnene står i rekkefølge i stedet.",
     "tickAll": "Kryss av for alle alternativene som gjelder.",
-    "sourcesCount": "Kilder ({count})"
+    "sourcesCount": "Kilder ({count})",
+    "illustrationAlt": "Illustrasjon til {title}"
   },
   "runs": {
     "title": "Kjøringer",
@@ -1129,7 +1130,8 @@
       "transcriber": "Transkribering",
       "blueprint": "Kursplan",
       "lecture": "Forelesningsskriver",
-      "corrector": "Korrektur"
+      "corrector": "Korrektur",
+      "illustrator": "Illustratør"
     },
     "unavailable": "Dette kallet kunne ikke åpnes. Lukk panelet og prøv igjen."
   },
@@ -1234,7 +1236,8 @@
         "blockplan": "Blokkplan",
         "exercises": "Oppgaver",
         "corrector": "Korrektur",
-        "translation": "Oversettelse"
+        "translation": "Oversettelse",
+        "illustrations": "Illustrasjoner"
       },
       "line": {
         "brief": "Forfatterens nivå, kontekst, må-dekke-liste og mål.",
@@ -1243,7 +1246,8 @@
         "blockplan": "Avsnitt blir passasjer; forelesningen er lærestoffet; oppgavetyper følger teksten.",
         "exercises": "Hver oppgave skrevet fra sin forelesning.",
         "corrector": "Én sjekk etter hver skriver: godta, eller returner korrigert utkast.",
-        "translation": "Kurset på hvert ekstra språk i briefen."
+        "translation": "Kurset på hvert ekstra språk i briefen.",
+        "illustrations": "Ett enkelt bilde per emne fra bildemodellen."
       }
     }
   }

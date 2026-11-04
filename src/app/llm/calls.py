@@ -91,6 +91,16 @@ async def _step_key(session: AsyncSession, step_id: UUID | None) -> str | None:
     return str(key) if key is not None else None
 
 
+def _token_cost(
+    model: str, input_tokens: int, cached_tokens: int, output_tokens: int, reasoning_tokens: int
+) -> Decimal:
+    """The token price of a call; a per-unit model (an image, a search) has none."""
+    spec = MODELS.get(model)
+    if spec is not None and spec.unit != "token":
+        return Decimal(0)
+    return compute_cost_usd(model, input_tokens, cached_tokens, output_tokens, reasoning_tokens)
+
+
 async def log_call(
     session: AsyncSession,
     *,
@@ -117,7 +127,7 @@ async def log_call(
     `extra_cost_usd` adds a per-unit charge the token price does not
     cover (a web search billed per query beside its tokens).
     """
-    cost = compute_cost_usd(model, input_tokens, cached_tokens, output_tokens, reasoning_tokens)
+    cost = _token_cost(model, input_tokens, cached_tokens, output_tokens, reasoning_tokens)
     if extra_cost_usd is not None:
         cost = cost + extra_cost_usd
     result = await session.execute(
@@ -177,7 +187,7 @@ async def complete_background_call(
     status: str = "completed",
 ) -> None:
     """Flip a pending background row to completed (or rejected) with usage and registry cost."""
-    cost = compute_cost_usd(model, input_tokens, cached_tokens, output_tokens, reasoning_tokens)
+    cost = _token_cost(model, input_tokens, cached_tokens, output_tokens, reasoning_tokens)
     row = (
         await session.execute(
             llm_calls.update()

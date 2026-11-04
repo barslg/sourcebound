@@ -12,8 +12,10 @@ the grader. Caller: controllers/learn.py (the learner screens).
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from importlib import import_module
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -720,6 +722,7 @@ async def _topic(
         "progress": progress_of(topic["blocks"], attempts, threshold),
         "blocks": blocks,
         "terms": topic_terms(topic, blocks),
+        "illustration": await illustration_path(session, UUID(str(topic["id"]))) is not None,
     }
 
 
@@ -796,3 +799,17 @@ def _passage_entry(row: Any, language: str, numbers: dict[str, int]) -> dict[str
         "as_of": row[5].isoformat() if row[5] else None,
         "course_id": str(row[6]),
     }
+
+
+async def illustration_path(session: AsyncSession, topic_id: UUID) -> Path | None:
+    """The topic's picture file when the build drew one and the file is still there."""
+    stored = (
+        await session.execute(
+            sa.text("SELECT scenario ->> 'illustration' FROM topics WHERE id = :t"),
+            {"t": str(topic_id)},
+        )
+    ).scalar()
+    if not stored:
+        return None
+    path = Path(str(stored))
+    return path if await asyncio.to_thread(path.is_file) else None

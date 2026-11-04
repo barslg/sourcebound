@@ -114,6 +114,15 @@ class ReplayClient:
         """Background calls are never recorded in a ledger."""
         raise ReplayMissError(f"replay mode: no background response {response_id}")
 
+    async def generate_image(self, **_: Any) -> bytes:
+        """A replay never draws: a one-pixel PNG stands in for the image."""
+        import base64
+
+        return base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAA"
+            "DUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+        )
+
     async def search_web(self, **_: Any) -> WebSearchReply:
         """Web searches are never recorded in a ledger: replay finds no gaps to fill."""
         return WebSearchReply(

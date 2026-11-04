@@ -83,6 +83,22 @@ async def get_topic(ctx: RequestContext, *, topic_id: str, language: str | None)
     return view
 
 
+async def get_illustration(ctx: RequestContext, *, topic_id: str) -> str:
+    """The file path of an enrolled topic's picture, or 404."""
+    from app.errors import NotFoundError
+    from app.services.learner import course_of_topic, enrolled_course, illustration_path
+
+    actor = require_auth(ctx)
+    require(actor, "learn.read")
+    topic_uuid = UUID(topic_id)
+    course_id = await course_of_topic(ctx.db, topic_uuid)
+    await enrolled_course(ctx.db, actor, course_id, code="learn.read")
+    path = await illustration_path(ctx.db, topic_uuid)
+    if path is None:
+        raise NotFoundError("no illustration for this topic")
+    return str(path)
+
+
 async def get_passage(
     ctx: RequestContext, *, passage_id: str, language: str | None
 ) -> dict[str, Any]:

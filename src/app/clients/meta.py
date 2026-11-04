@@ -294,6 +294,34 @@ class MetaClient:
         """Poll one previously created background response to completion."""
         return self._parse(await self._await_background(response_id))
 
+    async def generate_image(self, *, model: str, prompt: str, size: str = "1024x1024") -> bytes:
+        """One image from the image model as bytes: a b64 reply, or a URL fetched once."""
+        import base64
+
+        from openai import APIConnectionError, APIStatusError
+
+        try:
+            response = await self._client.images.generate(
+                model=model, prompt=prompt, size=size, response_format="b64_json"
+            )
+        except APIConnectionError as exc:
+            raise LLMError(f"image generation failed: {self._redact(str(exc))}") from exc
+        except APIStatusError as exc:
+            raise LLMError(
+                f"image generation failed ({exc.status_code}): {self._redact(str(exc))}"
+            ) from exc
+        item = (getattr(response, "data", None) or [None])[0]
+        encoded = getattr(item, "b64_json", None)
+        if encoded:
+            return base64.b64decode(encoded)
+        url = getattr(item, "url", None)
+        if not url:
+            raise LLMError("image generation returned neither bytes nor a URL")
+        async with httpx2.AsyncClient(timeout=60) as http:
+            fetched = await http.get(str(url))
+            fetched.raise_for_status()
+            return bytes(fetched.content)
+
     async def search_web(
         self, *, model: str, query: str, effort: str = "low", max_output_tokens: int = 1500
     ) -> WebSearchReply:

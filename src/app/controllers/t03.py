@@ -241,6 +241,22 @@ async def preview_topic(
     )
 
 
+async def preview_illustration(ctx: RequestContext, *, topic_id: str) -> str:
+    """The file path of a draft topic's picture for its author, or 404."""
+    from app.errors import NotFoundError
+    from app.services.learner import course_of_topic, illustration_path
+
+    actor = require_auth(ctx)
+    require(actor, "learner.view")
+    topic_uuid = parse_uuid_or_404(topic_id)
+    course_id = await course_of_topic(ctx.db, topic_uuid)
+    await _own_draft(ctx, actor, course_id)
+    path = await illustration_path(ctx.db, topic_uuid)
+    if path is None:
+        raise NotFoundError("no illustration for this topic")
+    return str(path)
+
+
 async def preview_check(
     ctx: RequestContext, *, block_id: str, payload: dict[str, Any], language: str | None
 ) -> dict[str, Any]:

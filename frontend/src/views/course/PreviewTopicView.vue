@@ -4,7 +4,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { request } from '@/api/client'
-import { coursePreview, coursePreviewPassage, previewCheck, previewTopic } from '@/api/endpoints'
+import { coursePreview, coursePreviewPassage, previewCheck, previewIllustration, previewTopic } from '@/api/endpoints'
 import type { AnswerResult, Chip, LearnOutline, LearnTopic, Term } from '@/api/types'
 import CompanionPanel from '@/components/learner/CompanionPanel.vue'
 import FlashcardDeck from '@/components/learner/FlashcardDeck.vue'
@@ -79,6 +79,7 @@ function openTermOf(term: Term): void { openId.value = null; openTerm.value = op
       <LessonRail :blocks="topic.data.value.blocks" :state="(b) => (b.status === 'held' ? 'held' : 'open')" />
       <div class="stack learn-main">
         <Section id="topic" :title="topic.data.value.title" :help="topic.data.value.kind === 'module_test' ? t('learnTopic.testHelp') : t('learnTopic.lessonHelp')" />
+        <img v-if="topic.data.value.illustration" class="topic-illustration" :src="previewIllustration(topic.data.value.id)" :alt="t('learn.illustrationAlt', { title: topic.data.value.title })" data-testid="topic-illustration" />
         <ul v-if="topic.data.value.objectives.length > 0" class="hint" data-testid="objectives"><li v-for="o in topic.data.value.objectives" :key="o">{{ o }}</li></ul>
         <FormField id="pt-lang" :label="t('preview.language')" :help="t('preview.languageHint')">
           <Select v-model="language" input-id="pt-lang" :options="COURSE_LANGUAGES.map((code) => ({ code, label: t(`language.${code}`) }))" option-label="label" option-value="code" data-testid="preview-language" />

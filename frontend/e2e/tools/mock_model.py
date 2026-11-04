@@ -406,12 +406,27 @@ def completed(text):
     }
 
 
+# a one-pixel PNG: the image model's reply in e2e
+PNG_1x1 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAA"
+    "DUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+)
+
+
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        if self.path.endswith("/images/generations"):
+            raw = json.dumps({"data": [{"b64_json": PNG_1x1}]}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+            return
         prompt = str(body.get("input", ""))
         instructions = str(body.get("instructions", ""))
         schema = body.get("text", {}).get("format", {}).get("schema", {})

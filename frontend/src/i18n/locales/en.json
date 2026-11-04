@@ -926,7 +926,8 @@
     },
     "diagramFallback": "The diagram could not be drawn; the steps are listed in order instead.",
     "tickAll": "Tick every option that applies.",
-    "sourcesCount": "Sources ({count})"
+    "sourcesCount": "Sources ({count})",
+    "illustrationAlt": "Illustration for {title}"
   },
   "runs": {
     "title": "Runs",
@@ -1129,7 +1130,8 @@
       "transcriber": "Transcriber",
       "blueprint": "Blueprint",
       "lecture": "Lecture writer",
-      "corrector": "Corrector"
+      "corrector": "Corrector",
+      "illustrator": "Illustrator"
     },
     "unavailable": "This call could not be opened. Close this panel and try again."
   },
@@ -1234,7 +1236,8 @@
         "blockplan": "Block plan",
         "exercises": "Exercises",
         "corrector": "Corrector",
-        "translation": "Translation"
+        "translation": "Translation",
+        "illustrations": "Illustrations"
       },
       "line": {
         "brief": "The author's level, context, must-cover list and outcomes.",
@@ -1243,7 +1246,8 @@
         "blockplan": "Paragraphs become passages; the lecture is the teach block; exercise types follow the text.",
         "exercises": "Each exercise written from its lecture.",
         "corrector": "One check after each writer: accept, or return the corrected draft.",
-        "translation": "The course in each extra language of the brief."
+        "translation": "The course in each extra language of the brief.",
+        "illustrations": "One simple picture per topic from the image model."
       }
     }
   }

@@ -4,7 +4,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { request } from '@/api/client'
-import { learnAnswer, learnCourse, learnSubmit, learnTopic } from '@/api/endpoints'
+import { learnAnswer, learnIllustration, learnCourse, learnSubmit, learnTopic } from '@/api/endpoints'
 import type { AnswerResult, Chip, LearnOutline, LearnProgress, LearnTopic, SubmitResult, Term } from '@/api/types'
 import ActionButton from '@/components/ActionButton.vue'
 import CompanionPanel from '@/components/learner/CompanionPanel.vue'
@@ -120,6 +120,7 @@ function retake(): void {
       <LessonRail :blocks="topic.data.value.blocks" :state="(b) => (ticked(b.id) ? 'done' : 'open')" />
       <div class="stack learn-main">
         <Section id="topic" :title="topic.data.value.title" :help="isTest ? t('learnTopic.testHelp') : t('learnTopic.lessonHelp')" />
+        <img v-if="topic.data.value.illustration" class="topic-illustration" :src="learnIllustration(topic.data.value.id)" :alt="t('learn.illustrationAlt', { title: topic.data.value.title })" data-testid="topic-illustration" />
         <ul v-if="topic.data.value.objectives.length > 0" class="hint" data-testid="objectives"><li v-for="o in topic.data.value.objectives" :key="o">{{ o }}</li></ul>
         <p v-if="progress" class="row muted" data-testid="topic-progress">
           <StatusChip :tone="tone(progress.status)" :label="t(`learn.status.${progress.status}`)" data-testid="topic-status" />

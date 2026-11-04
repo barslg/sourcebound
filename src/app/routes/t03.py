@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, UploadFile
+from fastapi.responses import FileResponse
 
 from app.auth.ctx import RequestContext, get_ctx
 from app.controllers import t03 as controller
@@ -316,6 +317,16 @@ async def preview_topic(
 ) -> dict[str, Any]:
     """One topic of the draft through the learner serializers (preview topic page)."""
     return await controller.preview_topic(ctx, topic_id=topic_id, language=lang)
+
+
+@preview_router.get("/topics/{topic_id}/illustration")
+async def preview_illustration(
+    topic_id: Annotated[str, Depends(topic_id_param)],
+    ctx: RequestContext = Depends(get_ctx),  # noqa: B008 - FastAPI dependency injection idiom
+) -> FileResponse:
+    """The draft topic's picture for its author."""
+    path = await controller.preview_illustration(ctx, topic_id=topic_id)
+    return FileResponse(path, media_type="image/png")
 
 
 @preview_router.post("/blocks/{block_id}/check")
