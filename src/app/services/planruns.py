@@ -27,6 +27,30 @@ OPERATION_KIND_SUBMIT_PLAN = "submit_plan"
 OPERATION_KIND_SUBMIT_GENERATE = "submit_generate"
 
 
+LIVE_OPERATION_KINDS = ("submit_plan", "submit_generate", "submit_translate", "build_course")
+
+
+async def live_work_on(session: AsyncSession, *, course_id: UUID) -> bool:
+    """True while a run of the course is queued or running, or a plan, generate,
+    translate or build operation of it is waiting or going."""
+    live_run = (
+        await session.execute(
+            sa.text("SELECT id FROM runs WHERE course_id = :c AND status IN ('queued', 'running')"),
+            {"c": str(course_id)},
+        )
+    ).first()
+    live_op = (
+        await session.execute(
+            sa.text(
+                "SELECT id FROM operations WHERE kind = ANY(:kinds)"
+                " AND status IN ('queued', 'running') AND params->>'course_id' = :c"
+            ),
+            {"kinds": list(LIVE_OPERATION_KINDS), "c": str(course_id)},
+        )
+    ).first()
+    return live_run is not None or live_op is not None
+
+
 async def _submit(
     session: AsyncSession,
     *,
@@ -50,23 +74,7 @@ async def _submit(
         ).first()
         if existing is not None:
             return UUID(str(existing[0]))
-    live_run = (
-        await session.execute(
-            sa.text("SELECT id FROM runs WHERE course_id = :c AND status IN ('queued', 'running')"),
-            {"c": str(course_id)},
-        )
-    ).first()
-    live_op = (
-        await session.execute(
-            sa.text(
-                "SELECT id FROM operations WHERE kind IN"
-                " ('submit_plan', 'submit_generate', 'submit_translate')"
-                " AND status IN ('queued', 'running') AND params->>'course_id' = :c"
-            ),
-            {"c": str(course_id)},
-        )
-    ).first()
-    if live_run is not None or live_op is not None:
+    if await live_work_on(session, course_id=course_id):
         raise ConflictError("A run is already going")
     row = (
         await session.execute(
@@ -240,21 +248,15 @@ async def submit_plan(
     )
 
 
-async def submit_generate(
-    session: AsyncSession,
-    *,
-    actor: Principal,
-    course_id: UUID,
-    idempotency_key: str | None = None,
-    defer: Callable[[UUID], Awaitable[None]] | None = None,
-) -> UUID:
-    """Submit block generation; refused while a required question is open."""
+async def generation_blockers(
+    session: AsyncSession, *, course_id: UUID
+) -> ValidationError | UnprocessableError | None:
+    """The first reason block generation cannot start now, as the error to raise, or None."""
     from app.services.courses import blocking_questions
 
-    require(actor, "course.generate")
     open_questions = await blocking_questions(session, course_id=course_id)
     if open_questions:
-        raise ValidationError(
+        return ValidationError(
             "generation refused: answer required questions first: "
             + ", ".join(question["key"] for question in open_questions)
         )
@@ -268,12 +270,28 @@ async def submit_generate(
         )
     ).scalar()
     if int(block_count or 0) == 0:
-        raise UnprocessableError("Build a plan before generating blocks.")
+        return UnprocessableError("Build a plan before generating blocks.")
     if await _approved_passage_count(session, course_id=course_id) == 0:
-        raise UnprocessableError("Add and approve at least one source before generating blocks.")
+        return UnprocessableError("Add and approve at least one source before generating blocks.")
     tree_errors = await _invalid_tree_errors(session, course_id=course_id)
     if tree_errors:
-        raise UnprocessableError("the plan is invalid: " + "; ".join(tree_errors))
+        return UnprocessableError("the plan is invalid: " + "; ".join(tree_errors))
+    return None
+
+
+async def submit_generate(
+    session: AsyncSession,
+    *,
+    actor: Principal,
+    course_id: UUID,
+    idempotency_key: str | None = None,
+    defer: Callable[[UUID], Awaitable[None]] | None = None,
+) -> UUID:
+    """Submit block generation; refused while a required question is open."""
+    require(actor, "course.generate")
+    blocker = await generation_blockers(session, course_id=course_id)
+    if blocker is not None:
+        raise blocker
     return await _submit(
         session,
         actor=actor,
@@ -580,6 +598,18 @@ async def _drop_orphan_steps(session: AsyncSession, *, run_id: UUID) -> int:
     return len(orphans)
 
 
+async def reopen_run(session: AsyncSession, *, run_id: UUID) -> None:
+    """Mark a stopped (or stranded) run running again and drop steps whose node is gone.
+
+    The caller commits; driving the run is the caller's job.
+    """
+    await session.execute(
+        sa.text("UPDATE runs SET status = 'running', stop_marker = NULL WHERE id = :run"),
+        {"run": str(run_id)},
+    )
+    await _drop_orphan_steps(session, run_id=run_id)
+
+
 async def resume_run(
     session: AsyncSession,
     *,
@@ -619,11 +649,7 @@ async def resume_run(
                 "resume refused: answer the open questions first: "
                 + ", ".join(question["key"] for question in open_questions)
             )
-    await session.execute(
-        sa.text("UPDATE runs SET status = 'running', stop_marker = NULL WHERE id = :run"),
-        {"run": str(run_id)},
-    )
-    await _drop_orphan_steps(session, run_id=run_id)
+    await reopen_run(session, run_id=run_id)
     op_row = (
         await session.execute(
             sa.text(
@@ -645,6 +671,68 @@ async def resume_run(
     return run_id
 
 
+async def start_plan_run(session: AsyncSession, *, course_id: UUID, queries: list[str]) -> UUID:
+    """Create (and commit) the plan run for a course: researchers per query, then the architect."""
+    from app.runs.executor import new_run
+    from app.services import courses as course_service
+
+    course = await course_service.get_course(session, course_id=course_id)
+    if course["profile"] is None:
+        raise ValidationError("set the course profile before submitting a plan")
+    dag: list[dict[str, Any]] = [
+        {
+            "step_key": f"researcher:{researcher_node_id(query)}",
+            "handler": "researcher",
+            "depends_on": [],
+            "query": query,
+            "language": course["language"],
+            "course_id": str(course_id),
+        }
+        for query in queries
+    ]
+    dag.append(
+        {
+            "step_key": "architect:plan",
+            "handler": "architect",
+            "depends_on": [entry["step_key"] for entry in dag],
+            "course_id": str(course_id),
+            "language": course["language"],
+            "profile": course["profile"],
+            "constraints": course["constraints"],
+        }
+    )
+    run_id = await new_run(session, course_id=course_id, kind="plan", dag=dag)
+    await session.commit()
+    return run_id
+
+
+async def finish_plan_run(session_factory: Any, *, course_id: UUID, run_id: UUID) -> None:
+    """After a plan drive: the forecast on the run, a snapshot of the plan, the generated flag."""
+    from app.services import courses as course_service
+
+    async with session_factory() as fresh:
+        await refresh_plan_estimate(fresh, run_id=run_id)
+    async with session_factory() as fresh:
+        await course_service.snapshot_version(fresh, course_id=course_id)
+        await course_service.mark_generated_if_complete(fresh, course_id=course_id)
+        await fresh.commit()
+
+
+async def drive_and_close(session_factory: Any, provider_factory: Any, run_id: UUID) -> Any:
+    """Drive one run with the plan handlers, then dispose the provider factory's engine."""
+    from app.runs.executor import drive_run
+
+    try:
+        return await drive_run(
+            session_factory,
+            run_id=run_id,
+            provider_factory=provider_factory,
+            handlers=plan_handlers(),
+        )
+    finally:
+        await _close_factory(provider_factory)
+
+
 async def run_plan_operation(
     session: AsyncSession,
     operation_id: UUID,
@@ -658,8 +746,6 @@ async def run_plan_operation(
     without a provider factory this only creates the run, which is
     what request-scoped tests use before driving explicitly).
     """
-    from app.services import courses as course_service
-
     params = (
         await session.execute(
             sa.text("SELECT params FROM operations WHERE id = :op"),
@@ -667,51 +753,10 @@ async def run_plan_operation(
         )
     ).scalar_one()
     course_id = UUID(str(params["course_id"]))
-    course = await course_service.get_course(session, course_id=course_id)
-    if course["profile"] is None:
-        raise ValidationError("set the course profile before submitting a plan")
-    dag: list[dict[str, Any]] = [
-        {
-            "step_key": f"researcher:{researcher_node_id(query)}",
-            "handler": "researcher",
-            "depends_on": [],
-            "query": query,
-            "language": course["language"],
-            "course_id": str(course_id),
-        }
-        for query in params["queries"]
-    ]
-    dag.append(
-        {
-            "step_key": "architect:plan",
-            "handler": "architect",
-            "depends_on": [entry["step_key"] for entry in dag],
-            "course_id": str(course_id),
-            "language": course["language"],
-            "profile": course["profile"],
-            "constraints": course["constraints"],
-        }
-    )
-    from app.runs.executor import drive_run, new_run
-
-    run_id = await new_run(session, course_id=course_id, kind="plan", dag=dag)
-    await session.commit()
+    run_id = await start_plan_run(session, course_id=course_id, queries=list(params["queries"]))
     if provider_factory is not None and session_factory is not None:
-        try:
-            await drive_run(
-                session_factory,
-                run_id=run_id,
-                provider_factory=provider_factory,
-                handlers=plan_handlers(),
-            )
-        finally:
-            await _close_factory(provider_factory)
-        async with session_factory() as fresh:
-            await refresh_plan_estimate(fresh, run_id=run_id)
-        async with session_factory() as fresh:
-            await course_service.snapshot_version(fresh, course_id=course_id)
-            await course_service.mark_generated_if_complete(fresh, course_id=course_id)
-            await fresh.commit()
+        await drive_and_close(session_factory, provider_factory, run_id)
+        await finish_plan_run(session_factory, course_id=course_id, run_id=run_id)
     return {"run_id": str(run_id)}
 
 
@@ -1014,14 +1059,10 @@ async def _course_sources(
     return reconcile_handles(numbered, _plan_handle_map(raw_tree))
 
 
-async def run_rewrite_operation(
-    session: AsyncSession,
-    operation_id: UUID,
-    *,
-    provider_factory: Any | None = None,
-    session_factory: Any | None = None,
-) -> dict[str, Any]:
-    """Worker body for rewrite_block / rewrite_held_batch.
+async def start_rewrite_run(
+    session: AsyncSession, *, course_id: UUID, block_ids: list[str]
+) -> UUID:
+    """Create (and commit) the rewrite run for the named blocks of a course.
 
     Regenerates ONLY the named blocks: variant = how many generation
     runs already touched the block (a counter that grows on every
@@ -1033,17 +1074,7 @@ async def run_rewrite_operation(
     from app.pipelines.merrill import _role_agent
     from app.services import courses as course_service
 
-    params = (
-        await session.execute(
-            sa.text("SELECT params FROM operations WHERE id = :op"),
-            {"op": str(operation_id)},
-        )
-    ).scalar_one()
-    course_id = UUID(str(params["course_id"]))
-    wanted: list[str] = []
-    if params.get("block_id"):
-        wanted.append(str(params["block_id"]))
-    wanted.extend(str(b) for b in params.get("block_ids", []))
+    wanted = [str(b) for b in block_ids]
     if not wanted:
         raise ValidationError("name at least one block to rewrite")
     course = await course_service.get_course(session, course_id=course_id)
@@ -1149,50 +1180,53 @@ async def run_rewrite_operation(
                 "blocks": [],
             }
         )
-    from app.runs.executor import drive_run, new_run
+    from app.runs.executor import new_run
 
     run_id = await new_run(session, course_id=course_id, kind="rewrite", dag=dag)
     await session.commit()
-    if provider_factory is not None and session_factory is not None:
-        try:
-            await drive_run(
-                session_factory,
-                run_id=run_id,
-                provider_factory=provider_factory,
-                handlers=plan_handlers(),
-            )
-        finally:
-            await _close_factory(provider_factory)
-        async with session_factory() as fresh:
-            await course_service.mark_generated_if_complete(fresh, course_id=course_id)
-            await fresh.commit()
-    return {"run_id": str(run_id)}
+    return run_id
 
 
-async def run_generate_operation(
+async def finish_blocks_run(session_factory: Any, *, course_id: UUID) -> None:
+    """After a rewrite or generation drive: the generated flag when every block has content."""
+    from app.services import courses as course_service
+
+    async with session_factory() as fresh:
+        await course_service.mark_generated_if_complete(fresh, course_id=course_id)
+        await fresh.commit()
+
+
+async def run_rewrite_operation(
     session: AsyncSession,
     operation_id: UUID,
     *,
     provider_factory: Any | None = None,
     session_factory: Any | None = None,
 ) -> dict[str, Any]:
-    """Worker body for submit_generate: compile the DAG, create the run, drive it."""
-    from app.pipelines.merrill import compile_generation_dag
-    from app.services import courses as course_service
-
+    """Worker body for rewrite_block / rewrite_held_batch: create the run, then drive it."""
     params = (
         await session.execute(
-            sa.text("SELECT params FROM operations WHERE id = :op"), {"op": str(operation_id)}
+            sa.text("SELECT params FROM operations WHERE id = :op"),
+            {"op": str(operation_id)},
         )
     ).scalar_one()
     course_id = UUID(str(params["course_id"]))
-    if "block_id" in params or "block_ids" in params:
-        return await run_rewrite_operation(
-            session,
-            operation_id,
-            provider_factory=provider_factory,
-            session_factory=session_factory,
-        )
+    wanted: list[str] = []
+    if params.get("block_id"):
+        wanted.append(str(params["block_id"]))
+    wanted.extend(str(b) for b in params.get("block_ids", []))
+    run_id = await start_rewrite_run(session, course_id=course_id, block_ids=wanted)
+    if provider_factory is not None and session_factory is not None:
+        await drive_and_close(session_factory, provider_factory, run_id)
+        await finish_blocks_run(session_factory, course_id=course_id)
+    return {"run_id": str(run_id)}
+
+
+async def start_generation_run(session: AsyncSession, *, course_id: UUID) -> UUID:
+    """Compile the generation DAG of a course's plan, create (and commit) the run."""
+    from app.pipelines.merrill import compile_generation_dag
+    from app.services import courses as course_service
+
     course = await course_service.get_course(session, course_id=course_id)
     raw_tree = await course_service.read_tree(session, course_id=course_id)
     tree = frozen_plan(raw_tree)
@@ -1266,23 +1300,38 @@ async def run_generate_operation(
         elif handler == "rework_blocks":
             e["named"] = []
         dag.append(e)
-    from app.runs.executor import drive_run, new_run
+    from app.runs.executor import new_run
 
     run_id = await new_run(session, course_id=course_id, kind="generation", dag=dag)
     await session.commit()
+    return run_id
+
+
+async def run_generate_operation(
+    session: AsyncSession,
+    operation_id: UUID,
+    *,
+    provider_factory: Any | None = None,
+    session_factory: Any | None = None,
+) -> dict[str, Any]:
+    """Worker body for submit_generate: compile the DAG, create the run, drive it."""
+    params = (
+        await session.execute(
+            sa.text("SELECT params FROM operations WHERE id = :op"), {"op": str(operation_id)}
+        )
+    ).scalar_one()
+    course_id = UUID(str(params["course_id"]))
+    if "block_id" in params or "block_ids" in params:
+        return await run_rewrite_operation(
+            session,
+            operation_id,
+            provider_factory=provider_factory,
+            session_factory=session_factory,
+        )
+    run_id = await start_generation_run(session, course_id=course_id)
     if provider_factory is not None and session_factory is not None:
-        try:
-            await drive_run(
-                session_factory,
-                run_id=run_id,
-                provider_factory=provider_factory,
-                handlers=plan_handlers(),
-            )
-        finally:
-            await _close_factory(provider_factory)
-        async with session_factory() as fresh:
-            await course_service.mark_generated_if_complete(fresh, course_id=course_id)
-            await fresh.commit()
+        await drive_and_close(session_factory, provider_factory, run_id)
+        await finish_blocks_run(session_factory, course_id=course_id)
     return {"run_id": str(run_id)}
 
 

@@ -32,6 +32,7 @@ OPERATION_CODES = {
     "submit_plan": "course.plan",
     "submit_generate": "course.generate",
     "submit_translate": "course.generate",
+    "build_course": "course.generate",
     "resume_run": "run.retry",
     "rewrite_block": "course.generate",
     "rewrite_held_batch": "course.generate",
@@ -169,7 +170,8 @@ async def _set_status(
     await session.execute(
         sa.text(
             "UPDATE operations SET status = :status, progress = :progress,"
-            " result = CAST(:result AS jsonb), error = :error, updated_at = now()"
+            " result = COALESCE(CAST(:result AS jsonb), result), error = :error,"
+            " updated_at = now()"
             " WHERE id = :op"
         ),
         {
@@ -235,6 +237,9 @@ async def execute_operation(
                     factory=factory,
                     actor_id=UUID(str(actor_id)) if actor_id is not None else None,
                 )
+                if detail.get("state") == "duplicate":
+                    # another driver holds this operation's lock: it will finish the row
+                    return
                 await _set_status(session, operation_id, status="done", progress=1.0, result=detail)
                 target = UUID(str(actor_id)) if actor_id is not None else None
                 if target is not None:
@@ -338,6 +343,16 @@ async def _run_kind(
         from app.services.planruns import real_provider_factory, run_generate_operation
 
         return await run_generate_operation(
+            session,
+            operation_id,
+            provider_factory=real_provider_factory(settings),
+            session_factory=factory,
+        )
+    if kind == "build_course":
+        from app.services.build import run_build_operation
+        from app.services.planruns import real_provider_factory
+
+        return await run_build_operation(
             session,
             operation_id,
             provider_factory=real_provider_factory(settings),

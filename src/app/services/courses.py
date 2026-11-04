@@ -1350,8 +1350,11 @@ async def submit_rewrite_operation(
     """
     from app.rbac.require import require
     from app.services.audit import write_audit
+    from app.services.planruns import live_work_on
 
     require(actor, "course.generate")
+    if await live_work_on(session, course_id=UUID(str(params["course_id"]))):
+        raise ConflictError("A run is already going")
     row = (
         await session.execute(
             sa.text(
