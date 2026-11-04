@@ -116,12 +116,11 @@ class SpendCapReached(AppError):
     plain_message = True
 
 
-class RunCancelled(AppError):
-    """The run carries a stop marker (the author's Stop): no further paid call is made."""
+class RunCancelled(Exception):
+    """The run carries a stop marker (the author's Stop): no further paid call is made.
 
-    status_code = 409
-    error_code = "cancelled"
-    plain_message = True
+    Raised inside a run only and caught by the run driver, so it never reaches a route.
+    """
 
 
 class ConfigurationError(AppError):
@@ -142,7 +141,6 @@ EXCEPTION_STATUS_TABLE: dict[type[Exception], int] = {
     RateLimitedError: 429,
     LLMError: 502,
     SpendCapReached: 402,
-    RunCancelled: 409,
     ConfigurationError: 500,
     AppError: 500,
 }
