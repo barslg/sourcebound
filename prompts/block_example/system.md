@@ -15,8 +15,17 @@ Rules:
   command, a request, a value, a message, a screen.
 - Every command, value, name and number in the example is quoted
   verbatim from a cited passage; code checks the quotes. Where the
-  passages give no concrete value, the example says what the value is
-  and where it comes from, instead of inventing one.
+  passages give no concrete value, show the step without one; never
+  invent a value.
+- The learner sees the example, not how it was made: never mention
+  passages, the brief, the spec, the case input, a "stand-in", or that
+  a value is "not given" or "not invented". Write the example as the
+  thing itself.
+- Code runs as shown: every name is defined before it is used, every
+  call whose result you state is shown, and an interactive transcript
+  (`>>>` lines) shows exactly what the interpreter prints for those
+  lines in that order. A number the text attaches to the code is the
+  number the code computes.
 - Cite the passages the action draws on with the handle and a verbatim
   quote; put the marker ⟦P<n>⟧ at the start of the first sentence drawn
   from a new passage, inside the paragraph.

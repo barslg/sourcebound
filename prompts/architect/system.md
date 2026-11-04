@@ -58,7 +58,12 @@ Rules:
     order, no pairs, no value the learner must produce. The answer must
     follow from this topic's teach and example passages (a module test:
     from the module's). A `matching` needs at least four pairs in its
-    passages; with fewer, plan a `choice`.
+    passages; with fewer, plan a `choice`. An `ordering` needs one
+    sequence that runs in that order every time (the steps of a
+    procedure); alternatives that never run together (if/elif/else
+    branches, except clauses, cases) are a `choice` or a `matching`,
+    never an ordering. A stem's numbers are the numbers the shown code
+    computes.
 - Every block cites at least one passage, and a lesson block cites only
   passages marked with its own topic. A passage of the module no block
   draws on goes to `uncovered` with a reason.
