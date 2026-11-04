@@ -143,6 +143,60 @@ async def test_worker_reauthorises_and_fails_without_rights(
             )
         ).scalar_one()
         assert status == "failed"
+        failed_note = (
+            await check.execute(
+                sa.text(
+                    "SELECT kind FROM notifications WHERE user_id = :u"
+                    " AND payload ->> 'operation_id' = :o"
+                ),
+                {"u": str(user_id), "o": str(operation_id)},
+            )
+        ).scalar_one()
+        assert failed_note == "operation.failed"
+
+
+async def test_bell_lists_the_newest_ten_with_the_operation_outcome(session: AsyncSession) -> None:
+    """Eleven rows -> the ten newest; kind and status come from the operation, else the payload."""
+    from app.services.notifications import list_notifications
+    from app.services.operations import submit_echo
+
+    user_id = await _ops_user(session)
+    operation_id = await submit_echo(
+        session, actor=_ops_actor(user_id), payload={"message": "hi"}, defer=None
+    )
+    await session.execute(
+        sa.text("UPDATE operations SET status = 'done', kind = 'echo' WHERE id = :o"),
+        {"o": str(operation_id)},
+    )
+    for n in range(9):
+        await session.execute(
+            sa.text(
+                "INSERT INTO notifications (user_id, kind, payload, created_at)"
+                " VALUES (:u, 'operation.done', '{\"status\": \"done\"}',"
+                " now() - make_interval(mins => :m))"
+            ),
+            {"u": str(user_id), "m": n + 10},
+        )
+    await session.execute(
+        sa.text(
+            "INSERT INTO notifications (user_id, kind, payload, created_at)"
+            " VALUES (:u, 'operation.done', '{}', now() - make_interval(mins => 2))"
+        ),
+        {"u": str(user_id)},
+    )
+    await session.execute(
+        sa.text(
+            "INSERT INTO notifications (user_id, kind, payload, created_at)"
+            " VALUES (:u, 'operation.done', CAST(:p AS jsonb), now())"
+        ),
+        {"u": str(user_id), "p": json.dumps({"operation_id": str(operation_id)})},
+    )
+    await session.commit()
+    rows = await list_notifications(session, actor=_ops_actor(user_id))  # type: ignore[arg-type]
+    assert len(rows) == 10
+    assert (rows[0]["operation_kind"], rows[0]["status"]) == ("echo", "done")
+    assert (rows[1]["operation_kind"], rows[1]["status"]) == ("", "")
+    assert (rows[2]["operation_kind"], rows[2]["status"]) == ("", "done")
 
 
 PLAN_BASE = "https://api.meta.ai/v1"
