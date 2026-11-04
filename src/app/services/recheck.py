@@ -107,14 +107,28 @@ async def _reader_passed_this_version(
     return row is not None
 
 
-async def recheck_held(session: AsyncSession, *, course_id: UUID) -> dict[str, int]:
-    """Recompute the code holds of every held block; release what nothing holds any more."""
+async def recheck_held(
+    session: AsyncSession, *, course_id: UUID, hold_accepted: bool = False
+) -> dict[str, int]:
+    """Recompute the code holds of every held block; release what nothing holds any more.
+
+    With `hold_accepted` (the author's button on an unpublished course) an
+    accepted block that a current check rejects is held too, so a check added
+    after the run reaches the blocks it already accepted.
+    """
     from app.services import courses as course_service
 
     await course_service.get_course(session, course_id=course_id)
     replayed = await replay_course(session, course_id=course_id)
-    rechecked = released = unread = 0
+    rechecked = released = unread = newly_held = 0
     for row in replayed["blocks"]:
+        if hold_accepted and row["stored_status"] == "accepted" and row["holds"]:
+            await session.execute(
+                sa.text("UPDATE blocks SET status = 'held', hold_reason = :r WHERE id = :b"),
+                {"r": "; ".join(row["holds"]), "b": row["id"]},
+            )
+            newly_held += 1
+            continue
         if row["stored_status"] != "held":
             continue
         rechecked += 1
@@ -156,4 +170,5 @@ async def recheck_held(session: AsyncSession, *, course_id: UUID) -> dict[str, i
         "released": released,
         "unread": unread,
         "held": rechecked - released - unread,
+        "newly_held": newly_held,
     }

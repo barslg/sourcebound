@@ -420,7 +420,9 @@ async def recheck_held(ctx: RequestContext, *, course_id: str) -> dict[str, int]
     require(actor, "course.generate")
     course = await get_use_case(ctx.db, course_id=UUID(course_id))
     _owner_or_404(course, actor.user_id, actor.is_superadmin)
-    result = await recheck_use_case(ctx.db, course_id=UUID(course_id))
+    result = await recheck_use_case(
+        ctx.db, course_id=UUID(course_id), hold_accepted=course.get("status") != "published"
+    )
     await ctx.db.commit()
     return result
 

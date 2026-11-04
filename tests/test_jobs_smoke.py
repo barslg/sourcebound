@@ -2093,7 +2093,9 @@ async def test_recheck_releases_a_hold_the_current_checks_no_longer_find(
     assert blocks["b3"][0] == "held" and blocks["b3"][1].startswith(
         "quote is not verbatim in its passage"
     ), blocks["b3"]
-    assert result == {"rechecked": 3, "released": 1, "unread": 0, "held": 2}, result
+    assert result == {"rechecked": 3, "released": 1, "unread": 0, "held": 2, "newly_held": 0}, (
+        result
+    )
     accepted = (
         await t03_session.execute(
             sa.text("SELECT accepted_version_id = current_version_id FROM blocks" + block_sql),
@@ -2118,7 +2120,9 @@ async def test_recheck_releases_a_hold_the_current_checks_no_longer_find(
     blocks = await _smoke_blocks(t03_session, demo["course_id"])
     assert blocks["b3"] == ("draft", ""), blocks["b3"]
     assert blocks["b1"] == ("held", dropped), blocks["b1"]
-    assert result == {"rechecked": 3, "released": 0, "unread": 1, "held": 2}, result
+    assert result == {"rechecked": 3, "released": 0, "unread": 1, "held": 2, "newly_held": 0}, (
+        result
+    )
 
 
 async def test_generation_keeps_a_writer_leftover_with_the_block(
@@ -2449,3 +2453,39 @@ async def test_the_author_preview_is_the_learner_reading_of_the_draft(
         await preview_passage(t03_session, uuid4(), UUID(chip["passage_id"]), language="en")
     with pytest.raises(NotFoundError):
         await course_outline(t03_session, learner, demo["course_id"], language="en", threshold=0.8)
+
+
+async def test_recheck_on_an_unpublished_course_holds_an_accepted_block_a_current_check_rejects(
+    t03_session: AsyncSession,
+) -> None:
+    """A check added after the run reaches the blocks the run accepted, only when asked."""
+    from app.services.recheck import recheck_held
+
+    demo, dag = await _smoke_course_and_dag(t03_session, "smoke-recheck-accepted")
+    final = await _smoke_run(t03_session, demo, dag, demo_t05.mock_demo_handler())
+    assert final["status"] == "done", final["stop_marker"]
+    course = str(demo["course_id"])
+    version = (
+        await t03_session.execute(
+            sa.text(
+                "SELECT b.current_version_id FROM blocks b JOIN topics t ON t.id = b.topic_id"
+                " JOIN modules m ON m.id = t.module_id"
+                " WHERE m.course_id = :c AND b.plan_node_id = 'b1'"
+            ),
+            {"c": course},
+        )
+    ).scalar_one()
+    await t03_session.execute(
+        sa.text("UPDATE citations SET quote = 'words no passage says' WHERE block_version_id = :v"),
+        {"v": str(version)},
+    )
+    await t03_session.commit()
+    kept = await recheck_held(t03_session, course_id=demo["course_id"])
+    await t03_session.commit()
+    assert (await _smoke_blocks(t03_session, demo["course_id"]))["b1"][0] == "accepted"
+    assert kept["newly_held"] == 0, kept
+    result = await recheck_held(t03_session, course_id=demo["course_id"], hold_accepted=True)
+    await t03_session.commit()
+    status, reason = (await _smoke_blocks(t03_session, demo["course_id"]))["b1"]
+    assert status == "held" and reason.startswith("quote is not verbatim"), (status, reason)
+    assert result["newly_held"] == 1, result
