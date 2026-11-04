@@ -6,6 +6,7 @@ import { request } from '@/api/client'
 import { courseCallTree, courseItem } from '@/api/endpoints'
 import type { CallTreeNode, CourseDoc } from '@/api/types'
 import ActionButton from '@/components/ActionButton.vue'
+import BuildFlow from '@/components/BuildFlow.vue'
 import CallDetailDrawer from '@/components/CallDetailDrawer.vue'
 import ChainNode from '@/components/ChainNode.vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -85,6 +86,7 @@ const topLevel = computed(() => (root.value?.children ?? []).filter((run) => !sh
     </template>
     <div class="stack" data-testid="chains">
       <StatTiles :tiles="tiles" data-testid="chains-tiles" />
+      <BuildFlow v-if="root" :root="root" />
       <div v-if="live" class="row" role="status" data-testid="chains-live">
         <span>{{ t('chains.live') }}</span>
         <ActionButton action="refresh" data-testid="chains-refresh" @click="tree.reload(true)" />

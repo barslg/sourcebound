@@ -742,7 +742,8 @@
     "details": "Show details",
     "build-course": "Build the whole course",
     "continue-build": "Continue the build",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "clear-notifications": "Clear notifications"
   },
   "form": {
     "required": "required",
@@ -1195,7 +1196,11 @@
       "research": "Source search",
       "planning": "Outline and module plans",
       "reader": "Topic reader check",
-      "other": "Other steps"
+      "other": "Other steps",
+      "blueprint": "Course blueprint",
+      "lectures": "Lectures: corrector passes",
+      "lecture": "Lecture",
+      "blockplan": "Block plan (by code)"
     },
     "role": {
       "teach": "teaching",
@@ -1216,6 +1221,30 @@
     "dependsOn": "Depends on:",
     "readsBlocks": "Reads these blocks:",
     "depCall": "{step} call from {when}",
-    "depBlock": "block {id}"
+    "depBlock": "block {id}",
+    "flow": {
+      "title": "How this course was built",
+      "help": "The stages in order, with the calls and the cost of each. Stages marked by code made no model call.",
+      "byCode": "by code, no model call",
+      "calls": "{calls} calls, {cost}",
+      "stage": {
+        "brief": "Brief",
+        "blueprint": "Blueprint",
+        "lectures": "Lectures",
+        "blockplan": "Block plan",
+        "exercises": "Exercises",
+        "corrector": "Corrector",
+        "translation": "Translation"
+      },
+      "line": {
+        "brief": "The author's level, context, must-cover list and outcomes.",
+        "blueprint": "Topics, the through-line and each topic's key points.",
+        "lectures": "One full lecture per topic, all topics at once.",
+        "blockplan": "Paragraphs become passages; the lecture is the teach block; exercise types follow the text.",
+        "exercises": "Each exercise written from its lecture.",
+        "corrector": "One check after each writer: accept, or return the corrected draft.",
+        "translation": "The course in each extra language of the brief."
+      }
+    }
   }
 }

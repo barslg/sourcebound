@@ -80,6 +80,7 @@ def _call_node(row: Any) -> dict[str, Any]:
         duration_ms=int(row.duration_ms),
         created_at=row.created_at.isoformat(),
         query=row.query,
+        lecture_node=row.lecture_node,
     )
 
 
@@ -107,7 +108,9 @@ async def _calls(session: AsyncSession, course_id: UUID) -> list[Any]:
                     f" c.tokens_reasoning, c.duration_ms, {CACHED_REPLY_SQL} AS cached,"
                     " s.step_key, CASE WHEN c.agent = 'researcher' THEN c.response ->> 'query' END"
                     " AS query,"
-                    " CASE WHEN c.agent = 'architect' THEN c.response -> 'modules' END AS modules"
+                    " CASE WHEN c.agent = 'architect' THEN c.response -> 'modules' END AS modules,"
+                    " CASE WHEN c.agent = 'lecture' THEN c.response ->> 'plan_node_id' END"
+                    " AS lecture_node"
                     " FROM llm_calls c JOIN runs r ON r.id = c.run_id"
                     " LEFT JOIN run_steps s ON s.id = c.step_id"
                     " WHERE r.course_id = :course AND c.subject_user_id IS NULL"
@@ -248,10 +251,29 @@ class _RunTree:
             query = self.group(f"research:{step_key}", self.group("research"), step_key=step_key)
             query["facts"]["query"] = query["facts"].get("query") or call["facts"]["query"]
             query["children"].append(call)
-        elif agent in ("architect", "blueprint", "lectures", "blockplan"):
+        elif agent == "architect":
             self.group("planning", step_key=step_key)["children"].append(call)
+        elif agent in ("blueprint", "blockplan"):
+            self.group(agent, step_key=step_key)["children"].append(call)
+        elif agent == "lectures":
+            self._lecture_home(call, step_key)["children"].append(call)
         else:
             self.group(f"other:{step_key or ''}", step_key=step_key)["children"].append(call)
+
+    def _lecture_home(self, call: dict[str, Any], step_key: str | None) -> dict[str, Any]:
+        """A lecture call hangs under its topic; a corrector pass of the step under the step."""
+        topic_node = str(call["facts"].get("lecture_node") or "")
+        row = next((b for b in self.blocks.values() if b.topic_node == topic_node), None)
+        if row is None:
+            return self.group("lectures", step_key=step_key)
+        topic = self._topic(row)
+        node_id = f"{self.run_id}:group:lecture:{topic_node}"
+        if node_id not in self.groups:
+            self.groups[node_id] = _node(
+                node_id, "group", "lecture", group="lecture", step_key=step_key
+            )
+            topic["children"].append(self.groups[node_id])
+        return self.groups[node_id]
 
     def _reader(self, topic_node: str) -> dict[str, Any]:
         row = next((b for b in self.blocks.values() if b.topic_node == topic_node), None)

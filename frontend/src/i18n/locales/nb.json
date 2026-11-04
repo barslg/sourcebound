@@ -742,7 +742,8 @@
     "details": "Vis detaljer",
     "build-course": "Bygg hele kurset",
     "continue-build": "Fortsett byggingen",
-    "refresh": "Oppdater"
+    "refresh": "Oppdater",
+    "clear-notifications": "Tøm varsler"
   },
   "form": {
     "required": "påkrevd",
@@ -1195,7 +1196,11 @@
       "research": "Kildesøk",
       "planning": "Disposisjon og modulplaner",
       "reader": "Emnekontroll av leseren",
-      "other": "Andre trinn"
+      "other": "Andre trinn",
+      "blueprint": "Kursplan",
+      "lectures": "Forelesninger: korrekturrunder",
+      "lecture": "Forelesning",
+      "blockplan": "Blokkplan (av kode)"
     },
     "role": {
       "teach": "undervisning",
@@ -1216,6 +1221,30 @@
     "dependsOn": "Avhenger av:",
     "readsBlocks": "Leser disse blokkene:",
     "depCall": "{step}-kall fra {when}",
-    "depBlock": "blokk {id}"
+    "depBlock": "blokk {id}",
+    "flow": {
+      "title": "Slik ble kurset bygget",
+      "help": "Trinnene i rekkefølge, med antall kall og kostnad for hvert. Trinn merket «av kode» gjorde ingen modellkall.",
+      "byCode": "av kode, ingen modellkall",
+      "calls": "{calls} kall, {cost}",
+      "stage": {
+        "brief": "Brief",
+        "blueprint": "Kursplan",
+        "lectures": "Forelesninger",
+        "blockplan": "Blokkplan",
+        "exercises": "Oppgaver",
+        "corrector": "Korrektur",
+        "translation": "Oversettelse"
+      },
+      "line": {
+        "brief": "Forfatterens nivå, kontekst, må-dekke-liste og mål.",
+        "blueprint": "Emner, den røde tråden og hvert emnes nøkkelpunkter.",
+        "lectures": "Én hel forelesning per emne, alle emner samtidig.",
+        "blockplan": "Avsnitt blir passasjer; forelesningen er lærestoffet; oppgavetyper følger teksten.",
+        "exercises": "Hver oppgave skrevet fra sin forelesning.",
+        "corrector": "Én sjekk etter hver skriver: godta, eller returner korrigert utkast.",
+        "translation": "Kurset på hvert ekstra språk i briefen."
+      }
+    }
   }
 }
