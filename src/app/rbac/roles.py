@@ -151,6 +151,7 @@ async def create_role(
         require(actor, "role.edit")
     await _reject_unknown(session, permission_codes)
     _check_escalation(actor, permission_codes, name)
+    _check_student_codes(name, permission_codes)
     cleaned_crud = _validate_crud(crud)
     cleaned_tags = _validate_scope_tags(scope_tags) or []
     try:
@@ -190,6 +191,17 @@ async def create_role(
     return role_id
 
 
+def _check_student_codes(name: str, permission_codes: Collection[str]) -> None:
+    """The student role holds learn.* only: every sign-in gets it with no course tags."""
+    from app.rbac.catalogue import STUDENT_PERMISSION_CODES, STUDENT_ROLE_NAME
+
+    extra = sorted(set(permission_codes) - set(STUDENT_PERMISSION_CODES))
+    if name == STUDENT_ROLE_NAME and extra:
+        raise ValidationError(
+            f"the student role holds only {', '.join(STUDENT_PERMISSION_CODES)}: {', '.join(extra)}"
+        )
+
+
 async def update_role(
     session: AsyncSession,
     *,
@@ -225,6 +237,7 @@ async def update_role(
                 )
         await _reject_unknown(session, permission_codes)
         _check_escalation(actor, permission_codes, name)
+        _check_student_codes(name, permission_codes)
         await session.execute(
             sa.text("DELETE FROM role_permissions WHERE role_id = :role"),
             {"role": str(role_id)},
