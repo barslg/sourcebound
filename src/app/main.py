@@ -59,7 +59,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app(settings: Settings | None = None, *, sync_on_startup: bool = True) -> FastAPI:
     """Build the FastAPI application; routes only parse and validate."""
     resolved = settings or get_settings()
-    configure_logging(resolved.log_level, secrets=tuple(settings_secrets(resolved)))
+    configure_logging(
+        resolved.log_level,
+        secrets=tuple(settings_secrets(resolved)),
+        log_format=resolved.log_format,
+    )
     app = FastAPI(title="Grounded Course Studio", lifespan=lifespan)
     app.state.settings = resolved
     app.state.sync_on_startup = sync_on_startup

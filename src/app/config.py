@@ -5,6 +5,7 @@ here; logic modules take values as arguments instead of reading env vars.
 """
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -19,6 +20,7 @@ class Settings(BaseSettings):
 
     app_env: str = "local"
     log_level: str = "INFO"
+    log_format: Literal["pretty", "json"] = "pretty"
     database_url: str = DEFAULT_DATABASE_URL
     test_database_url: str = ""
     model_api_key: SecretStr | None = None

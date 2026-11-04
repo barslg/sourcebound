@@ -185,7 +185,7 @@ async def test_every_recorded_call_prints_one_metadata_line(
     from app.logging import configure_logging
 
     monkeypatch.setattr("structlog._config._CONFIG.is_configured", False, raising=False)
-    configure_logging("INFO")
+    configure_logging("INFO", log_format="json")
     ids = await _seed(world)
     lines = [
         json.loads(line)

@@ -31,7 +31,11 @@ def create_worker_app() -> App:
     `model_call` lines as the API.
     """
     settings = get_settings()
-    configure_logging(settings.log_level, secrets=tuple(settings_secrets(settings)))
+    configure_logging(
+        settings.log_level,
+        secrets=tuple(settings_secrets(settings)),
+        log_format=settings.log_format,
+    )
     return App(
         connector=PsycopgConnector(conninfo=psycopg_dsn(settings.database_url)),
         import_paths=["app.tasks.jobs"],
