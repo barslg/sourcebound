@@ -1,8 +1,13 @@
 # Sourcebound
 
-Sourcebound turns one short brief into a whole course and teaches people to catch the AI when it is wrong. The author states who the learners are, what they must be able to do and what the course must cover, then presses Build. Meta models write the course's through-line case, a lecture for every topic and typed exercises cut from each lecture. Code checks everything a learner can see (code compiles, cloze blanks are short, options share one shape, matching has enough pairs); a corrector model fixes what code flags; answers are graded by code, never by a model. The tutor answers "not in the materials" instead of guessing, and the "find the AI error" exercise plants a false claim for the learner to find. The unit of output is a course (plan, modules, topics, typed blocks), not an answer. Built for the Meta Global AI Developer Hackathon 2026, Indie track, Build for Your World, solo. Live at https://sourcebound.io.
+Sourcebound turns one short brief into a whole course. The author states who the learners are, what they must be able to do and what the course must cover, then presses Build. A chain of agents on Meta models writes the course's through-line case, a lecture for every topic, one picture per topic and typed exercises cut from each lecture. Code checks everything a learner can see (code compiles, cloze blanks are short, options share one shape, matching has enough pairs, ordering keys follow the stated order); a corrector model fixes what code flags; answers are graded by code, never by a model. The tutor answers "not in the materials" instead of guessing. The unit of output is a course (plan, modules, topics, typed blocks), not an answer. Built for the Meta Global AI Developer Hackathon 2026, Indie track, Build for Your World, solo.
 
-Every model call is listed on the run page with its model, step, tokens, cost and latency.
+- **Live:** https://sourcebound.io (the example course "Python for a shop owner" is open to every signed-in user)
+- **Demo video:** https://youtu.be/ugFaPW0U6zM
+- **On X:** https://x.com/bars_lg/status/2118147277168787764
+- **Hackathon:** https://cerebralvalley.ai/e/meta-ai-developer-hackathon
+
+Every model call is listed on the run page and on the course's agent-chain page with its model, step, tokens, cost and latency.
 
 ## What existed before / what was built this week
 
@@ -21,8 +26,9 @@ Nothing existed. This repository was created on 2026-10-31 for the event and eve
 1. **Blueprint:** one Muse Wonder call writes the learner, the one case the course builds, modules and topics with annotations; a corrector pass checks it.
 2. **Lectures:** every topic gets its own full lecture (Muse Wonder, all topics in parallel), each followed by one corrector pass.
 3. **Block plan (code only):** the lecture's paragraphs become passages of a generated "Lectures" source; the lecture is the topic's reading; exercise types are chosen from the paragraphs (ordering for steps, matching for pairs, cloze for code, else cloze or choice alternating); each module test has one block per lesson.
-4. **Exercises:** a writer produces each exercise from its own lecture; code checks (compile, blank length, option shape, matching pairs, ordering kind, language) give remarks; one corrector pass applies them; the block is accepted.
-5. **Translation:** one run per extra language of the brief.
+4. **Pictures:** one simple picture per topic from Muse Image (one object, plain background, no text, no people), all topics at once, shown above the lecture.
+5. **Exercises:** a writer produces each exercise from its own lecture; code repairs what it can (ordering steps follow the key, every cloze gap is `___`) and checks the rest (compile, blank length, option shape, matching pairs, ordering kind, language) as remarks; one corrector pass applies them; the block is accepted.
+6. **Translation:** one run per extra language of the brief.
 
 No reader, saboteur, architect or researcher, no re-asks, holds or rewrite waves. The lecture's facts are judged by the corrector model, not by code or by approved sources; this is the stated cost of the design. Typed input is ordered stable-first so the calls of one topic read the lecture from the prompt cache.
 
@@ -35,13 +41,20 @@ Source of truth: `STEPS` in `src/app/llm/registry.py` (model, reasoning effort a
 | `muse-wonder-1.0` | `blueprint` (medium, no output limit) | the learner, the through-line case, modules, topics and their annotations, from the brief alone |
 | `muse-wonder-1.0` | `lecture` (medium, no output limit) | one full lecture per topic, advancing the case |
 | `muse-wonder-1.0` | `corrector` (medium, no output limit) | one pass over each blueprint, lecture and exercise draft against the code's remarks |
-| `muse-spark-1.3` | `block_exercise` (high) | writes the exercise of a block from its lecture; exercise types are chosen by code |
+| `muse-wonder-1.0` | `block_exercise` (medium, no output limit) | writes the exercise of a block from its lecture; exercise types are chosen by code |
 | `muse-spark-1.3` | `translator` (low) | translates one block per call; code keeps markers, numbers and answer keys |
 | `muse-spark-1.3` | `tutor` (low) | answers a learner question from retrieved passages only |
 | `muse-voice-transcribe-1.0` | audio sources | transcript with timestamps for uploaded audio (`src/app/clients/web.py`) |
-| `muse-image-1.0` | priced in the registry | registered with a dated price; no step calls it |
+| `muse-image-1.0` | `illustrator` | one simple WebP picture per topic, $0.01 each |
 
-Cost: measured on 2026-11-04, Wonder at medium effort reasons about four times less than Spark did on the same heaviest call (1.9k against 8.3k reasoning tokens) and a Wonder call costs about $0.12 with the cache. A Python-basics course forecasts about $36 (the previous chain would have cost about $90 on Wonder). This is a forecast from per-call measures, not a measured full course; the run page shows the real total of every course.
+Cost, measured from the call ledger:
+
+| Course | Topics | Blocks | Model calls | Cost |
+|---|---|---|---|---|
+| Python for a shop owner (live example, with pictures) | 10 lessons + 4 module tests | 40 | 103 | $3.38 |
+| First pilot of the same brief (no pictures) | 13 lessons + 4 module tests | 52 | 107 | $4.96 |
+
+Wonder at medium effort reasons about four times less than Spark did on the same heaviest call (1.9k against 8.3k reasoning tokens), so it costs less than twice as much per call while writing more; the prompt cache serves 27 to 62 % of the input once every call of a course shares one cache route.
 
 How the Model API is used (`src/app/clients/meta.py`): the Responses API through the `openai` SDK; the agent's system prompt as `instructions`, the typed task as `input`; every structured call asks for a strict `json_schema` built from the agent's schema; `prompt_cache_key` with 24-hour retention keeps the stable prefix cached across a run that lasts hours; `reasoning.effort` per step from the registry; learner-subject calls carry a hashed `safety_identifier`; a dropped connection or a 5xx never triggers a blind second POST, the call continues as a background response and is polled by its stored id.
 
@@ -79,7 +92,7 @@ docker compose up -d --build       # postgres, migrate, api, worker, web on http
 
 ## Deploy
 
-One host runs the stack from `docker-compose.yml` with every port on the loopback; the host's own nginx terminates TLS and proxies to the `web` port. `.github/workflows/deploy.yml` runs after every green `ci` on `main`: it builds the frontend, writes the production `.env` from the repository secrets, ships the tree over SSH, restarts compose and fails unless `/api/v1/health` answers through the site. Names and variables are listed at the top of that file.
+One host runs the stack from `docker-compose.yml` with every port on the loopback; the host's own nginx terminates TLS and proxies to the `web` port. `.github/workflows/deploy.yml` runs after every green `ci` on `main` once its repository variables are set (names at the top of that file): it builds the frontend, writes the production `.env` from the repository secrets, ships the tree over SSH, restarts compose and fails unless `/api/v1/health` answers through the site. Until those are set the live site is deployed by hand with the same steps, after a database backup.
 
 ## Checks
 
@@ -92,7 +105,7 @@ MIT, see `LICENSE`. Components, versions and licences: `docs/THIRD_PARTY.md`. De
 ## Limits
 
 - The lecture-first chain was written and checked on 2026-11-04. Before that, the first design ran live between 2026-10-31 and 2026-11-03 on the author's stand (1,109 Meta calls for about 76 USD); the tutor is proven on the mock path only, as are audio sources. Its code stays in the tree to replay stored courses and is not offered in the UI.
-- A lecture's facts are judged by a model, not by sources. Sources as an optional hint to the blueprint, and web search for lectures, come after the event.
+- A lecture's facts are judged by a model, not by sources. A subject newer than the model (a product released after its training) comes out wrong: the model substitutes a product it knows. A field of exact facts in the brief, and web search for lectures, come after the event.
 - Exercise writers run one step at a time in the run driver; lectures are parallel.
-- Retrieval for the tutor is Postgres full-text search behind a `RetrievalProvider` protocol. No vector store, no fine-tuned reranker, no image generation yet.
+- Retrieval for the tutor is Postgres full-text search behind a `RetrievalProvider` protocol. No vector store, no fine-tuned reranker.
 - The `figure` block type stays registered only to render old courses and is never planned. Mermaid is heavy for the flows it draws; the scenario exercise's risk tiers are a frontend constant.
