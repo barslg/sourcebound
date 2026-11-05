@@ -92,7 +92,7 @@ docker compose up -d --build       # postgres, migrate, api, worker, web on http
 
 ## Deploy
 
-One host runs the stack from `docker-compose.yml` with every port on the loopback; the host's own nginx terminates TLS and proxies to the `web` port. `.github/workflows/deploy.yml` runs after every green `ci` on `main` once its repository variables are set (names at the top of that file): it builds the frontend, writes the production `.env` from the repository secrets, ships the tree over SSH, restarts compose and fails unless `/api/v1/health` answers through the site. Until those are set the live site is deployed by hand with the same steps, after a database backup.
+One host runs the stack from `docker-compose.yml` with every port on the loopback; the host's own nginx terminates TLS and proxies to the `web` port. `.github/workflows/deploy.yml` runs after every green `ci` on `main` once its repository variables are set (names at the top of that file): it builds the frontend, writes the production `.env` from the repository secrets, ships the tree over SSH, restarts compose and fails unless `/api/v1/health` answers through the site. Until those are set the live site is deployed by hand with the same steps, after a database backup. Every published release builds both images and publishes them as packages of this repository: `ghcr.io/barslg/sourcebound-api` and `ghcr.io/barslg/sourcebound-web` (`.github/workflows/release.yml`).
 
 ## Checks
 
