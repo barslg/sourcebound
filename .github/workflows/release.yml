@@ -40,7 +40,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: api image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -52,7 +52,7 @@ jobs:
             org.opencontainers.image.description=Sourcebound API and worker (FastAPI, Procrastinate) on Meta models
             org.opencontainers.image.licenses=MIT
       - name: web image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: frontend
           push: true
